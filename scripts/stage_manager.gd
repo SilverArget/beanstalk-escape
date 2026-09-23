@@ -42,7 +42,14 @@ func generate_patterns(seed_value: int) -> Array:
 		var exits: Array = [1] if stage_index == 0 else [rng.randi_range(0, 2)]
 		if stage_index > 0 and rng.randi_range(0, 1) == 1: exits.append((exits[0] + 1) % 3)
 		var entry: int = reachable[rng.randi_range(0, reachable.size() - 1)]
-		result.append({"stage": stage_index + 1, "entry": entry, "open_routes": exits, "bean_slots": []})
+		var bean_slots: Array = []
+		if stage_index + 1 >= 4:
+			for slot_index in 4:
+				var blocked := rng.randi_range(0, 2)
+				var safe_routes := [0, 1, 2]
+				safe_routes.erase(blocked)
+				bean_slots.append({"progress": 0.18 + slot_index * 0.20, "blocked_route": blocked, "safe_routes": safe_routes, "warning_seconds": Balance.BEAN_WARNING_SECONDS})
+		result.append({"stage": stage_index + 1, "entry": entry, "open_routes": exits, "bean_slots": bean_slots})
 		reachable = exits
 	return result
 func pattern_hash(seed_value: int) -> int: return hash(var_to_str(generate_patterns(seed_value)))

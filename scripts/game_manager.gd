@@ -7,6 +7,7 @@ var state := State.PLAYING
 @onready var spider: SpiderController = $Spider
 @onready var gauge: SpiderDistanceGauge = $HUD/Gauge
 @onready var stages: StageManager = $StageManager
+@onready var beans: BeanSpawner = $BeanSpawner
 
 func _ready() -> void:
 	process_physics_priority = 10
@@ -27,6 +28,7 @@ func _unhandled_input(event: InputEvent) -> void:
 
 func restart() -> void:
 	for child in get_tree().get_nodes_in_group("run_transient"): child.free()
+	beans.reset_run()
 	player.reset_run(Vector2(0, 0))
 	spider.reset_run(Vector2(0, Balance.START_DISTANCE))
 	stages.reset_run()
