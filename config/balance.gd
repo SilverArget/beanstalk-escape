@@ -1,0 +1,18 @@
+class_name Balance
+extends RefCounted
+
+const PLAYER_VERTICAL_SPEED := 180.0
+const PLAYER_HORIZONTAL_SPEED := 680.0
+const PLAYER_HORIZONTAL_ACCELERATION := 6000.0
+const SPIDER_SPEED_RATIO := 0.88
+const START_DISTANCE := 180.0
+const CATCH_DISTANCE := 28.0
+const GAUGE_MAX_DISTANCE := 360.0
+const ROUTE_X := [-240.0, 0.0, 240.0]
+const GAUGE_THRESHOLDS := {
+	"GREEN": 0.20,
+	"YELLOW": 0.40,
+	"ORANGE": 0.60,
+	"RED": 0.80,
+	"DANGER": 1.00,
+}
