@@ -7,6 +7,7 @@ var warning_count := 0
 @onready var player: PlayerController = get_parent().get_node("Player")
 @onready var spider: SpiderController = get_parent().get_node("Spider")
 @onready var stages: StageManager = get_parent().get_node("StageManager")
+@onready var game: GameManager = get_parent() as GameManager
 const BEAN_SCENE := preload("res://scenes/bean_projectile.tscn")
 
 func _physics_process(_delta: float) -> void:
@@ -17,6 +18,8 @@ func _physics_process(_delta: float) -> void:
 			var target_y: float = -((stage_pattern.stage - 1 + slot.progress) * Balance.STAGE_HEIGHT)
 			var key := "%d:%d" % [stage_pattern.stage, slot_index]
 			if not spawned_keys.has(key) and player.global_position.y <= target_y + Balance.BEAN_SPAWN_LEAD_PX:
+				if game != null:
+					game.show_bean_tutorial()
 				spawn_bean(slot.blocked_route, target_y, key)
 	for bean in get_tree().get_nodes_in_group("beans"):
 		var relative_y: float = bean.global_position.y - player.global_position.y

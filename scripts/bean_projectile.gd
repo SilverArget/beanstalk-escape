@@ -15,8 +15,9 @@ func setup(route: int, at_y: float) -> void:
 
 func _physics_process(delta: float) -> void:
 	if not active: return
+	var slow := Balance.TIME_WINGS_SLOW_SCALE if get_tree().get_first_node_in_group("time_wings_active") != null else 1.0
 	if not falling:
-		warning_remaining = maxf(warning_remaining - delta, 0.0)
+		warning_remaining = maxf(warning_remaining - delta * slow, 0.0)
 		$Warning.visible = true
 		$Warning.rotation = sin(Time.get_ticks_msec() * 0.025) * 0.12
 		if warning_remaining <= 0.0:
@@ -25,7 +26,7 @@ func _physics_process(delta: float) -> void:
 			$Warning.visible = false
 			$Body.visible = true
 	else:
-		position.y += Balance.BEAN_FALL_SPEED * delta
+		position.y += Balance.BEAN_FALL_SPEED * delta * slow
 
 func consume() -> void:
 	if not active: return
