@@ -29,6 +29,8 @@ script = ExtResource("6")
 script = ExtResource("7")
 
 [node name="Player" type="CharacterBody2D" parent="."]
+collision_layer = 2
+collision_mask = 0
 script = ExtResource("3")
 [node name="Body" type="Polygon2D" parent="Player"]
 polygon = PackedVector2Array(-15, -22, 15, -22, 18, 15, 0, 25, -18, 15)
@@ -42,6 +44,8 @@ position_smoothing_speed = 7.0
 
 [node name="Spider" type="CharacterBody2D" parent="."]
 position = Vector2(0, 180)
+collision_layer = 4
+collision_mask = 0
 script = ExtResource("4")
 [node name="Body" type="Polygon2D" parent="Spider"]
 polygon = PackedVector2Array(-30, 0, -18, -18, 0, -12, 18, -18, 30, 0, 18, 18, 0, 12, -18, 18)
