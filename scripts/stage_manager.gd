@@ -59,33 +59,89 @@ func generate_patterns(seed_value: int) -> Array:
 			route_end_progress[1] = 0.55
 			route_end_progress[0] = 0.995
 		elif stage_number == 3:
-			route_end_progress = [0.995, 0.55, 1.0]
-		elif stage_number >= 4:
-			var closed := rng.randi_range(0, 2)
-			var closes_after := 0.64 if stage_number == 4 else 0.78
-			route_end_progress[closed] = closes_after
+			route_end_progress = [1.0, 0.78, 0.46]
+		elif stage_number == 4:
+			route_end_progress[0] = 0.64
+		elif stage_number == 5:
+			route_end_progress[1] = 0.78
 		for route in 3:
 			if route_end_progress[route] < 1.0:
 				open_routes.erase(route)
 		var bean_slots: Array = []
 		if stage_number >= 4:
 			for slot_index in 4:
-				var blocked := rng.randi_range(0, 2)
-				var safety_route := (blocked + 1 + rng.randi_range(0, 1)) % 3
-				if route_end_progress[safety_route] <= 0.18 + slot_index * 0.20:
-					safety_route = 1
+				var blocked := 0
+				if stage_number == 4:
+					blocked = [0, [0, 2][rng.randi_range(0, 1)], [0, 2][rng.randi_range(0, 1)], 1][slot_index]
+				else:
+					blocked = [2, [0, 2][rng.randi_range(0, 1)], 1, [1, 2][rng.randi_range(0, 1)]][slot_index]
+				var slot_progress := 0.18 + slot_index * 0.20
 				var safe_routes := [0, 1, 2]
 				safe_routes.erase(blocked)
-				bean_slots.append({"progress": 0.18 + slot_index * 0.20, "blocked_route": blocked, "safe_routes": safe_routes, "warning_seconds": Balance.BEAN_WARNING_SECONDS})
+				safe_routes = safe_routes.filter(func(route: int) -> bool: return route_end_progress[route] > slot_progress)
+				if safe_routes.is_empty():
+					blocked = (blocked + 1) % 3
+					safe_routes = [0, 1, 2].filter(func(route: int) -> bool: return route != blocked and route_end_progress[route] > slot_progress)
+				var safety_route: int = safe_routes[rng.randi_range(0, safe_routes.size() - 1)]
+				bean_slots.append({"progress": slot_progress, "blocked_route": blocked, "safe_routes": safe_routes, "safety_route": safety_route, "warning_seconds": Balance.BEAN_WARNING_SECONDS})
 		result.append({"stage": stage_number, "entry": 1, "open_routes": open_routes, "route_end_progress": route_end_progress, "bean_slots": bean_slots})
 	return result
 func pattern_hash(seed_value: int) -> int: return hash(var_to_str(generate_patterns(seed_value)))
 func patterns_are_reachable(candidate: Array) -> bool:
+	var reachable_routes: Array[int] = []
 	for segment: Dictionary in candidate:
-		if segment.open_routes.size() < 1: return false
+		if segment.open_routes.size() < 1:
+			return false
 		for progress: float in segment.route_end_progress:
-			if progress < 0.0 or progress > 1.0: return false
+			if progress < 0.0 or progress > 1.0:
+				return false
+		if reachable_routes.is_empty():
+			reachable_routes = [int(segment.get("entry", 1))]
+		var events: Array[Dictionary] = []
+		for route in 3:
+			var end_progress: float = segment.route_end_progress[route]
+			if end_progress < 1.0:
+				var allowed: Array[int] = []
+				for candidate_route in 3:
+					if float(segment.route_end_progress[candidate_route]) > end_progress:
+						allowed.append(candidate_route)
+				events.append({"progress": end_progress, "allowed": allowed, "warning": Balance.ROUTE_DEAD_END_WARNING_SECONDS})
+		for slot: Dictionary in segment.bean_slots:
+			var allowed: Array[int] = []
+			for route_value in slot.safe_routes:
+				var route := int(route_value)
+				if float(segment.route_end_progress[route]) > float(slot.progress):
+					allowed.append(route)
+			events.append({"progress": float(slot.progress), "allowed": allowed, "warning": float(slot.warning_seconds)})
+		events.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return float(a.progress) < float(b.progress))
+		var previous_progress := 0.0
+		for event: Dictionary in events:
+			var available_seconds := maxf((float(event.progress) - previous_progress) * Balance.STAGE_DURATION_SECONDS, float(event.warning))
+			reachable_routes = _reachable_targets(reachable_routes, event.allowed, available_seconds)
+			if reachable_routes.is_empty():
+				return false
+			previous_progress = float(event.progress)
+		var end_routes: Array[int] = []
+		for route in 3:
+			if float(segment.route_end_progress[route]) >= 1.0:
+				end_routes.append(route)
+		reachable_routes = _reachable_targets(reachable_routes, end_routes, (1.0 - previous_progress) * Balance.STAGE_DURATION_SECONDS)
+		if reachable_routes.is_empty():
+			return false
 	return true
+
+func _reachable_targets(from_routes: Array[int], allowed_routes: Array, available_seconds: float) -> Array[int]:
+	var result: Array[int] = []
+	for target_value in allowed_routes:
+		var target := int(target_value)
+		for source in from_routes:
+			var steps: int = absi(target - source)
+			var required_seconds: float = float(steps) * (Balance.BRANCH_TRANSITION_SECONDS + Balance.BRANCH_COMMAND_BUFFER_SECONDS)
+			if required_seconds <= available_seconds + 0.001:
+				if not result.has(target):
+					result.append(target)
+				break
+	return result
 
 func stage_for_y(player_y: float) -> int:
 	return clampi(int(floor(-player_y / Balance.STAGE_HEIGHT)) + 1, 1, Balance.STAGE_COUNT)

@@ -59,6 +59,10 @@ func _physics_process(delta: float) -> void:
 	_publish_readonly_web_state()
 
 func _unhandled_input(event: InputEvent) -> void:
+	if app_state == AppState.PLAYING and event.is_action_pressed("move_left") and not (event is InputEventKey and event.echo):
+		player.request_branch_direction(-1)
+	elif app_state == AppState.PLAYING and event.is_action_pressed("move_right") and not (event is InputEventKey and event.echo):
+		player.request_branch_direction(1)
 	if event.is_action_pressed("ui_accept"):
 		if app_state == AppState.MENU:
 			start_game()
@@ -88,17 +92,23 @@ func _handle_screen_touch(event: InputEventScreenTouch) -> void:
 	if app_state != AppState.PLAYING:
 		return
 	if event.pressed:
-		Input.action_release("move_left")
-		Input.action_release("move_right")
-		if event.position.x < 172.0:
-			Input.action_press("move_left")
-		else:
-			Input.action_press("move_right")
-	else:
-		Input.action_release("move_left")
-		Input.action_release("move_right")
+		var wings_button := get_node_or_null("HUD/TouchWings") as Button
+		if wings_button != null and Rect2(wings_button.position, wings_button.size).has_point(event.position):
+			touch_actions[event.index] = "time_wings"
+			try_time_wings()
+			return
+		var action := "move_left" if event.position.x < 172.0 else "move_right"
+		touch_actions[event.index] = action
+		Input.action_press(action)
+		player.request_branch_direction(-1 if action == "move_left" else 1)
+	elif touch_actions.has(event.index):
+		var released_action: String = touch_actions[event.index]
+		touch_actions.erase(event.index)
+		if released_action != "time_wings" and not touch_actions.values().has(released_action):
+			Input.action_release(released_action)
 
 func restart() -> void:
+	_clear_direction_inputs()
 	for child in get_tree().get_nodes_in_group("run_transient"): child.free()
 	beans.reset_run()
 	player.reset_run(Vector2(0, 0))
@@ -127,6 +137,7 @@ func start_game() -> void:
 	restart()
 
 func restart_stage() -> void:
+	_clear_direction_inputs()
 	var stage_number := stages.current_stage
 	var start_y := -float(stage_number - 1) * Balance.STAGE_HEIGHT
 	for child in get_tree().get_nodes_in_group("run_transient"): child.free()
@@ -178,6 +189,7 @@ func _die() -> void:
 	_update_hud()
 
 func _pause_game() -> void:
+	_clear_direction_inputs()
 	app_state = AppState.PAUSED
 	player.set_physics_process(false)
 	spider.set_physics_process(false)
@@ -230,9 +242,9 @@ func _setup_hud() -> void:
 	mini.size = Vector2(48, 360)
 	$HUD.add_child(mini)
 	mini.game = self
-	_add_touch_button("TouchLeft", Rect2(36, 424, 128, 88), "LEFT", "move_left")
-	_add_touch_button("TouchRight", Rect2(180, 424, 128, 88), "RIGHT", "move_right")
-	_add_touch_button("TouchWings", Rect2(760, 430, 150, 78), "TIME WINGS", "time_wings")
+	_add_touch_button("TouchLeft", Rect2(36, 400, 128, 120), "LEFT", "move_left")
+	_add_touch_button("TouchRight", Rect2(180, 400, 128, 120), "RIGHT", "move_right")
+	_add_touch_button("TouchWings", Rect2(760, 400, 150, 120), "TIME WINGS", "time_wings")
 
 func _add_label(name: String, pos: Vector2, text: String, font_size: int) -> Label:
 	var label := Label.new()
@@ -251,12 +263,28 @@ func _add_touch_button(name: String, rect: Rect2, text: String, action: String) 
 	button.text = text
 	button.mouse_filter = Control.MOUSE_FILTER_STOP
 	$HUD.add_child(button)
-	button.button_down.connect(func(): Input.action_press(action))
-	button.button_up.connect(func(): Input.action_release(action))
+	button.button_down.connect(_on_touch_action_down.bind(action))
+	button.button_up.connect(_on_touch_action_up.bind(action))
 	button.pressed.connect(func():
 		if app_state == AppState.MENU: start_game()
 		elif app_state == AppState.PLAYER_DEAD and dead_restart_delay <= 0.0: restart_stage()
 		elif app_state == AppState.GAME_COMPLETE: restart())
+
+func _on_touch_action_down(action: String) -> void:
+	if action == "time_wings":
+		try_time_wings()
+	else:
+		Input.action_press(action)
+		player.request_branch_direction(-1 if action == "move_left" else 1)
+
+func _on_touch_action_up(action: String) -> void:
+	if action != "time_wings":
+		Input.action_release(action)
+
+func _clear_direction_inputs() -> void:
+	Input.action_release("move_left")
+	Input.action_release("move_right")
+	touch_actions.clear()
 
 func _update_hud() -> void:
 	$HUD/Menu.visible = app_state == AppState.MENU
@@ -291,9 +319,15 @@ func _stats_text() -> String:
 	return "TIME %02d:%02d\nBEAN HITS %d\nCLOSE CALLS %d\nSKILLS USED %d\nBEST SPIDER DISTANCE %.1fm" % [mm, ss, beans.hit_count, close_calls, skills_used, best_m]
 
 func _publish_readonly_web_state() -> void:
-	if not OS.has_feature("web"):
+	if not OS.has_feature("web") or not _debug_state_enabled():
 		return
 	JavaScriptBridge.eval("window.beanstalkState = %s;" % JSON.stringify(_readonly_state_snapshot()), true)
+
+func _debug_state_enabled() -> bool:
+	if OS.is_debug_build():
+		return true
+	var host := str(JavaScriptBridge.eval("window.location.hostname", true))
+	return host == "localhost" or host == "127.0.0.1"
 
 func _readonly_state_snapshot() -> Dictionary:
 	var dead_end_distance := stages.next_dead_end_distance(player.global_position.y, player.global_position.x)
@@ -316,6 +350,11 @@ func _readonly_state_snapshot() -> Dictionary:
 		"beans": state_beans,
 		"next_dead_end": {"route": dead_end_route, "distance_px": null if is_inf(dead_end_distance) else dead_end_distance},
 		"open_routes_at_player": stages.open_routes_at(player.global_position.y),
+		"active_branch": player.active_branch,
+		"transition_state": player.transition_state_name(),
+		"branch_target": player.transition_to,
+		"branch_transition_count": player.branch_transition_count,
+		"on_support": player.on_support,
 		"stats": {"time": total_time, "bean_hits": beans.hit_count, "close_calls": close_calls, "skills_used": skills_used, "best_distance": best_spider_distance if best_spider_distance < INF else Balance.START_DISTANCE},
 	}
 
