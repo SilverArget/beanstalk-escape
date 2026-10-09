@@ -59,7 +59,7 @@ func _sync_stage_mode() -> void:
 		transition_to = active_branch
 		transition_progress = 0.0
 		movement_mode = MovementMode.ATTACHED
-		global_position.x = Balance.ROUTE_X[active_branch]
+		global_position.x = stages.branch_x_at(active_branch, global_position.y)
 		_reset_visual_pose()
 	_last_stage = stage
 
@@ -78,17 +78,17 @@ func _update_branch_movement(delta: float) -> void:
 	if movement_mode == MovementMode.TRANSITION:
 		transition_progress = minf(transition_progress + delta / Balance.BRANCH_TRANSITION_SECONDS, 1.0)
 		var eased := transition_progress * transition_progress * (3.0 - 2.0 * transition_progress)
-		global_position.x = lerpf(Balance.ROUTE_X[transition_from], Balance.ROUTE_X[transition_to], eased)
+		global_position.x = lerpf(stages.branch_x_at(transition_from, global_position.y), stages.branch_x_at(transition_to, global_position.y), eased)
 		on_support = false
 		_update_transition_visual(transition_progress)
 		if transition_progress >= 1.0:
 			active_branch = transition_to
-			global_position.x = Balance.ROUTE_X[active_branch]
+			global_position.x = stages.branch_x_at(active_branch, global_position.y)
 			movement_mode = MovementMode.ATTACHED
 			on_support = stages.is_route_open_at(stages.stage_for_y(global_position.y), active_branch, stages.progress_in_stage(global_position.y))
 			_reset_visual_pose()
 		return
-	global_position.x = Balance.ROUTE_X[active_branch]
+	global_position.x = stages.branch_x_at(active_branch, global_position.y)
 	on_support = stages.is_route_open_at(stages.stage_for_y(global_position.y), active_branch, stages.progress_in_stage(global_position.y))
 	if stun_remaining > 0.0:
 		return

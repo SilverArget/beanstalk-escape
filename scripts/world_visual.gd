@@ -23,12 +23,13 @@ func _draw() -> void:
 			draw_line(Vector2(0, stage_bottom), Vector2(0, stage_top), Color("4e9556"), Balance.TRUNK_HALF_WIDTH * 2.0, true)
 			continue
 		for route in 3:
-			var x: float = Balance.ROUTE_X[route]
 			var end_y := stage_bottom - float(pattern.route_end_progress[route]) * Balance.STAGE_HEIGHT
 			var color := Color("4e9556") if route == 1 else Color("5aa860")
-			var branch_start := Vector2(0, stage_bottom) if pattern.stage == 3 else Vector2(x, stage_bottom)
-			var join_y := minf(stage_bottom - 180.0, end_y)
-			var points := PackedVector2Array([branch_start, Vector2(x, join_y), Vector2(x, end_y)])
-			draw_polyline(points, color, 42.0, true)
+			var points := PackedVector2Array()
+			var segment_count := maxi(1, ceili(absf(end_y - stage_bottom) / 90.0))
+			for point_index in range(segment_count + 1):
+				var point_y := lerpf(stage_bottom, end_y, float(point_index) / float(segment_count))
+				points.append(Vector2(stages.branch_x_at(route, point_y), point_y))
+			draw_polyline(points, color, StageManager.BRANCH_HALF_WIDTH * 2.0, true)
 			if pattern.route_end_progress[route] < 1.0:
-				draw_circle(Vector2(x, end_y), 24.0, Color("397447"))
+				draw_circle(Vector2(stages.branch_x_at(route, end_y), end_y), 24.0, Color("397447"))

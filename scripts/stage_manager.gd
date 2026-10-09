@@ -3,6 +3,8 @@ extends Node
 
 signal stage_completed(stage_number: int)
 signal prototype_completed
+const BRANCH_HALF_WIDTH := 25.0
+const STAGE_3_SPLIT_HEIGHT := 180.0
 const STAGES := [
 	{"number": 1, "layout": "TRUNK", "bean_slots": [], "skill_slots": []},
 	{"number": 2, "layout": "SIMPLE_ROUTE_CHANGE", "bean_slots": [], "skill_slots": []},
@@ -163,6 +165,15 @@ func route_for_x(x: float) -> int:
 			best = route
 	return best
 
+func branch_x_at(route: int, player_y: float) -> float:
+	var stage_number := stage_for_y(player_y)
+	if stage_number <= 2:
+		return 0.0
+	if stage_number == 3:
+		var split_pixels := progress_in_stage(player_y) * Balance.STAGE_HEIGHT
+		return lerpf(0.0, float(Balance.ROUTE_X[route]), clampf(split_pixels / STAGE_3_SPLIT_HEIGHT, 0.0, 1.0))
+	return float(Balance.ROUTE_X[route])
+
 func is_route_open_at(stage_number: int, route: int, progress: float) -> bool:
 	var pattern := pattern_for_stage(stage_number)
 	return progress < float(pattern.route_end_progress[route])
@@ -170,9 +181,9 @@ func is_route_open_at(stage_number: int, route: int, progress: float) -> bool:
 func current_route_open(player_y: float, x: float) -> bool:
 	return is_route_open_at(stage_for_y(player_y), route_for_x(x), progress_in_stage(player_y))
 
-func next_dead_end_distance(player_y: float, x: float) -> float:
+func next_dead_end_distance(player_y: float, x: float, active_route := -1) -> float:
 	var stage_number := stage_for_y(player_y)
-	var route := route_for_x(x)
+	var route := active_route if active_route >= 0 else route_for_x(x)
 	var pattern := pattern_for_stage(stage_number)
 	var end_progress := float(pattern.route_end_progress[route])
 	var progress := progress_in_stage(player_y)

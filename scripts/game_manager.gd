@@ -14,7 +14,7 @@ var total_time := 0.0
 var close_calls := 0
 var danger_was_active := false
 var skills_used := 0
-var best_spider_distance := INF
+var best_spider_distance := 0.0
 var time_wings_remaining := 0.0
 var time_wings_used_stage := {}
 var tutorial_remaining := 0.0
@@ -47,7 +47,7 @@ func _physics_process(delta: float) -> void:
 		tutorial_remaining = maxf(tutorial_remaining - delta, 0.0)
 	gauge.update_from_positions(player.global_position.y, spider.global_position.y)
 	stages.update_progress(player.global_position.y)
-	best_spider_distance = minf(best_spider_distance, gauge.distance_px)
+	best_spider_distance = maxf(best_spider_distance, gauge.distance_px)
 	if gauge.level == "DANGER" and not danger_was_active:
 		danger_was_active = true
 	elif gauge.level != "DANGER" and danger_was_active:
@@ -124,7 +124,7 @@ func restart() -> void:
 	close_calls = 0
 	danger_was_active = false
 	skills_used = 0
-	best_spider_distance = INF
+	best_spider_distance = 0.0
 	time_wings_remaining = 0.0
 	time_wings_used_stage.clear()
 	player.time_wings_active = false
@@ -229,12 +229,14 @@ func _setup_hud() -> void:
 	$HUD/Hint.text = ""
 	$HUD/Dead.text = "CAUGHT\nENTER / TAP TO RETRY"
 	$HUD/Complete.text = ""
+	$HUD/Complete.position = Vector2(300, 170)
 	_add_label("Menu", Vector2(300, 210), "BEANSTALK ESCAPE\nPRESS ENTER / TAP TO START", 28)
 	_add_label("Pause", Vector2(315, 235), "PAUSED - ESC TO RESUME", 22)
 	_add_label("StageBanner", Vector2(360, 90), "", 20)
 	_add_label("Tutorial", Vector2(360, 130), "", 22)
 	_add_label("TimeWings", Vector2(690, 22), "", 16)
 	_add_label("Stats", Vector2(300, 190), "", 18)
+	_add_label("Replay", Vector2(300, 375), "", 18)
 	var mini := Control.new()
 	mini.name = "MiniMap"
 	mini.set_script(load("res://scripts/mini_map.gd"))
@@ -242,9 +244,9 @@ func _setup_hud() -> void:
 	mini.size = Vector2(48, 360)
 	$HUD.add_child(mini)
 	mini.game = self
-	_add_touch_button("TouchLeft", Rect2(36, 400, 128, 120), "LEFT", "move_left")
-	_add_touch_button("TouchRight", Rect2(180, 400, 128, 120), "RIGHT", "move_right")
-	_add_touch_button("TouchWings", Rect2(760, 400, 150, 120), "TIME WINGS", "time_wings")
+	_add_touch_button("TouchLeft", Rect2(36, 392, 136, 132), "LEFT", "move_left")
+	_add_touch_button("TouchRight", Rect2(180, 392, 136, 132), "RIGHT", "move_right")
+	_add_touch_button("TouchWings", Rect2(760, 392, 150, 132), "TIME WINGS", "time_wings")
 
 func _add_label(name: String, pos: Vector2, text: String, font_size: int) -> Label:
 	var label := Label.new()
@@ -291,14 +293,18 @@ func _update_hud() -> void:
 	$HUD/Pause.visible = app_state == AppState.PAUSED
 	$HUD/Dead.visible = app_state == AppState.PLAYER_DEAD
 	$HUD/Complete.visible = app_state == AppState.GAME_COMPLETE
+	$HUD/Replay.visible = app_state == AppState.GAME_COMPLETE
 	$HUD/StageBanner.text = stages.stage_banner if stages.stage_banner_remaining > 0.0 and app_state == AppState.PLAYING else ""
 	$HUD/Tutorial.text = tutorial_text if tutorial_remaining > 0.0 and app_state == AppState.PLAYING else ""
 	$HUD/TimeWings.text = _time_wings_status()
 	if app_state == AppState.GAME_COMPLETE:
 		$HUD/Stats.text = _stats_text()
-		$HUD/Complete.text = "YOU MADE IT - STAGE 5\nENTER / TAP TO PLAY AGAIN"
+		$HUD/Stats.position = Vector2(300, 215)
+		$HUD/Complete.text = "YOU MADE IT - STAGE 5"
+		$HUD/Replay.text = "ENTER / TAP TO PLAY AGAIN"
 	else:
 		$HUD/Stats.text = ""
+		$HUD/Replay.text = ""
 	$HUD/MiniMap.queue_redraw()
 
 func _time_wings_status() -> String:
@@ -315,7 +321,7 @@ func _stats_text() -> String:
 	var total_seconds := int(round(total_time))
 	var mm := total_seconds / 60
 	var ss := total_seconds % 60
-	var best_m := (best_spider_distance if best_spider_distance < INF else Balance.START_DISTANCE) / Balance.PIXELS_PER_METER
+	var best_m := best_spider_distance / Balance.PIXELS_PER_METER
 	return "TIME %02d:%02d\nBEAN HITS %d\nCLOSE CALLS %d\nSKILLS USED %d\nBEST SPIDER DISTANCE %.1fm" % [mm, ss, beans.hit_count, close_calls, skills_used, best_m]
 
 func _publish_readonly_web_state() -> void:
@@ -330,8 +336,9 @@ func _debug_state_enabled() -> bool:
 	return host == "localhost" or host == "127.0.0.1"
 
 func _readonly_state_snapshot() -> Dictionary:
-	var dead_end_distance := stages.next_dead_end_distance(player.global_position.y, player.global_position.x)
-	var dead_end_route := stages.route_for_x(player.global_position.x)
+	var stage_number := stages.stage_for_y(player.global_position.y)
+	var dead_end_route := player.active_branch if stage_number >= 3 else stages.route_for_x(player.global_position.x)
+	var dead_end_distance := stages.next_dead_end_distance(player.global_position.y, player.global_position.x, dead_end_route)
 	var state_beans := []
 	for bean in get_tree().get_nodes_in_group("beans"):
 		if bean.active:
@@ -355,7 +362,7 @@ func _readonly_state_snapshot() -> Dictionary:
 		"branch_target": player.transition_to,
 		"branch_transition_count": player.branch_transition_count,
 		"on_support": player.on_support,
-		"stats": {"time": total_time, "bean_hits": beans.hit_count, "close_calls": close_calls, "skills_used": skills_used, "best_distance": best_spider_distance if best_spider_distance < INF else Balance.START_DISTANCE},
+		"stats": {"time": total_time, "bean_hits": beans.hit_count, "close_calls": close_calls, "skills_used": skills_used, "best_distance": best_spider_distance},
 	}
 
 func _ensure_actions() -> void:
