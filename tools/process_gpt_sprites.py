@@ -12,7 +12,7 @@ from pathlib import Path
 
 import cv2
 import numpy as np
-from PIL import Image
+from PIL import Image, ImageFilter
 
 
 RAW_NAMES = {
@@ -106,6 +106,18 @@ def remove_small_components(rgba: np.ndarray, minimum_area: int = 20) -> np.ndar
     for index in range(1, count):
         if int(stats[index, cv2.CC_STAT_AREA]) < minimum_area:
             cleaned[labels == index] = 0
+    return cleaned
+
+
+def keep_largest_component(rgba: np.ndarray) -> np.ndarray:
+    """Keep the principal silhouette and discard detached generation debris."""
+    mask = (rgba[..., 3] > 1).astype(np.uint8)
+    count, labels, stats, _ = cv2.connectedComponentsWithStats(mask, connectivity=8)
+    if count <= 2:
+        return rgba
+    largest = 1 + int(np.argmax(stats[1:, cv2.CC_STAT_AREA]))
+    cleaned = np.zeros_like(rgba)
+    cleaned[labels == largest] = rgba[labels == largest]
     return cleaned
 
 
@@ -254,33 +266,47 @@ def process_world(rgba: np.ndarray, cut_dir: Path, game_dir: Path) -> list[np.nd
     if len(boxes) != 11:
         raise RuntimeError(f"Expected 11 world-kit components, found {len(boxes)}")
     # Sheet layout: A trunk, B split, D tip, C branch, four E leaves, three F tendrils.
-    trunk_source = crop_box(rgba, boxes[0])
+    trunk_source = keep_largest_component(crop_box(rgba, boxes[0]))
     split = crop_box(rgba, boxes[1])
     tip = crop_box(rgba, boxes[2])
     branch = crop_box(rgba, boxes[3])
     leaves = [crop_box(rgba, box) for box in boxes[4:8]]
     tendrils = [crop_box(rgba, box) for box in boxes[8:11]]
 
-    # Use only A's uninterrupted middle, mirrored into a periodic tile. The first
-    # and last rows are identical, so repeated draws cannot expose a hard seam.
-    source_height, source_width = trunk_source.shape[:2]
+    # A is used as one continuous Stage 1-2 contour. Upscale once offline so the
+    # browser never magnifies the old 192 px rectangular strip at runtime.
+    trunk_image = Image.fromarray(trunk_source, "RGBA").resize((672, 2364), Image.Resampling.LANCZOS)
+    trunk_image = trunk_image.filter(ImageFilter.UnsharpMask(radius=1.1, percent=90, threshold=2))
+    trunk_contour = np.asarray(trunk_image)
+
+    # Preserve the historical seamless asset for source traceability, but keep
+    # its transparent side contour instead of slicing through opaque pixels.
+    source_height = trunk_source.shape[0]
     segment_height = min(240, source_height // 3)
-    segment_width = min(192, source_width - 16)
     y0 = (source_height - segment_height) // 2
-    x0 = (source_width - segment_width) // 2
-    segment = trunk_source[y0:y0 + segment_height, x0:x0 + segment_width]
+    segment = trunk_source[y0:y0 + segment_height]
     trunk_seamless = np.concatenate((segment, segment[::-1]), axis=0)
 
-    # B's base must meet the same visual width as A's seamless strip.
-    split_scale = segment_width / float(split.shape[1])
-    split_size = (segment_width, max(1, round(split.shape[0] * split_scale)))
-    split = np.asarray(Image.fromarray(split, "RGBA").resize(split_size, Image.Resampling.LANCZOS))
+    # C becomes a transparent-sided periodic tile. Mirroring makes both joins
+    # exact, and the final row is explicitly equal to the first row.
+    branch_height = branch.shape[0]
+    # The lower clean C section has no leaf/curl crossing its side contour.
+    # Mirroring this short interior section yields a periodic stalk without the
+    # triangular cut ends that appeared when the full decorative C was tiled.
+    branch_segment_height = min(120, branch_height // 4)
+    branch_y0 = max(branch_height - 149, 0)
+    branch_segment = branch[branch_y0:branch_y0 + branch_segment_height]
+    branch_seamless = np.concatenate((branch_segment, branch_segment[::-1]), axis=0)
+    branch_seamless = np.array(Image.fromarray(branch_seamless, "RGBA").resize((326, 480), Image.Resampling.LANCZOS), copy=True)
+    branch_seamless[-1] = branch_seamless[0]
 
     named = {
         "trunk_source": trunk_source,
         "trunk_seamless": trunk_seamless,
+        "trunk_contour": trunk_contour,
         "split": split,
         "branch": branch,
+        "branch_seamless": branch_seamless,
         "tip": tip,
         **{f"leaf_{index + 1}": leaf for index, leaf in enumerate(leaves)},
         **{f"tendril_{index + 1}": tendril for index, tendril in enumerate(tendrils)},
@@ -304,7 +330,7 @@ def process_grid(kind: str, raw_path: Path, cut_page: Path, cut_dir: Path, game_
     valid_crops = [crop for crop, name in zip(crops, names) if crop is not None and name is not None]
     if kind == "player":
         normalized = normalize_frames([crop for crop in crops if crop is not None], [0, 1, 3, 7], 88, (144, 144))
-        output_sprites = normalized
+        output_sprites = [remove_small_components(frame) for frame in normalized]
     elif kind == "spider":
         normalized = normalize_frames([crop for crop in crops if crop is not None], [0, 1, 2, 3, 7], 108, (176, 152))
         output_sprites = normalized

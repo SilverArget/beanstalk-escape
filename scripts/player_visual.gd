@@ -12,6 +12,7 @@ const POSES := {
 }
 const CLIMB_SEQUENCE := ["climb_right", "climb_alt", "climb_left", "climb_alt"]
 const WING_OPEN := preload("res://assets/art/gpt/items/wing_open.png")
+const WING_BACK_OFFSET := Vector2(-3, -8)
 
 var sprite := Sprite2D.new()
 var wings := Sprite2D.new()
@@ -20,13 +21,16 @@ var last_penalty := 0
 
 func _ready() -> void:
 	wings.texture = WING_OPEN
-	wings.position = Vector2(0, -3)
-	wings.scale = Vector2(0.18, 0.18)
-	wings.z_index = -1
+	wings.name = "Wings"
+	wings.position = WING_BACK_OFFSET
+	wings.scale = Vector2(0.22, 0.22)
+	wings.z_index = 0
 	add_child(wings)
 	# 87-88 px opaque source height -> 63 px at the 960x540 reference viewport.
 	sprite.scale = Vector2(0.72, 0.72)
+	sprite.name = "Pose"
 	sprite.position = Vector2(0, -3)
+	sprite.z_index = 1
 	add_child(sprite)
 	_update_pose()
 
@@ -42,7 +46,7 @@ func _process(delta: float) -> void:
 	wings.visible = player.time_wings_active
 	if wings.visible:
 		var breathe := 1.0 + sin(Time.get_ticks_msec() * 0.012) * 0.035
-		wings.scale = Vector2(0.18, 0.18) * breathe
+		wings.scale = Vector2(0.22, 0.22) * breathe
 	_update_pose()
 
 func _update_pose() -> void:
