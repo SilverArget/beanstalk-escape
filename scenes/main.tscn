@@ -13,7 +13,7 @@
 
 [sub_resource type="CapsuleShape2D" id="Capsule"]
 radius = 15.0
-height = 44.0
+height = 86.0
 
 [sub_resource type="RectangleShape2D" id="SpiderShape"]
 size = Vector2(52, 28)
@@ -43,9 +43,9 @@ script = ExtResource("8")
 [node name="CollisionShape2D" type="CollisionShape2D" parent="Player"]
 shape = SubResource("Capsule")
 [node name="Camera2D" type="Camera2D" parent="Player"]
-position = Vector2(0, -110)
-position_smoothing_enabled = true
-position_smoothing_speed = 7.0
+position = Vector2(0, -120)
+zoom = Vector2(1, 1)
+position_smoothing_enabled = false
 
 [node name="Spider" type="CharacterBody2D" parent="."]
 position = Vector2(0, 180)

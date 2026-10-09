@@ -58,3 +58,21 @@ Report discrepancy: Playwright CLI reports 8 passed, but `03-test/playwright/RAP
 | T11/T13 | Fire/H and stages 6–30 absent | Fire at Stage 10; all 30 data-driven stages | Gates 4–6. |
 | T18 | One combined pose set, no shared-part rig/six skins | One rig, six skins, identical parts/pivots/hitbox | Gate 3A/3B after scale frame. |
 | VIS12 | Existing textures have known seams/ghost layers | Three-module seam count 0 | Replace art after Gate 1, then inspect real frames. |
+
+## Checkpoint: GATE 1 production greybox — 2026-10-10
+
+Windowed command: `Godot_v4.7.2-stable_win64_console.exe --path . --resolution 960x540 --script res://tests/capture_gate1_frames.gd`. The process saved frames without launching a media viewer and inspected each saved frame by exact pixel sampling.
+
+| Item ID | Status | Evidence / measurement |
+|---|---|---|
+| T01 | PASS | `tests/test_gate1.gd`: 120 physics ticks climb 180 units; no manual jump/climb actions. |
+| T02 | PASS | Production frame: character 44×108, reference y=390, trunk 180; Stage 3 branches 44 with centers 329.5/479.5/629.5. Collider 30×86; trunk safe centers preserve 8-unit inset. |
+| T03 | PASS | One press, one adjacent branch, 48 ticks at 120 Hz = 0.400 s; sampled curve error 0.000; final state `SUPPORTED`. |
+| T04 | PASS | Missing support enters `FALLING_RECOVERY`, falls 91.042 units, then reaches `PLAYER_DEAD`; no unsupported auto-climb/hover. Later web/breaking-branch hazard integration remains owned by their gates. |
+| T05 | PASS | Arrival center error 0.000; shared transform resets; one hit increments one penalty. |
+| VIS02 | PASS (greybox) | `production-stage1.png`; rendered bounds/position/trunk pixel span pass. Final-art/anatomy review remains GATE 3A. |
+| VIS03 | PASS (greybox) | Supported/mid-transfer/end rendered frames; three 44-unit supports and transfer state/character pixels present. Final-art natural-motion review remains GATE 3A. |
+| VIS12 | PASS (greybox) | Two additional 144-unit scroll captures: trunk spans 180 on all sampled rows, seam count 0, `CHANGE BRANCH=false`, alpha holes 0. Final-art seam test remains GATE 3A. |
+| GATE 1 | NOT RUN overall / core PASS | Core player/branch/camera/support contract and related unit/render checks pass. Gate closure still requires a fresh web export/browser regression; the existing export predates these source changes. |
+
+Per-file counts: `tests/test_gate1.gd` 5 PASS / 0 FAIL; `tests/capture_gate1_frames.gd` 6 PASS / 0 FAIL. Compatibility run `../03-test/godot/test_tur1.gd` 7 PASS / 1 FAIL (obsolete 60-tick iteration assumption); partial `test_gate_a.gd` is NOT RUN as a complete file and is not included in pass totals.

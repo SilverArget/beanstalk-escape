@@ -20,6 +20,10 @@ const HUD_FONT_HEIGHT := 20.0
 const SURFACE_EDGE_INSET := 68.0
 const SUPPORTED_BRANCH_OFFSET := 0.0
 const VISIBLE_SEAMS := 0
+const TRUNK_SAFE_NORMALIZED_X := [0.20, 0.50, 0.80]
+const TRUNK_SAFE_WORLD_X := [-54.0, 0.0, 54.0]
+const SUPPORT_CORRIDOR_HALF_WIDTH := 18.0
+const SUPPORT_OFFSET_LIMIT := 12.0
 
 static func measurements() -> Dictionary:
 	return {

@@ -1,193 +1,84 @@
 extends Node2D
 
-const TRUNK_TEXTURE := preload("res://assets/art/gpt/world/trunk_wide.png")
-const SPLIT_TEXTURE := preload("res://assets/art/gpt/world/split_transition.png")
-const BRANCH_TEXTURE := preload("res://assets/art/gpt/world/branch_woven.png")
-const TIP_TEXTURE := preload("res://assets/art/gpt/world/tip.png")
-const LEAF_TEXTURES := [preload("res://assets/art/gpt/world/leaf_1.png"), preload("res://assets/art/gpt/world/leaf_2.png"), preload("res://assets/art/gpt/world/leaf_3.png"), preload("res://assets/art/gpt/world/leaf_4.png")]
-const CLOUD_TEXTURES := [preload("res://assets/art/gpt/items/cloud_1.png"), preload("res://assets/art/gpt/items/cloud_2.png"), preload("res://assets/art/gpt/items/cloud_3.png"), preload("res://assets/art/gpt/items/cloud_4.png")]
-const HILLS := preload("res://assets/art/background/hills1.png")
-const MOUNTAIN := preload("res://assets/art/background/mountain2.png")
-
 @onready var player: PlayerController = get_parent().get_node_or_null("Player") as PlayerController
 @onready var stages: StageManager = get_parent().get_node_or_null("StageManager") as StageManager
-var redraw_accumulator := 0.0
-var sky_texture: ImageTexture
+
+var branch_graph := BranchGraph.new()
 var redraw_count := 0
 var branch_point_count := 0
-const LEGACY_STALK_DRAW_ENABLED := false
-const WORLD_REDRAW_HZ := 0.0
-const TRUNK_DRAW_SCALE := Vector2.ONE
-const BRANCH_DRAW_SCALE := Vector2.ONE
-const SPLIT_DRAW_SCALE := Vector2.ONE
-const TRUNK_STAGE_SCALE_MATCH := true
-const VINE_MODULATE_ALPHA := 1.0
-const SPLIT_OVERLAP_PX := 0.0
-const TRUNK_BODY_WIDTH := 590.0
-const BRANCH_WORLD_WIDTH := 182.0
-const TRUNK_OVERSCAN_PX := 420.0
-const BRANCH_OVERLAP_PX := 0.0
-const BRANCH_SEGMENT_LENGTH := 980.0
-const DECOR_ANCHOR_MAX_GAP_PX := 76.0
-const SUMMIT_EXTENSION_PX := 480.0
-const SPLIT_TOP_X := [-383.0, -3.0, 389.0]
-const SPLIT_CONNECTOR_HEIGHT := 360.0
 
 func _ready() -> void:
-	texture_repeat = CanvasItem.TEXTURE_REPEAT_ENABLED
-	_build_sky_texture()
 	queue_redraw()
-	set_process(false)
+	set_process(true)
+
+func _process(_delta: float) -> void:
+	queue_redraw()
 
 func _draw() -> void:
 	redraw_count += 1
 	branch_point_count = 0
-	var top_y := -Balance.STAGE_HEIGHT * Balance.STAGE_COUNT - 500.0
-	var bottom_y := 500.0
-	var center_y := (top_y + bottom_y) * 0.5
-	_draw_sky(top_y, bottom_y, center_y)
-	_draw_parallax(top_y, bottom_y, center_y)
-	if stages == null: return
-	if top_y <= 120.0 and bottom_y >= -Balance.STAGE_HEIGHT * 2.0 - 120.0:
-		_draw_trunk()
-	for pattern: Dictionary in stages.patterns:
-		var stage_top := -float(pattern.stage) * Balance.STAGE_HEIGHT
-		var stage_bottom := -float(pattern.stage - 1) * Balance.STAGE_HEIGHT
-		if stage_bottom < top_y - 120.0 or stage_top > bottom_y + 120.0: continue
-		if pattern.stage > 2:
-			if pattern.stage == 3:
-				var split_height := float(SPLIT_TEXTURE.get_height())
-				var split_bottom := stage_bottom + SPLIT_OVERLAP_PX
-				var split_top := split_bottom - split_height
-				if split_top <= bottom_y + 120.0 and split_bottom >= top_y - 120.0:
-					_draw_centered_texture(SPLIT_TEXTURE, Vector2(0, split_bottom - split_height * 0.5), SPLIT_DRAW_SCALE)
-			for route in 3: _draw_branch(pattern, route, stage_bottom, top_y, bottom_y)
+	var top_y := -Balance.STAGE_HEIGHT * Balance.STAGE_COUNT - 600.0
+	var bottom_y := 600.0
+	_draw_sky(top_y, bottom_y)
+	_draw_trunk()
+	for stage_number in range(3, Balance.STAGE_COUNT + 1):
+		_draw_stage_branches(stage_number)
+	if player != null and player.support_state == PlayerController.SupportState.TRANSFERRING:
+		_draw_transfer_connection(player.transition_from, player.transition_to, player.transition_base_y, Color("f5d26b"))
 
-func _build_sky_texture() -> void:
-	var image := Image.create(1, 1024, false, Image.FORMAT_RGBA8)
-	for row in image.get_height():
-		image.set_pixel(0, row, sky_color_at(float(row) / float(image.get_height() - 1)))
-	sky_texture = ImageTexture.create_from_image(image)
+func _draw_sky(top_y: float, bottom_y: float) -> void:
+	draw_rect(Rect2(-1000.0, top_y, 2000.0, bottom_y - top_y), Palette.SKY_TOP)
+	for band in 12:
+		var y := bottom_y - float(band) * 2600.0
+		draw_circle(Vector2(-350.0 + float((band * 193) % 700), y), 90.0, Palette.CLOUD_TINT)
+
+func _draw_trunk() -> void:
+	var stage_three_bottom := -Balance.STAGE_HEIGHT * 2.0
+	var trunk_top := stage_three_bottom - 140.0
+	var trunk_rect := Rect2(-ScaleLock.TRUNK_WIDTH * 0.5, trunk_top, ScaleLock.TRUNK_WIDTH, 740.0 - trunk_top)
+	draw_rect(trunk_rect.grow(ScaleLock.OUTLINE_WIDTH), Color("173d2f"))
+	draw_rect(trunk_rect, Color("4c9a4d"))
+	var y := 520.0
+	while y > trunk_top:
+		draw_line(Vector2(-70, y), Vector2(-56, y - ScaleLock.GRIP_DETAIL), Color("276346"), ScaleLock.OUTLINE_WIDTH)
+		draw_line(Vector2(58, y - 20), Vector2(72, y - 32), Color("77bb58"), ScaleLock.OUTLINE_WIDTH)
+		y -= ScaleLock.TEXTURE_ELEMENT_MAX
+
+func _draw_stage_branches(stage_number: int) -> void:
+	var stage_bottom := -float(stage_number - 1) * Balance.STAGE_HEIGHT
+	var stage_top := -float(stage_number) * Balance.STAGE_HEIGHT
+	for route in 3:
+		var points := PackedVector2Array()
+		if stage_number == 3:
+			points.append(Vector2(0.0, stage_bottom - 140.0))
+			for step in range(1, 8):
+				var t := float(step) / 7.0
+				var smooth := t * t * (3.0 - 2.0 * t)
+				points.append(Vector2(lerpf(0.0, Balance.ROUTE_X[route], smooth), lerpf(stage_bottom - 140.0, stage_bottom - 350.0, t)))
+		var cursor_y := stage_bottom - (350.0 if stage_number == 3 else 0.0)
+		if points.is_empty():
+			points.append(Vector2(Balance.ROUTE_X[route], cursor_y))
+		while cursor_y > stage_top:
+			cursor_y = maxf(cursor_y - 120.0, stage_top)
+			points.append(Vector2(Balance.ROUTE_X[route], cursor_y))
+		branch_point_count += points.size()
+		draw_polyline(points, Color("173d2f"), ScaleLock.BRANCH_WIDTH + ScaleLock.OUTLINE_WIDTH * 2.0, true)
+		draw_polyline(points, Color("4c9a4d"), ScaleLock.BRANCH_WIDTH, true)
+		for point_index in range(1, points.size(), 2):
+			var point := points[point_index]
+			draw_line(point + Vector2(-12, 0), point + Vector2(12, -8), Color("77bb58"), ScaleLock.OUTLINE_WIDTH)
+	var connection_y := stage_bottom - (430.0 if stage_number == 3 else 180.0)
+	while connection_y > stage_top + 120.0:
+		_draw_transfer_connection(0, 1, connection_y, Color("3d8144"))
+		_draw_transfer_connection(1, 2, connection_y - 90.0, Color("3d8144"))
+		connection_y -= 360.0
+
+func _draw_transfer_connection(from_branch: int, to_branch: int, world_y: float, color: Color) -> void:
+	var points := PackedVector2Array()
+	for step in 13:
+		points.append(branch_graph.transfer_point(stages, from_branch, to_branch, world_y, float(step) / 12.0))
+	draw_polyline(points, Color("173d2f"), 12.0, true)
+	draw_polyline(points, color, 7.0, true)
 
 func sky_color_at(normalized_y: float) -> Color:
 	return Palette.SKY_TOP.lerp(Palette.SKY_BOTTOM, clampf(normalized_y, 0.0, 1.0))
-
-func _draw_sky(top_y: float, bottom_y: float, _center_y: float) -> void:
-	draw_texture_rect(sky_texture, Rect2(-920, top_y, 1840, bottom_y - top_y), false)
-
-func _draw_parallax(top_y: float, bottom_y: float, center_y: float) -> void:
-	var cloud_band_count := ceili((bottom_y - top_y) / 980.0) + 2
-	for band in cloud_band_count:
-		for cloud_index in 2:
-			var x := -690.0 + float((band * 337 + cloud_index * 720) % 1380)
-			var y := bottom_y - 180.0 - float(band) * 980.0 + float(cloud_index) * 310.0
-			var texture: Texture2D = CLOUD_TEXTURES[(band + cloud_index) % CLOUD_TEXTURES.size()]
-			var scale_value := 0.34 + float((band + cloud_index) % 3) * 0.08
-			draw_set_transform(Vector2(x, y), 0.0, Vector2(scale_value, scale_value))
-			draw_texture(texture, -texture.get_size() * 0.5, Palette.CLOUD_TINT)
-	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
-	draw_circle(Vector2(690, top_y + 82), 46.0, Palette.ACCENT_PROGRESS_LIGHT)
-	draw_set_transform(Vector2(-610, bottom_y - 150), 0.0, Vector2(0.8, 0.8))
-	draw_texture(MOUNTAIN, -MOUNTAIN.get_size() * 0.5, Palette.DISTANT)
-	draw_set_transform(Vector2(0, bottom_y - 70), 0.0, Vector2(1.45, 1.45))
-	draw_texture(HILLS, -HILLS.get_size() * 0.5, Palette.WORLD_LEAF)
-	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
-
-func _draw_trunk() -> void:
-	var world_top := -Balance.STAGE_HEIGHT * 2.0
-	var world_bottom := TRUNK_OVERSCAN_PX
-	var tile_height := float(TRUNK_TEXTURE.get_height())
-	var tile_bottom := world_bottom
-	while tile_bottom > world_top:
-		_draw_centered_texture(TRUNK_TEXTURE, Vector2(0, tile_bottom - tile_height * 0.5), TRUNK_DRAW_SCALE)
-		tile_bottom -= tile_height
-
-func _draw_branch(pattern: Dictionary, route: int, stage_bottom: float, view_top: float, view_bottom: float) -> void:
-	var end_y := stage_bottom - float(pattern.route_end_progress[route]) * Balance.STAGE_HEIGHT
-	if int(pattern.stage) == Balance.STAGE_COUNT and is_equal_approx(float(pattern.route_end_progress[route]), 1.0):
-		end_y -= SUMMIT_EXTENSION_PX
-	if end_y > view_bottom + 120.0 or stage_bottom < view_top - 120.0: return
-	var points := PackedVector2Array()
-	var vine_end_y := end_y
-	if int(pattern.stage) == 3:
-		var split_top := stage_bottom - float(SPLIT_TEXTURE.get_height()) * SPLIT_DRAW_SCALE.y
-		for connector_step in 5:
-			var progress := float(connector_step) / 4.0
-			var smooth := progress * progress * (3.0 - 2.0 * progress)
-			points.append(Vector2(lerpf(SPLIT_TOP_X[route], float(Balance.ROUTE_X[route]), smooth), split_top - SPLIT_CONNECTOR_HEIGHT * progress))
-		vine_end_y = minf(end_y, points[points.size() - 1].y)
-	else:
-		points.append(Vector2(stages.branch_x_at(route, stage_bottom), stage_bottom))
-	var cursor_y: float = points[points.size() - 1].y - BRANCH_SEGMENT_LENGTH
-	while cursor_y > vine_end_y:
-		points.append(Vector2(stages.branch_x_at(route, cursor_y) + sin(cursor_y * 0.003 + route * 2.1) * 10.0, cursor_y))
-		cursor_y -= BRANCH_SEGMENT_LENGTH
-	if not is_equal_approx(points[points.size() - 1].y, vine_end_y):
-		points.append(Vector2(stages.branch_x_at(route, vine_end_y), vine_end_y))
-	branch_point_count += points.size()
-	_draw_textured_vine(points)
-	_decorate_vine(points, int(pattern.stage) * 3 + route)
-	if float(pattern.route_end_progress[route]) < 1.0:
-		_draw_tip(points[points.size() - 1])
-
-func _decorate_vine(points: PackedVector2Array, seed_value: int) -> void:
-	if points.size() < 3: return
-	for index in range(1, points.size() - 1, 2):
-		var side := -1.0 if (index + seed_value) % 2 == 0 else 1.0
-		var sway := sin(float(index + seed_value)) * 0.06
-		var leaf: Texture2D = LEAF_TEXTURES[(index + seed_value) % LEAF_TEXTURES.size()]
-		draw_set_transform(points[index] + Vector2(side * 62.0, 0), side * 1.18 + sway, Vector2(0.25 * side, 0.25))
-		draw_texture(leaf, -leaf.get_size() * 0.5)
-	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
-
-func _draw_tip(point: Vector2) -> void:
-	_draw_centered_texture(TIP_TEXTURE, point + Vector2(0, -38), Vector2(0.38, 0.38))
-
-func _draw_textured_vine(points: PackedVector2Array) -> void:
-	if points.size() < 2: return
-	var texture_width := float(BRANCH_TEXTURE.get_width()) * BRANCH_DRAW_SCALE.x
-	var texture_height := float(BRANCH_TEXTURE.get_height()) * BRANCH_DRAW_SCALE.y
-	var half_width := texture_width * 0.5
-	var distance := -points[0].y
-	for index in range(points.size() - 1):
-		var start := points[index]
-		var finish := points[index + 1]
-		var segment_length := start.distance_to(finish)
-		if segment_length <= 0.001: continue
-		var start_normal := _vine_normal(points, index)
-		var finish_normal := _vine_normal(points, index + 1)
-		var quad := PackedVector2Array([
-			start - start_normal * half_width,
-			start + start_normal * half_width,
-			finish + finish_normal * half_width,
-			finish - finish_normal * half_width,
-		])
-		var next_distance := distance + segment_length
-		var start_v := distance / texture_height
-		var finish_v := next_distance / texture_height
-		var uvs := PackedVector2Array([
-			Vector2(0.0, start_v),
-			Vector2(1.0, start_v),
-			Vector2(1.0, finish_v),
-			Vector2(0.0, finish_v),
-		])
-		draw_colored_polygon(quad, Color(1.0, 1.0, 1.0, VINE_MODULATE_ALPHA), uvs, BRANCH_TEXTURE)
-		distance = next_distance
-
-func _vine_normal(points: PackedVector2Array, index: int) -> Vector2:
-	var tangent: Vector2
-	if index == 0:
-		tangent = points[1] - points[0]
-	elif index == points.size() - 1:
-		tangent = points[index] - points[index - 1]
-	else:
-		tangent = (points[index] - points[index - 1]).normalized() + (points[index + 1] - points[index]).normalized()
-	if tangent.length_squared() <= 0.0001:
-		return Vector2.RIGHT
-	tangent = tangent.normalized()
-	return Vector2(-tangent.y, tangent.x)
-
-func _draw_centered_texture(texture: Texture2D, position: Vector2, scale_value: Vector2) -> void:
-	draw_set_transform(position, 0.0, scale_value)
-	draw_texture(texture, -texture.get_size() * 0.5)
-	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)

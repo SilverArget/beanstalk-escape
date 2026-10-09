@@ -483,7 +483,8 @@ func _update_hud() -> void:
 	$HUD/TouchWings.visible = playing and DisplayServer.is_touchscreen_available()
 	$HUD/Mute.text = "SOUND OFF" if audio.muted else "SOUND ON"
 	$HUD/StageBanner.text = stages.stage_banner if stages.stage_banner_remaining > 0.0 and app_state == AppState.PLAYING else ""
-	$HUD/Tutorial.text = tutorial_text if tutorial_remaining > 0.0 and app_state == AppState.PLAYING else ""
+	var route_hint_visible := tutorial_text != "CHANGE BRANCH" or stages.branch_targets_visible(player.global_position.y, get_viewport_rect().size.y)
+	$HUD/Tutorial.text = tutorial_text if tutorial_remaining > 0.0 and app_state == AppState.PLAYING and route_hint_visible else ""
 	$HUD/TimeWings.text = _time_wings_status()
 	_update_time_wings_orb()
 	if app_state == AppState.GAME_COMPLETE:

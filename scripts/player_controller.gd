@@ -2,6 +2,7 @@ class_name PlayerController
 extends CharacterBody2D
 
 enum MovementMode { TRUNK, ATTACHED, TRANSITION }
+enum SupportState { SUPPORTED, TRANSFERRING, FALLING_RECOVERY }
 
 var spawn_position := Vector2.ZERO
 var knockback_remaining := 0.0
@@ -16,6 +17,12 @@ var transition_progress := 0.0
 var movement_mode := MovementMode.TRUNK
 var branch_transition_count := 0
 var on_support := true
+var support_state := SupportState.SUPPORTED
+var support_offset := 0.0
+var recovery_remaining := 0.0
+var recovery_velocity_y := 0.0
+var transition_base_y := 0.0
+var branch_graph := BranchGraph.new()
 var _last_stage := 1
 var _pending_branch_direction := 0
 @onready var stages: StageManager = get_parent().get_node_or_null("StageManager") as StageManager
@@ -29,10 +36,17 @@ func _physics_process(delta: float) -> void:
 	knockback_remaining = maxf(knockback_remaining - delta, 0.0)
 	stun_remaining = maxf(stun_remaining - delta, 0.0)
 	_sync_stage_mode()
+	if support_state == SupportState.FALLING_RECOVERY:
+		_update_falling_recovery(delta)
+		return
 	if movement_mode == MovementMode.TRUNK:
 		_update_trunk_movement(delta)
 	else:
 		_update_branch_movement(delta)
+	if movement_mode == MovementMode.TRANSITION:
+		vertical_blocked = false
+		velocity = Vector2(0.0, -Balance.PLAYER_VERTICAL_SPEED)
+		return
 	vertical_blocked = not on_support
 	if knockback_remaining > 0.0:
 		velocity.y = Balance.BEAN_KNOCKBACK_SPEED
@@ -52,6 +66,8 @@ func _sync_stage_mode() -> void:
 		if movement_mode != MovementMode.TRUNK:
 			_reset_visual_pose()
 		movement_mode = MovementMode.TRUNK
+		support_state = SupportState.SUPPORTED
+		on_support = true
 		active_branch = stages.route_for_x(global_position.x)
 	elif _last_stage <= 2 or movement_mode == MovementMode.TRUNK:
 		active_branch = stages.route_for_x(global_position.x)
@@ -59,6 +75,8 @@ func _sync_stage_mode() -> void:
 		transition_to = active_branch
 		transition_progress = 0.0
 		movement_mode = MovementMode.ATTACHED
+		support_state = SupportState.SUPPORTED
+		on_support = true
 		global_position.x = stages.branch_x_at(active_branch, global_position.y)
 		_reset_visual_pose()
 	_last_stage = stage
@@ -70,26 +88,38 @@ func _update_trunk_movement(delta: float) -> void:
 	else:
 		velocity.x = move_toward(velocity.x, 0.0, Balance.PLAYER_HORIZONTAL_ACCELERATION * delta)
 	active_branch = stages.route_for_x(global_position.x)
-	on_support = stages.current_route_open(global_position.y, global_position.x)
+	on_support = true
+	support_state = SupportState.SUPPORTED
 	_reset_visual_pose()
 
 func _update_branch_movement(delta: float) -> void:
 	velocity.x = 0.0
 	if movement_mode == MovementMode.TRANSITION:
 		transition_progress = minf(transition_progress + delta / Balance.BRANCH_TRANSITION_SECONDS, 1.0)
-		var eased := transition_progress * transition_progress * (3.0 - 2.0 * transition_progress)
-		global_position.x = lerpf(stages.branch_x_at(transition_from, global_position.y), stages.branch_x_at(transition_to, global_position.y), eased)
+		if transition_progress >= 1.0 - 0.00001:
+			transition_progress = 1.0
+		transition_base_y -= Balance.PLAYER_VERTICAL_SPEED * delta
+		global_position = branch_graph.transfer_point(stages, transition_from, transition_to, transition_base_y, transition_progress)
 		on_support = false
+		support_state = SupportState.TRANSFERRING
 		_update_transition_visual(transition_progress)
 		if transition_progress >= 1.0:
-			active_branch = transition_to
-			global_position.x = stages.branch_x_at(active_branch, global_position.y)
-			movement_mode = MovementMode.ATTACHED
-			on_support = stages.is_route_open_at(stages.stage_for_y(global_position.y), active_branch, stages.progress_in_stage(global_position.y))
-			_reset_visual_pose()
+			if branch_graph.has_support(stages, transition_to, transition_base_y):
+				active_branch = transition_to
+				global_position = branch_graph.support_point(stages, active_branch, transition_base_y, support_offset)
+				movement_mode = MovementMode.ATTACHED
+				support_state = SupportState.SUPPORTED
+				on_support = true
+				_reset_visual_pose()
+			else:
+				_begin_falling_recovery()
 		return
-	global_position.x = stages.branch_x_at(active_branch, global_position.y)
-	on_support = stages.is_route_open_at(stages.stage_for_y(global_position.y), active_branch, stages.progress_in_stage(global_position.y))
+	global_position.x = stages.branch_x_at(active_branch, global_position.y) + support_offset
+	on_support = branch_graph.has_support(stages, active_branch, global_position.y)
+	if not on_support:
+		_begin_falling_recovery()
+		return
+	support_state = SupportState.SUPPORTED
 	if stun_remaining > 0.0:
 		return
 	var left_edge := Input.is_action_just_pressed("move_left")
@@ -112,12 +142,14 @@ func _begin_branch_transition(direction: int) -> bool:
 		return false
 	var stage := stages.stage_for_y(global_position.y)
 	var progress := stages.progress_in_stage(global_position.y)
-	if not stages.is_route_open_at(stage, target, progress):
+	if not branch_graph.can_transfer(stages, active_branch, target, global_position.y):
 		return false
 	transition_from = active_branch
 	transition_to = target
 	transition_progress = 0.0
+	transition_base_y = global_position.y
 	movement_mode = MovementMode.TRANSITION
+	support_state = SupportState.TRANSFERRING
 	branch_transition_count += 1
 	on_support = false
 	return true
@@ -147,7 +179,39 @@ func _reset_visual_pose() -> void:
 		body.scale = Vector2.ONE
 
 func transition_state_name() -> String:
-	return MovementMode.keys()[movement_mode]
+	if movement_mode == MovementMode.TRUNK:
+		return "TRUNK"
+	return "TRANSITION" if support_state == SupportState.TRANSFERRING else "ATTACHED"
+
+func support_state_name() -> String:
+	return SupportState.keys()[support_state]
+
+func _begin_falling_recovery() -> void:
+	movement_mode = MovementMode.ATTACHED
+	support_state = SupportState.FALLING_RECOVERY
+	on_support = false
+	recovery_remaining = 0.35
+	recovery_velocity_y = 120.0
+	velocity = Vector2.ZERO
+
+func _update_falling_recovery(delta: float) -> void:
+	recovery_remaining = maxf(recovery_remaining - delta, 0.0)
+	recovery_velocity_y += 600.0 * delta
+	global_position.y += recovery_velocity_y * delta
+	var target := branch_graph.recovery_target(stages, active_branch, global_position)
+	if not target.is_empty():
+		active_branch = int(target.branch_id)
+		global_position = target.point
+		movement_mode = MovementMode.ATTACHED
+		support_state = SupportState.SUPPORTED
+		on_support = true
+		velocity = Vector2.ZERO
+		_reset_visual_pose()
+		return
+	if recovery_remaining <= 0.0:
+		var game := get_parent()
+		if game != null and game.has_method("_die"):
+			game.call("_die")
 
 func reset_run(at_position: Vector2) -> void:
 	global_position = at_position
@@ -165,10 +229,17 @@ func reset_run(at_position: Vector2) -> void:
 	branch_transition_count = 0
 	_pending_branch_direction = 0
 	on_support = true
+	support_state = SupportState.SUPPORTED
+	support_offset = 0.0
+	recovery_remaining = 0.0
+	recovery_velocity_y = 0.0
+	transition_base_y = at_position.y
 	_last_stage = stages.stage_for_y(at_position.y) if stages != null else 1
 	_reset_visual_pose()
 
 func apply_bean_hit() -> void:
 	bean_penalty_count += 1
+	if movement_mode == MovementMode.TRANSITION:
+		_begin_falling_recovery()
 	knockback_remaining = Balance.BEAN_KNOCKBACK_SECONDS
 	stun_remaining = Balance.BEAN_STUN_SECONDS

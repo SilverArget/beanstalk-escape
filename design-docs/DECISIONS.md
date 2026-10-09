@@ -26,3 +26,11 @@
 
 - Existing 06/07/08-derived art stays on disk and remains in history.
 - It is not scaled down for reuse: live code renders a ~590-unit trunk and ~182-unit branch with 240-unit centers, and prior owner frames show seams/ghost layers. New modular/seamless art must follow the locked greybox dimensions after Gate 1.
+
+## D-006 — GATE 1 production greybox and support model (2026-10-10)
+
+- GATE 1 uses vector-drawn production greybox geometry until GATE 3A final art: 180-unit continuous trunk, 44-unit branches, and centers `[-150, 0, 150]`. The rejected source textures remain untouched and are not scaled down.
+- Stage 1–2 player center is clamped to ±67, which keeps the 30-unit collider at least 8 units inside the 180-unit trunk. Ek A.1 safe centers map to world x `[-54, 0, 54]` for normalized `.20/.50/.80`.
+- `BranchGraph` owns adjacent support connectivity and the 0.40-second transfer curve. `SupportState` explicitly records `SUPPORTED`, `TRANSFERRING`, and `FALLING_RECOVERY`; legacy movement names remain only as a compatibility surface for older QA scripts.
+- Camera zoom remains 1.0 and smoothing is disabled while it is parented directly to the player; this removes the measured 12-pixel steady-state lag and locks the grip reference to rendered y=390. A later camera refactor may add independent soft x follow without changing this scale lock.
+- No later-gate values were changed: vertical speed, stage count/length, spider, bean, wings, and hazard balance remain owned by their scheduled gates.

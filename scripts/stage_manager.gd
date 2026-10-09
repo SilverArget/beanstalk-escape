@@ -3,8 +3,8 @@ extends Node
 
 signal stage_completed(stage_number: int)
 signal prototype_completed
-const BRANCH_HALF_WIDTH := 25.0
-const STAGE_3_SPLIT_HEIGHT := 180.0
+const BRANCH_HALF_WIDTH := 18.0
+const STAGE_3_SPLIT_HEIGHT := 350.0
 const STAGES := [
 	{"number": 1, "layout": "TRUNK", "bean_slots": [], "skill_slots": []},
 	{"number": 2, "layout": "SIMPLE_ROUTE_CHANGE", "bean_slots": [], "skill_slots": []},
@@ -199,3 +199,12 @@ func open_routes_at(player_y: float) -> Array:
 		if is_route_open_at(stage_number, route, progress):
 			routes.append(route)
 	return routes
+
+func branch_targets_visible(player_y: float, viewport_height := 540.0) -> bool:
+	if stage_for_y(player_y) != 3:
+		return stage_for_y(player_y) > 3
+	var split_start_y := -Balance.STAGE_HEIGHT * 2.0 - 140.0
+	var split_end_y := -Balance.STAGE_HEIGHT * 2.0 - 350.0
+	var camera_top_y := player_y - ScaleLock.CHARACTER_REFERENCE_Y
+	var camera_bottom_y := camera_top_y + viewport_height
+	return (split_start_y >= camera_top_y and split_start_y <= camera_bottom_y) or (split_end_y >= camera_top_y and split_end_y <= camera_bottom_y) or player_y <= split_end_y
