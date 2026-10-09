@@ -31,5 +31,7 @@ func _physics_process(delta: float) -> void:
 func consume() -> void:
 	if not active: return
 	active = false
-	visible = false
 	set_physics_process(false)
+	$Warning.visible = false
+	$Body.show_burst()
+	get_tree().create_timer(0.16).timeout.connect(queue_free)

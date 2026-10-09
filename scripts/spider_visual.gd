@@ -1,21 +1,34 @@
 extends Node2D
 
-func _process(_delta: float) -> void:
-	queue_redraw()
+const FRAMES := [
+	preload("res://assets/art/gpt/spider/climb_1.png"),
+	preload("res://assets/art/gpt/spider/climb_2.png"),
+	preload("res://assets/art/gpt/spider/climb_3.png"),
+	preload("res://assets/art/gpt/spider/climb_4.png"),
+	preload("res://assets/art/gpt/spider/attack.png"),
+	preload("res://assets/art/gpt/spider/angry.png"),
+	preload("res://assets/art/gpt/spider/stunned.png"),
+	preload("res://assets/art/gpt/spider/idle.png"),
+]
 
-func _draw() -> void:
-	var phase := Time.get_ticks_msec() * 0.006
-	for side in [-1.0, 1.0]:
-		for index in 4:
-			var root := Vector2(side * (12.0 + index * 2.2), -8.0 + index * 5.0)
-			var step := sin(phase + index * 1.3 + (0.7 if side > 0.0 else 0.0))
-			var knee := Vector2(side * (31.0 + index * 5.0), root.y - 16.0 + index * 8.0)
-			var foot := Vector2(side * (48.0 + index * 8.0), 18.0 + index * 5.0 + step * 7.0)
-			draw_polyline(PackedVector2Array([root, knee, foot]), Palette.SPIDER_BODY, 7.0, true)
-			draw_circle(foot, 4.0, Palette.DANGER_GLOW)
-	draw_circle(Vector2(0, 6), 25.0, Palette.SPIDER_BODY)
-	draw_circle(Vector2(0, -18), 18.0, Palette.SPIDER_BODY)
-	draw_arc(Vector2(0, 6), 13.0, -2.4, -0.7, 12, Palette.DANGER_GLOW, 5.0, true)
-	for eye_x in [-7.0, 7.0]:
-		draw_circle(Vector2(eye_x, -21), 5.5, Palette.DANGER_SPIDER)
-		draw_circle(Vector2(eye_x, -22), 2.2, Palette.WHITE_FLASH)
+var sprite := Sprite2D.new()
+
+func _ready() -> void:
+	sprite.scale = Vector2(0.64, 0.64)
+	sprite.position = Vector2(0, -8)
+	add_child(sprite)
+
+func _process(_delta: float) -> void:
+	var spider := get_parent() as SpiderController
+	if spider == null:
+		return
+	var frame := 7
+	if spider.boost_remaining > 0.0:
+		frame = 5
+	elif spider.player != null and spider.player.time_wings_active:
+		frame = 6
+	elif spider.distance_to_player() <= Balance.GAUGE_MAX_DISTANCE * 0.20:
+		frame = 4
+	elif absf(spider.velocity.y) > 1.0:
+		frame = int(Time.get_ticks_msec() / 140) % 4
+	sprite.texture = FRAMES[frame]

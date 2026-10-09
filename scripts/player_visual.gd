@@ -1,36 +1,29 @@
 extends Node2D
 
 const POSES := {
-	"climb1": preload("res://assets/art/player/female_climb1.png"),
-	"climb2": preload("res://assets/art/player/female_climb2.png"),
-	"hurt": preload("res://assets/art/player/female_hurt.png"),
-	"fall": preload("res://assets/art/player/female_fall.png"),
-	"cheer1": preload("res://assets/art/player/female_cheer1.png"),
-	"cheer2": preload("res://assets/art/player/female_cheer2.png"),
-	"idle": preload("res://assets/art/player/female_idle.png"),
-	"jump": preload("res://assets/art/player/female_jump.png"),
-	"hang": preload("res://assets/art/player/female_hang.png"),
+	"climb_right": preload("res://assets/art/gpt/player/climb_right.png"),
+	"climb_alt": preload("res://assets/art/gpt/player/climb_alt.png"),
+	"jump": preload("res://assets/art/gpt/player/jump.png"),
+	"climb_left": preload("res://assets/art/gpt/player/climb_left.png"),
+	"hurt": preload("res://assets/art/gpt/player/hurt.png"),
+	"fall": preload("res://assets/art/gpt/player/fall.png"),
+	"cheer": preload("res://assets/art/gpt/player/cheer.png"),
+	"idle": preload("res://assets/art/gpt/player/idle.png"),
 }
-const WING_LEFT := preload("res://assets/art/wings/wing_left.png")
-const WING_RIGHT := preload("res://assets/art/wings/wing_right.png")
+const CLIMB_SEQUENCE := ["climb_right", "climb_alt", "climb_left", "climb_alt"]
+const WING_OPEN := preload("res://assets/art/gpt/items/wing_open.png")
 
 var sprite := Sprite2D.new()
-var left_wing := Sprite2D.new()
-var right_wing := Sprite2D.new()
+var wings := Sprite2D.new()
 var flash_remaining := 0.0
 var last_penalty := 0
 
 func _ready() -> void:
-	left_wing.texture = WING_LEFT
-	right_wing.texture = WING_RIGHT
-	left_wing.position = Vector2(-18, 0)
-	right_wing.position = Vector2(18, 0)
-	left_wing.modulate = Palette.SKILL_TIME
-	right_wing.modulate = Palette.SKILL_TIME
-	left_wing.scale = Vector2(0.28, 0.28)
-	right_wing.scale = Vector2(0.28, 0.28)
-	add_child(left_wing)
-	add_child(right_wing)
+	wings.texture = WING_OPEN
+	wings.position = Vector2(0, -3)
+	wings.scale = Vector2(0.18, 0.18)
+	wings.z_index = -1
+	add_child(wings)
 	# 87-88 px opaque source height -> 63 px at the 960x540 reference viewport.
 	sprite.scale = Vector2(0.72, 0.72)
 	sprite.position = Vector2(0, -3)
@@ -46,13 +39,10 @@ func _process(delta: float) -> void:
 		flash_remaining = 0.16
 	flash_remaining = maxf(flash_remaining - delta, 0.0)
 	sprite.modulate = Palette.WHITE_FLASH if flash_remaining > 0.0 else Palette.WHITE_FLASH
-	var wings_on := player.time_wings_active
-	left_wing.visible = wings_on
-	right_wing.visible = wings_on
-	if wings_on:
-		var flap := 0.85 + sin(Time.get_ticks_msec() * 0.018) * 0.15
-		left_wing.rotation = -0.35 * flap
-		right_wing.rotation = 0.35 * flap
+	wings.visible = player.time_wings_active
+	if wings.visible:
+		var breathe := 1.0 + sin(Time.get_ticks_msec() * 0.012) * 0.035
+		wings.scale = Vector2(0.18, 0.18) * breathe
 	_update_pose()
 
 func _update_pose() -> void:
@@ -60,17 +50,19 @@ func _update_pose() -> void:
 	if player == null:
 		return
 	var game := player.get_parent() as GameManager
-	var pose := "climb1"
+	var pose := "climb_right"
 	if game != null and game.app_state == GameManager.AppState.PLAYER_DEAD:
 		pose = "fall"
 	elif game != null and game.app_state == GameManager.AppState.GAME_COMPLETE:
-		pose = "cheer1" if int(Time.get_ticks_msec() / 260) % 2 == 0 else "cheer2"
+		pose = "cheer"
+	elif game != null and game.app_state != GameManager.AppState.PLAYING:
+		pose = "idle"
 	elif player.knockback_remaining > 0.0:
 		pose = "hurt"
 	elif player.movement_mode == PlayerController.MovementMode.TRANSITION:
-		pose = "jump" if player.transition_progress < 0.62 else "hang"
+		pose = "jump"
 	elif absf(player.velocity.y) < 1.0:
-		pose = "hang"
+		pose = "idle"
 	else:
-		pose = "climb1" if int(Time.get_ticks_msec() / 190) % 2 == 0 else "climb2"
+		pose = CLIMB_SEQUENCE[int(Time.get_ticks_msec() / 150) % CLIMB_SEQUENCE.size()]
 	sprite.texture = POSES[pose]

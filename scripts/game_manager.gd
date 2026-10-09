@@ -1,6 +1,8 @@
 class_name GameManager
 extends Node2D
 
+const TIME_WINGS_ORB := preload("res://assets/art/gpt/items/wing_orb.png")
+
 enum State { PLAYING, PLAYER_DEAD, PROTOTYPE_COMPLETE }
 enum AppState { MENU, PLAYING, PAUSED, PLAYER_DEAD, GAME_COMPLETE }
 var state := State.PLAYING
@@ -283,6 +285,13 @@ func _setup_hud() -> void:
 	_add_label("StageBanner", Vector2(360, 90), "", 20)
 	_add_label("Tutorial", Vector2(360, 130), "", 22)
 	_add_label("TimeWings", Vector2(690, 22), "", 16)
+	var wings_orb := TextureRect.new()
+	wings_orb.name = "TimeWingsOrb"
+	wings_orb.texture = TIME_WINGS_ORB
+	wings_orb.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	wings_orb.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	wings_orb.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	$HUD.add_child(wings_orb)
 	_add_label("Stats", Vector2(300, 190), "", 18)
 	_add_label("Replay", Vector2(300, 375), "", 18)
 	var mini := Control.new()
@@ -321,8 +330,11 @@ func layout_hud_for_viewport(viewport_size: Vector2) -> void:
 	$HUD/Mute.position = Vector2(width - 136.0, 16.0)
 	$HUD/Mute.size = Vector2(112.0, 52.0)
 	var skill := $HUD/TimeWings as Label
-	skill.position = Vector2(18.0, 82.0) if portrait else Vector2(width - 380.0, 24.0)
-	skill.size = Vector2(width - 36.0, 30.0) if portrait else Vector2(220.0, 30.0)
+	var skill_orb := $HUD/TimeWingsOrb as TextureRect
+	skill_orb.position = Vector2(18.0, 78.0) if portrait else Vector2(width - 438.0, 14.0)
+	skill_orb.size = Vector2(44.0, 44.0) if portrait else Vector2(48.0, 48.0)
+	skill.position = Vector2(70.0, 82.0) if portrait else Vector2(width - 380.0, 24.0)
+	skill.size = Vector2(width - 88.0, 30.0) if portrait else Vector2(220.0, 30.0)
 	skill.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
 	_layout_centered_label($HUD/StageBanner, width, 124.0 if portrait else 86.0, 30.0, 82.0 if portrait else 300.0)
 	_layout_centered_label($HUD/Tutorial, width, 158.0 if portrait else 122.0, 36.0, 82.0 if portrait else 300.0)
@@ -465,6 +477,7 @@ func _update_hud() -> void:
 	$HUD/StageBanner.visible = playing
 	$HUD/Tutorial.visible = playing
 	$HUD/TimeWings.visible = playing
+	$HUD/TimeWingsOrb.visible = playing
 	$HUD/TouchLeft.visible = playing and DisplayServer.is_touchscreen_available()
 	$HUD/TouchRight.visible = playing and DisplayServer.is_touchscreen_available()
 	$HUD/TouchWings.visible = playing and DisplayServer.is_touchscreen_available()
@@ -472,6 +485,7 @@ func _update_hud() -> void:
 	$HUD/StageBanner.text = stages.stage_banner if stages.stage_banner_remaining > 0.0 and app_state == AppState.PLAYING else ""
 	$HUD/Tutorial.text = tutorial_text if tutorial_remaining > 0.0 and app_state == AppState.PLAYING else ""
 	$HUD/TimeWings.text = _time_wings_status()
+	_update_time_wings_orb()
 	if app_state == AppState.GAME_COMPLETE:
 		$HUD/Stats.text = _stats_text()
 		$HUD/Complete.text = "YOU MADE IT - STAGE 5"
@@ -490,6 +504,19 @@ func _time_wings_status() -> String:
 	if time_wings_used_stage.has(stage_number):
 		return "F · TIME WINGS USED"
 	return "F · TIME WINGS READY"
+
+func _update_time_wings_orb() -> void:
+	var orb := $HUD/TimeWingsOrb as TextureRect
+	var stage_number := stages.stage_for_y(player.global_position.y)
+	if stage_number < Balance.TIME_WINGS_STAGE:
+		orb.modulate = Color(0.38, 0.38, 0.42, 0.55)
+	elif time_wings_remaining > 0.0:
+		var pulse := 0.86 + sin(Time.get_ticks_msec() * 0.012) * 0.14
+		orb.modulate = Color(1.0, pulse, 1.0, 1.0)
+	elif time_wings_used_stage.has(stage_number):
+		orb.modulate = Color(0.52, 0.44, 0.58, 0.55)
+	else:
+		orb.modulate = Color.WHITE
 
 func _stats_text() -> String:
 	var total_seconds := int(round(total_time))

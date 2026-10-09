@@ -1,7 +1,12 @@
 extends Node2D
 
-const LEAF_TEXTURES := [preload("res://assets/art/foliage/leaf_035.png"), preload("res://assets/art/foliage/leaf_036.png"), preload("res://assets/art/foliage/leaf_037.png")]
-const CLOUD_TEXTURES := [preload("res://assets/art/background/cloud1.png"), preload("res://assets/art/background/cloud4.png")]
+const TRUNK_TEXTURE := preload("res://assets/art/gpt/world/trunk_seamless.png")
+const SPLIT_TEXTURE := preload("res://assets/art/gpt/world/split.png")
+const BRANCH_TEXTURE := preload("res://assets/art/gpt/world/branch.png")
+const TIP_TEXTURE := preload("res://assets/art/gpt/world/tip.png")
+const LEAF_TEXTURES := [preload("res://assets/art/gpt/world/leaf_1.png"), preload("res://assets/art/gpt/world/leaf_2.png"), preload("res://assets/art/gpt/world/leaf_3.png"), preload("res://assets/art/gpt/world/leaf_4.png")]
+const TENDRIL_TEXTURES := [preload("res://assets/art/gpt/world/tendril_1.png"), preload("res://assets/art/gpt/world/tendril_2.png"), preload("res://assets/art/gpt/world/tendril_3.png")]
+const CLOUD_TEXTURES := [preload("res://assets/art/gpt/items/cloud_1.png"), preload("res://assets/art/gpt/items/cloud_2.png"), preload("res://assets/art/gpt/items/cloud_3.png"), preload("res://assets/art/gpt/items/cloud_4.png")]
 const HILLS := preload("res://assets/art/background/hills1.png")
 const MOUNTAIN := preload("res://assets/art/background/mountain2.png")
 
@@ -38,6 +43,8 @@ func _draw() -> void:
 			_draw_trunk(stage_bottom, stage_top, pattern.stage, top_y, bottom_y)
 		else:
 			for route in 3: _draw_branch(pattern, route, stage_bottom, top_y, bottom_y)
+			if pattern.stage == 3 and stage_bottom >= top_y - 220.0 and stage_bottom <= bottom_y + 220.0:
+				_draw_centered_texture(SPLIT_TEXTURE, Vector2(0, stage_bottom - 135.0), Vector2(0.78, 0.78))
 
 func _build_sky_texture() -> void:
 	var image := Image.create(1, 1024, false, Image.FORMAT_RGBA8)
@@ -94,6 +101,7 @@ func _draw_trunk(bottom_y: float, top_y: float, stage_number: int, view_top: flo
 	var highlight := PackedVector2Array()
 	for point in points: highlight.append(point + Vector2(-Balance.TRUNK_HALF_WIDTH * 0.42, 0))
 	draw_polyline(highlight, Palette.WORLD_STALK_HIGHLIGHT, 13.0, true)
+	_draw_vertical_tiles(TRUNK_TEXTURE, clipped_top, clipped_bottom, 0.0, 2.82)
 	_decorate_vine(points, stage_number)
 
 func _draw_branch(pattern: Dictionary, route: int, stage_bottom: float, view_top: float, view_bottom: float) -> void:
@@ -113,6 +121,7 @@ func _draw_branch(pattern: Dictionary, route: int, stage_bottom: float, view_top
 	var highlight := PackedVector2Array()
 	for point in points: highlight.append(point + Vector2(-12, 0))
 	draw_polyline(highlight, Palette.WORLD_STALK_HIGHLIGHT, 7.0, true)
+	_draw_branch_tiles(points)
 	_decorate_vine(points, int(pattern.stage) * 3 + route)
 	if pattern.route_end_progress[route] < 1.0 and is_equal_approx(clipped_top, end_y):
 		_draw_tip(points[points.size() - 1])
@@ -123,25 +132,41 @@ func _decorate_vine(points: PackedVector2Array, seed_value: int) -> void:
 		var side := -1.0 if (index + seed_value) % 2 == 0 else 1.0
 		var sway := sin(Time.get_ticks_msec() * 0.0015 + index + seed_value) * 0.08
 		var leaf: Texture2D = LEAF_TEXTURES[(index + seed_value) % LEAF_TEXTURES.size()]
-		draw_set_transform(points[index] + Vector2(side * 34.0, 0), side * 1.18 + sway, Vector2(0.16, 0.16))
-		draw_texture(leaf, -leaf.get_size() * 0.5, Palette.WORLD_LEAF_LIGHT)
-		var tendril := PackedVector2Array()
-		for curl in 9:
-			var angle := float(curl) * 0.72
-			var radius := 4.0 + curl * 2.3
-			tendril.append(points[index] + Vector2(side * (36.0 + cos(angle) * radius), -18.0 + sin(angle) * radius))
-		draw_polyline(tendril, Palette.WORLD_LEAF_LIME, 5.0, true)
+		draw_set_transform(points[index] + Vector2(side * 42.0, 0), side * 1.18 + sway, Vector2(0.25 * side, 0.25))
+		draw_texture(leaf, -leaf.get_size() * 0.5)
+		var tendril: Texture2D = TENDRIL_TEXTURES[(index + seed_value) % TENDRIL_TEXTURES.size()]
+		draw_set_transform(points[index] + Vector2(side * 58.0, -20.0), sway, Vector2(0.22 * side, 0.22))
+		draw_texture(tendril, -tendril.get_size() * 0.5)
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
 func _draw_tip(point: Vector2) -> void:
-	for index in 3:
-		var angle := -1.5 + (index - 1) * 1.05
-		var leaf: Texture2D = LEAF_TEXTURES[index]
-		draw_set_transform(point + Vector2(cos(angle), sin(angle)) * 28.0, angle, Vector2(0.24, 0.24))
-		draw_texture(leaf, -leaf.get_size() * 0.5, Palette.WORLD_LEAF_LIME if index == 1 else Palette.WORLD_LEAF_LIGHT)
+	_draw_centered_texture(TIP_TEXTURE, point + Vector2(0, -38), Vector2(0.38, 0.38))
+
+func _draw_vertical_tiles(texture: Texture2D, top_y: float, bottom_y: float, x: float, width_scale: float) -> void:
+	var tile_height: float = float(texture.get_height())
+	var first_center: float = floorf(top_y / tile_height) * tile_height + tile_height * 0.5
+	var y: float = first_center
+	while y < bottom_y + tile_height:
+		_draw_centered_texture(texture, Vector2(x, y), Vector2(width_scale, 1.0))
+		y += tile_height
+
+func _draw_branch_tiles(points: PackedVector2Array) -> void:
+	if points.is_empty():
+		return
+	var scale_value: float = 0.48
+	var display_height: float = float(BRANCH_TEXTURE.get_height()) * scale_value
+	var bottom_y: float = points[0].y
+	var top_y: float = points[points.size() - 1].y
+	var y: float = bottom_y - display_height * 0.5
+	while y > top_y - display_height * 0.5:
+		var nearest: Vector2 = points[0]
+		for point in points:
+			if absf(point.y - y) < absf(nearest.y - y):
+				nearest = point
+		_draw_centered_texture(BRANCH_TEXTURE, Vector2(nearest.x, y), Vector2(scale_value, scale_value))
+		y -= display_height * 0.88
+
+func _draw_centered_texture(texture: Texture2D, position: Vector2, scale_value: Vector2) -> void:
+	draw_set_transform(position, 0.0, scale_value)
+	draw_texture(texture, -texture.get_size() * 0.5)
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
-	var curl := PackedVector2Array()
-	for index in 13:
-		var angle := index * 0.62
-		curl.append(point + Vector2(cos(angle) * index * 2.4, -20.0 - index * 4.0 + sin(angle) * 14.0))
-	draw_polyline(curl, Palette.WORLD_LEAF_LIME, 6.0, true)
