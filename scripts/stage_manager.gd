@@ -55,10 +55,11 @@ func generate_patterns(seed_value: int) -> Array:
 		var route_end_progress := [1.0, 1.0, 1.0]
 		var open_routes := [0, 1, 2]
 		if stage_number == 2:
-			var closed := rng.randi_range(0, 2)
-			route_end_progress[closed] = 0.55
+			rng.randi_range(0, 2) # Preserve later stage pattern data from the previous seed stream.
+			route_end_progress[1] = 0.55
+			route_end_progress[0] = 0.995
 		elif stage_number == 3:
-			route_end_progress = [0.72, 1.0, 0.82]
+			route_end_progress = [0.995, 0.55, 1.0]
 		elif stage_number >= 4:
 			var closed := rng.randi_range(0, 2)
 			var closes_after := 0.64 if stage_number == 4 else 0.78
@@ -122,3 +123,12 @@ func next_dead_end_distance(player_y: float, x: float) -> float:
 	if end_progress >= 1.0 or progress >= end_progress:
 		return INF if end_progress >= 1.0 else 0.0
 	return (end_progress - progress) * Balance.STAGE_HEIGHT
+
+func open_routes_at(player_y: float) -> Array:
+	var stage_number := stage_for_y(player_y)
+	var progress := progress_in_stage(player_y)
+	var routes := []
+	for route in 3:
+		if is_route_open_at(stage_number, route, progress):
+			routes.append(route)
+	return routes

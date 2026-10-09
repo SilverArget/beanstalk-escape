@@ -20,6 +20,7 @@ var time_wings_used_stage := {}
 var tutorial_remaining := 0.0
 var tutorial_text := ""
 var touch_actions := {}
+var dead_restart_delay := 0.0
 
 func _ready() -> void:
 	process_physics_priority = 10
@@ -30,8 +31,11 @@ func _ready() -> void:
 	_show_menu()
 
 func _physics_process(delta: float) -> void:
+	if dead_restart_delay > 0.0:
+		dead_restart_delay = maxf(dead_restart_delay - delta, 0.0)
 	if app_state == AppState.PAUSED or app_state == AppState.MENU or app_state == AppState.PLAYER_DEAD or app_state == AppState.GAME_COMPLETE:
 		_update_hud()
+		_publish_readonly_web_state()
 		return
 	total_time += delta
 	if time_wings_remaining > 0.0:
@@ -52,12 +56,13 @@ func _physics_process(delta: float) -> void:
 	if gauge.distance_px <= Balance.CATCH_DISTANCE:
 		_die()
 	_update_hud()
+	_publish_readonly_web_state()
 
 func _unhandled_input(event: InputEvent) -> void:
 	if event.is_action_pressed("ui_accept"):
 		if app_state == AppState.MENU:
 			start_game()
-		elif app_state == AppState.PLAYER_DEAD:
+		elif app_state == AppState.PLAYER_DEAD and dead_restart_delay <= 0.0:
 			restart_stage()
 		elif app_state == AppState.GAME_COMPLETE:
 			restart()
@@ -67,6 +72,31 @@ func _unhandled_input(event: InputEvent) -> void:
 		_resume_game()
 	if event.is_action_pressed("time_wings"):
 		try_time_wings()
+	if event is InputEventScreenTouch:
+		_handle_screen_touch(event)
+
+func _handle_screen_touch(event: InputEventScreenTouch) -> void:
+	if event.pressed and app_state == AppState.MENU:
+		start_game()
+		return
+	if event.pressed and app_state == AppState.PLAYER_DEAD and dead_restart_delay <= 0.0:
+		restart_stage()
+		return
+	if event.pressed and app_state == AppState.GAME_COMPLETE:
+		restart()
+		return
+	if app_state != AppState.PLAYING:
+		return
+	if event.pressed:
+		Input.action_release("move_left")
+		Input.action_release("move_right")
+		if event.position.x < 172.0:
+			Input.action_press("move_left")
+		else:
+			Input.action_press("move_right")
+	else:
+		Input.action_release("move_left")
+		Input.action_release("move_right")
 
 func restart() -> void:
 	for child in get_tree().get_nodes_in_group("run_transient"): child.free()
@@ -79,6 +109,7 @@ func restart() -> void:
 	stages.reset_run()
 	state = State.PLAYING
 	app_state = AppState.PLAYING
+	dead_restart_delay = 0.0
 	total_time = 0.0
 	close_calls = 0
 	danger_was_active = false
@@ -111,8 +142,11 @@ func restart_stage() -> void:
 	time_wings_used_stage.erase(stage_number)
 	state = State.PLAYING
 	app_state = AppState.PLAYING
+	dead_restart_delay = 0.0
 	_show_tutorial_for_stage(stage_number)
+	gauge.update_from_positions(player.global_position.y, spider.global_position.y)
 	_update_hud()
+	_publish_readonly_web_state()
 
 func _on_prototype_completed() -> void:
 	state = State.PROTOTYPE_COMPLETE
@@ -138,6 +172,7 @@ func try_time_wings() -> bool:
 func _die() -> void:
 	state = State.PLAYER_DEAD
 	app_state = AppState.PLAYER_DEAD
+	dead_restart_delay = 0.25
 	player.time_wings_active = false
 	player.remove_from_group("time_wings_active")
 	_update_hud()
@@ -195,8 +230,8 @@ func _setup_hud() -> void:
 	mini.size = Vector2(48, 360)
 	$HUD.add_child(mini)
 	mini.game = self
-	_add_touch_button("TouchLeft", Rect2(42, 430, 92, 78), "LEFT", "move_left")
-	_add_touch_button("TouchRight", Rect2(150, 430, 92, 78), "RIGHT", "move_right")
+	_add_touch_button("TouchLeft", Rect2(36, 424, 128, 88), "LEFT", "move_left")
+	_add_touch_button("TouchRight", Rect2(180, 424, 128, 88), "RIGHT", "move_right")
 	_add_touch_button("TouchWings", Rect2(760, 430, 150, 78), "TIME WINGS", "time_wings")
 
 func _add_label(name: String, pos: Vector2, text: String, font_size: int) -> Label:
@@ -220,7 +255,7 @@ func _add_touch_button(name: String, rect: Rect2, text: String, action: String) 
 	button.button_up.connect(func(): Input.action_release(action))
 	button.pressed.connect(func():
 		if app_state == AppState.MENU: start_game()
-		elif app_state == AppState.PLAYER_DEAD: restart_stage()
+		elif app_state == AppState.PLAYER_DEAD and dead_restart_delay <= 0.0: restart_stage()
 		elif app_state == AppState.GAME_COMPLETE: restart())
 
 func _update_hud() -> void:
@@ -254,6 +289,35 @@ func _stats_text() -> String:
 	var ss := total_seconds % 60
 	var best_m := (best_spider_distance if best_spider_distance < INF else Balance.START_DISTANCE) / Balance.PIXELS_PER_METER
 	return "TIME %02d:%02d\nBEAN HITS %d\nCLOSE CALLS %d\nSKILLS USED %d\nBEST SPIDER DISTANCE %.1fm" % [mm, ss, beans.hit_count, close_calls, skills_used, best_m]
+
+func _publish_readonly_web_state() -> void:
+	if not OS.has_feature("web"):
+		return
+	JavaScriptBridge.eval("window.beanstalkState = %s;" % JSON.stringify(_readonly_state_snapshot()), true)
+
+func _readonly_state_snapshot() -> Dictionary:
+	var dead_end_distance := stages.next_dead_end_distance(player.global_position.y, player.global_position.x)
+	var dead_end_route := stages.route_for_x(player.global_position.x)
+	var state_beans := []
+	for bean in get_tree().get_nodes_in_group("beans"):
+		if bean.active:
+			state_beans.append({
+				"route": bean.blocked_route,
+				"phase": "falling" if bean.falling else "warning",
+				"y": bean.global_position.y,
+			})
+	return {
+		"app_state": AppState.keys()[app_state],
+		"stage": stages.stage_for_y(player.global_position.y),
+		"player": {"x": player.global_position.x, "y": player.global_position.y, "vy": player.velocity.y},
+		"spider": {"y": spider.global_position.y, "distance": gauge.distance_px, "ratio": spider.speed_ratio, "boost": spider.boost_remaining > 0.0},
+		"gauge_level": gauge.level,
+		"time_wings": {"unlocked": stages.stage_for_y(player.global_position.y) >= Balance.TIME_WINGS_STAGE, "active": time_wings_remaining > 0.0, "remaining": time_wings_remaining, "used": time_wings_used_stage.has(stages.stage_for_y(player.global_position.y))},
+		"beans": state_beans,
+		"next_dead_end": {"route": dead_end_route, "distance_px": null if is_inf(dead_end_distance) else dead_end_distance},
+		"open_routes_at_player": stages.open_routes_at(player.global_position.y),
+		"stats": {"time": total_time, "bean_hits": beans.hit_count, "close_calls": close_calls, "skills_used": skills_used, "best_distance": best_spider_distance if best_spider_distance < INF else Balance.START_DISTANCE},
+	}
 
 func _ensure_actions() -> void:
 	_add_key_action("time_wings", [KEY_F])
