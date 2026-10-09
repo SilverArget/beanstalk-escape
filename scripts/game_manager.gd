@@ -34,6 +34,8 @@ func _ready() -> void:
 	stages.stage_completed.connect(_on_stage_completed)
 	_ensure_actions()
 	_setup_hud()
+	layout_hud_for_viewport(get_viewport_rect().size)
+	get_viewport().size_changed.connect(func(): layout_hud_for_viewport(get_viewport_rect().size))
 	_show_menu()
 
 func _physics_process(delta: float) -> void:
@@ -303,11 +305,56 @@ func _setup_hud() -> void:
 	_add_touch_button("TouchRight", Rect2(180, 392, 136, 132), "RIGHT", "move_right")
 	_add_touch_button("TouchWings", Rect2(760, 392, 150, 132), "TIME WINGS", "time_wings")
 
+func layout_hud_for_viewport(viewport_size: Vector2) -> void:
+	var width := maxf(viewport_size.x, 320.0)
+	var height := maxf(viewport_size.y, 480.0)
+	var portrait := width < height
+	var logo_width := minf(width * 0.68, 620.0)
+	var logo_height := logo_width / 1.5
+	var logo := $HUD/MenuLogo as TextureRect
+	logo.position = Vector2((width - logo_width) * 0.5, 84.0 if portrait else 20.0)
+	logo.size = Vector2(logo_width, logo_height)
+	var prompt := $HUD/Menu as Label
+	prompt.position = Vector2(0.0, logo.position.y + logo.size.y + 10.0)
+	prompt.size = Vector2(width, 44.0)
+	prompt.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	$HUD/Mute.position = Vector2(width - 136.0, 16.0)
+	$HUD/Mute.size = Vector2(112.0, 52.0)
+	var skill := $HUD/TimeWings as Label
+	skill.position = Vector2(18.0, 82.0) if portrait else Vector2(width - 380.0, 24.0)
+	skill.size = Vector2(width - 36.0, 30.0) if portrait else Vector2(220.0, 30.0)
+	skill.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+	_layout_centered_label($HUD/StageBanner, width, 124.0 if portrait else 86.0, 30.0, 82.0 if portrait else 300.0)
+	_layout_centered_label($HUD/Tutorial, width, 158.0 if portrait else 122.0, 36.0, 82.0 if portrait else 300.0)
+	var map_height := minf(360.0, height - (370.0 if portrait else 112.0))
+	$HUD/MiniMap.position = Vector2(16.0 if portrait else 22.0, 205.0 if portrait else 86.0)
+	$HUD/MiniMap.size = Vector2(42.0 if portrait else 48.0, maxf(map_height, 80.0))
+	$HUD/Gauge.position = Vector2(width - 44.0 if portrait else width - 54.0, 205.0 if portrait else 86.0)
+	$HUD/Gauge.size = Vector2(28.0, maxf(map_height, 80.0))
+	_layout_centered_label($HUD/Pause, width, height * 0.38, 42.0, 40.0)
+	_layout_centered_label($HUD/Dead, width, height * 0.36, 80.0, 36.0)
+	_layout_centered_label($HUD/Complete, width, height * 0.25, 48.0, 36.0)
+	_layout_centered_label($HUD/Stats, width, height * 0.38, 140.0, 44.0)
+	_layout_centered_label($HUD/Replay, width, height * 0.76, 44.0, 36.0)
+	var touch_y := height - 148.0
+	$HUD/TouchLeft.position = Vector2(18.0, touch_y)
+	$HUD/TouchLeft.size = Vector2(104.0, 128.0)
+	$HUD/TouchRight.position = Vector2(132.0, touch_y)
+	$HUD/TouchRight.size = Vector2(104.0, 128.0)
+	$HUD/TouchWings.position = Vector2(width - 140.0, touch_y)
+	$HUD/TouchWings.size = Vector2(122.0, 128.0)
+
+func _layout_centered_label(label: Label, width: float, y: float, height: float, side_margin: float) -> void:
+	label.position = Vector2(side_margin, y)
+	label.size = Vector2(maxf(width - side_margin * 2.0, 1.0), height)
+	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+
 func _add_label(name: String, pos: Vector2, text: String, font_size: int) -> Label:
 	var label := Label.new()
 	label.name = name
 	label.position = pos
 	label.text = text
+	label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	label.add_theme_font_size_override("font_size", font_size)
 	label.theme = ui_theme
 	$HUD.add_child(label)
@@ -404,20 +451,29 @@ func _clear_direction_inputs() -> void:
 	touch_actions.clear()
 
 func _update_hud() -> void:
+	var playing := app_state == AppState.PLAYING
 	$HUD/Menu.visible = app_state == AppState.MENU
 	$HUD/Pause.visible = app_state == AppState.PAUSED
 	$HUD/Dead.visible = app_state == AppState.PLAYER_DEAD
 	$HUD/Complete.visible = app_state == AppState.GAME_COMPLETE
+	$HUD/Stats.visible = app_state == AppState.GAME_COMPLETE
 	$HUD/Replay.visible = app_state == AppState.GAME_COMPLETE
 	$HUD/MenuLogo.visible = app_state == AppState.MENU
 	$HUD/ReduceMotion.visible = app_state == AppState.PAUSED
+	$HUD/Gauge.visible = playing
+	$HUD/MiniMap.visible = playing
+	$HUD/StageBanner.visible = playing
+	$HUD/Tutorial.visible = playing
+	$HUD/TimeWings.visible = playing
+	$HUD/TouchLeft.visible = playing and DisplayServer.is_touchscreen_available()
+	$HUD/TouchRight.visible = playing and DisplayServer.is_touchscreen_available()
+	$HUD/TouchWings.visible = playing and DisplayServer.is_touchscreen_available()
 	$HUD/Mute.text = "SOUND OFF" if audio.muted else "SOUND ON"
 	$HUD/StageBanner.text = stages.stage_banner if stages.stage_banner_remaining > 0.0 and app_state == AppState.PLAYING else ""
 	$HUD/Tutorial.text = tutorial_text if tutorial_remaining > 0.0 and app_state == AppState.PLAYING else ""
 	$HUD/TimeWings.text = _time_wings_status()
 	if app_state == AppState.GAME_COMPLETE:
 		$HUD/Stats.text = _stats_text()
-		$HUD/Stats.position = Vector2(300, 215)
 		$HUD/Complete.text = "YOU MADE IT - STAGE 5"
 		$HUD/Replay.text = "ENTER / TAP TO PLAY AGAIN"
 	else:

@@ -31,7 +31,8 @@ func _ready() -> void:
 	right_wing.scale = Vector2(0.28, 0.28)
 	add_child(left_wing)
 	add_child(right_wing)
-	sprite.scale = Vector2(0.52, 0.52)
+	# 87-88 px opaque source height -> 63 px at the 960x540 reference viewport.
+	sprite.scale = Vector2(0.72, 0.72)
 	sprite.position = Vector2(0, -3)
 	add_child(sprite)
 	_update_pose()
