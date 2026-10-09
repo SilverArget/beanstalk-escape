@@ -70,7 +70,10 @@ def matte(path: Path, bg_threshold: float = 5.0, fg_threshold: float = 34.0) -> 
     distance = np.max(np.abs(rgb - background), axis=2)
     alpha = np.clip((distance - bg_threshold) / (fg_threshold - bg_threshold), 0.0, 1.0)
     alpha = alpha * alpha * (3.0 - 2.0 * alpha)
-    alpha[alpha < 0.015] = 0.0
+    # Very low coverage pixels retain the source sheet's gray background even
+    # after unmixing and become visible as translucent rectangular bands when
+    # the texture repeats.  Keep antialiasing, but discard that gray fringe.
+    alpha[alpha < 0.08] = 0.0
     # Reverse the flat-background blend so antialiased edge RGB is not gray.
     safe_alpha = np.maximum(alpha[..., None], 0.08)
     foreground = (rgb - (1.0 - alpha[..., None]) * background) / safe_alpha
@@ -170,22 +173,6 @@ def resize_rgba(rgba: np.ndarray, scale: float, match_vertical_edges: bool = Tru
     return resized
 
 
-def warp_split_inward(rgba: np.ndarray) -> np.ndarray:
-    """Keep the base width while easing the three approved tops to route spacing."""
-    height, width = rgba.shape[:2]
-    center_x = 510.0
-    grid_x, grid_y = np.meshgrid(np.arange(width, dtype=np.float32), np.arange(height, dtype=np.float32))
-    vertical = grid_y / float(height - 1)
-    ease = vertical * vertical * (3.0 - 2.0 * vertical)
-    # Raw top centers are about +/-184 px. After the 2.13x base match they
-    # become +/-392 px; 0.612 brings them to the gameplay +/-240 routes.
-    horizontal_scale = 0.612 + (1.0 - 0.612) * ease
-    map_x = center_x + (grid_x - center_x) / horizontal_scale
-    warped = cv2.remap(rgba, map_x, grid_y, cv2.INTER_LANCZOS4, borderMode=cv2.BORDER_CONSTANT, borderValue=(0, 0, 0, 0))
-    warped[warped[..., 3] < 2] = 0
-    return warped
-
-
 def process_new_vines(raw_dir: Path, cut_dir: Path, game_dir: Path) -> dict[str, np.ndarray]:
     """Process manager-approved 06/07/08 geometry without touching originals."""
     trunk, _ = matte(raw_dir / RAW_NAMES["trunk_wide"])
@@ -202,12 +189,14 @@ def process_new_vines(raw_dir: Path, cut_dir: Path, game_dir: Path) -> dict[str,
     split = remove_small_components(split)
     # Remove the approved sheet's small lower-right curl touching the cut edge.
     split[1450:, 653:] = 0
-    split = warp_split_inward(split)
     split = crop_x_centered(split, 510)
     base_alpha = split[-1, :, 3] > 128
     base_positions = np.where(base_alpha)[0]
     base_width = int(base_positions.max() - base_positions.min() + 1) if base_positions.size else 277
     split = resize_rgba(split, 590.0 / float(base_width), match_vertical_edges=False)
+    # Lanczos can separate a few antialiased pixels from the silhouette after
+    # the large uniform resize. Remove only those post-resize crumbs.
+    split = remove_small_components(split, minimum_area=100)
 
     outputs = {
         "trunk_wide": trunk,

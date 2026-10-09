@@ -5,7 +5,6 @@ const SPLIT_TEXTURE := preload("res://assets/art/gpt/world/split_transition.png"
 const BRANCH_TEXTURE := preload("res://assets/art/gpt/world/branch_woven.png")
 const TIP_TEXTURE := preload("res://assets/art/gpt/world/tip.png")
 const LEAF_TEXTURES := [preload("res://assets/art/gpt/world/leaf_1.png"), preload("res://assets/art/gpt/world/leaf_2.png"), preload("res://assets/art/gpt/world/leaf_3.png"), preload("res://assets/art/gpt/world/leaf_4.png")]
-const TENDRIL_TEXTURES := [preload("res://assets/art/gpt/world/tendril_1.png"), preload("res://assets/art/gpt/world/tendril_2.png"), preload("res://assets/art/gpt/world/tendril_3.png")]
 const CLOUD_TEXTURES := [preload("res://assets/art/gpt/items/cloud_1.png"), preload("res://assets/art/gpt/items/cloud_2.png"), preload("res://assets/art/gpt/items/cloud_3.png"), preload("res://assets/art/gpt/items/cloud_4.png")]
 const HILLS := preload("res://assets/art/background/hills1.png")
 const MOUNTAIN := preload("res://assets/art/background/mountain2.png")
@@ -18,16 +17,24 @@ var redraw_count := 0
 var branch_point_count := 0
 const LEGACY_STALK_DRAW_ENABLED := false
 const WORLD_REDRAW_HZ := 0.0
-const SPLIT_OVERLAP_PX := 120.0
+const TRUNK_DRAW_SCALE := Vector2.ONE
+const BRANCH_DRAW_SCALE := Vector2.ONE
+const SPLIT_DRAW_SCALE := Vector2.ONE
+const TRUNK_STAGE_SCALE_MATCH := true
+const VINE_MODULATE_ALPHA := 1.0
+const SPLIT_OVERLAP_PX := 0.0
 const TRUNK_BODY_WIDTH := 590.0
 const BRANCH_WORLD_WIDTH := 182.0
 const TRUNK_OVERSCAN_PX := 420.0
-const BRANCH_OVERLAP_PX := 72.0
+const BRANCH_OVERLAP_PX := 0.0
 const BRANCH_SEGMENT_LENGTH := 980.0
 const DECOR_ANCHOR_MAX_GAP_PX := 76.0
 const SUMMIT_EXTENSION_PX := 480.0
+const SPLIT_TOP_X := [-383.0, -3.0, 389.0]
+const SPLIT_CONNECTOR_HEIGHT := 360.0
 
 func _ready() -> void:
+	texture_repeat = CanvasItem.TEXTURE_REPEAT_ENABLED
 	_build_sky_texture()
 	queue_redraw()
 	set_process(false)
@@ -53,7 +60,7 @@ func _draw() -> void:
 				var split_bottom := stage_bottom + SPLIT_OVERLAP_PX
 				var split_top := split_bottom - split_height
 				if split_top <= bottom_y + 120.0 and split_bottom >= top_y - 120.0:
-					_draw_centered_texture(SPLIT_TEXTURE, Vector2(0, split_bottom - split_height * 0.5), Vector2.ONE)
+					_draw_centered_texture(SPLIT_TEXTURE, Vector2(0, split_bottom - split_height * 0.5), SPLIT_DRAW_SCALE)
 			for route in 3: _draw_branch(pattern, route, stage_bottom, top_y, bottom_y)
 
 func _build_sky_texture() -> void:
@@ -92,7 +99,7 @@ func _draw_trunk() -> void:
 	var tile_height := float(TRUNK_TEXTURE.get_height())
 	var tile_bottom := world_bottom
 	while tile_bottom > world_top:
-		_draw_centered_texture(TRUNK_TEXTURE, Vector2(0, tile_bottom - tile_height * 0.5), Vector2.ONE)
+		_draw_centered_texture(TRUNK_TEXTURE, Vector2(0, tile_bottom - tile_height * 0.5), TRUNK_DRAW_SCALE)
 		tile_bottom -= tile_height
 
 func _draw_branch(pattern: Dictionary, route: int, stage_bottom: float, view_top: float, view_bottom: float) -> void:
@@ -101,16 +108,22 @@ func _draw_branch(pattern: Dictionary, route: int, stage_bottom: float, view_top
 		end_y -= SUMMIT_EXTENSION_PX
 	if end_y > view_bottom + 120.0 or stage_bottom < view_top - 120.0: return
 	var points := PackedVector2Array()
-	points.append(Vector2(stages.branch_x_at(route, stage_bottom), stage_bottom))
+	var vine_end_y := end_y
 	if int(pattern.stage) == 3:
-		for split_step in [90.0, 180.0]:
-			var split_y := maxf(stage_bottom - split_step, end_y)
-			points.append(Vector2(stages.branch_x_at(route, split_y), split_y))
+		var split_top := stage_bottom - float(SPLIT_TEXTURE.get_height()) * SPLIT_DRAW_SCALE.y
+		for connector_step in 5:
+			var progress := float(connector_step) / 4.0
+			var smooth := progress * progress * (3.0 - 2.0 * progress)
+			points.append(Vector2(lerpf(SPLIT_TOP_X[route], float(Balance.ROUTE_X[route]), smooth), split_top - SPLIT_CONNECTOR_HEIGHT * progress))
+		vine_end_y = minf(end_y, points[points.size() - 1].y)
+	else:
+		points.append(Vector2(stages.branch_x_at(route, stage_bottom), stage_bottom))
 	var cursor_y: float = points[points.size() - 1].y - BRANCH_SEGMENT_LENGTH
-	while cursor_y > end_y:
+	while cursor_y > vine_end_y:
 		points.append(Vector2(stages.branch_x_at(route, cursor_y) + sin(cursor_y * 0.003 + route * 2.1) * 10.0, cursor_y))
 		cursor_y -= BRANCH_SEGMENT_LENGTH
-	points.append(Vector2(stages.branch_x_at(route, end_y), end_y))
+	if not is_equal_approx(points[points.size() - 1].y, vine_end_y):
+		points.append(Vector2(stages.branch_x_at(route, vine_end_y), vine_end_y))
 	branch_point_count += points.size()
 	_draw_textured_vine(points)
 	_decorate_vine(points, int(pattern.stage) * 3 + route)
@@ -125,25 +138,54 @@ func _decorate_vine(points: PackedVector2Array, seed_value: int) -> void:
 		var leaf: Texture2D = LEAF_TEXTURES[(index + seed_value) % LEAF_TEXTURES.size()]
 		draw_set_transform(points[index] + Vector2(side * 62.0, 0), side * 1.18 + sway, Vector2(0.25 * side, 0.25))
 		draw_texture(leaf, -leaf.get_size() * 0.5)
-		var tendril: Texture2D = TENDRIL_TEXTURES[(index + seed_value) % TENDRIL_TEXTURES.size()]
-		draw_set_transform(points[index] + Vector2(side * DECOR_ANCHOR_MAX_GAP_PX, -20.0), sway, Vector2(0.22 * side, 0.22))
-		draw_texture(tendril, -tendril.get_size() * 0.5)
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
 func _draw_tip(point: Vector2) -> void:
 	_draw_centered_texture(TIP_TEXTURE, point + Vector2(0, -38), Vector2(0.38, 0.38))
 
 func _draw_textured_vine(points: PackedVector2Array) -> void:
+	if points.size() < 2: return
+	var texture_width := float(BRANCH_TEXTURE.get_width()) * BRANCH_DRAW_SCALE.x
+	var texture_height := float(BRANCH_TEXTURE.get_height()) * BRANCH_DRAW_SCALE.y
+	var half_width := texture_width * 0.5
+	var distance := -points[0].y
 	for index in range(points.size() - 1):
 		var start := points[index]
 		var finish := points[index + 1]
-		var delta := finish - start
-		var segment_length := delta.length() + BRANCH_OVERLAP_PX
-		var rotation := atan2(delta.x, -delta.y)
-		var scale_value := Vector2(1.0, segment_length / float(BRANCH_TEXTURE.get_height()))
-		draw_set_transform((start + finish) * 0.5, rotation, scale_value)
-		draw_texture(BRANCH_TEXTURE, -BRANCH_TEXTURE.get_size() * 0.5)
-	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+		var segment_length := start.distance_to(finish)
+		if segment_length <= 0.001: continue
+		var start_normal := _vine_normal(points, index)
+		var finish_normal := _vine_normal(points, index + 1)
+		var quad := PackedVector2Array([
+			start - start_normal * half_width,
+			start + start_normal * half_width,
+			finish + finish_normal * half_width,
+			finish - finish_normal * half_width,
+		])
+		var next_distance := distance + segment_length
+		var start_v := distance / texture_height
+		var finish_v := next_distance / texture_height
+		var uvs := PackedVector2Array([
+			Vector2(0.0, start_v),
+			Vector2(1.0, start_v),
+			Vector2(1.0, finish_v),
+			Vector2(0.0, finish_v),
+		])
+		draw_colored_polygon(quad, Color(1.0, 1.0, 1.0, VINE_MODULATE_ALPHA), uvs, BRANCH_TEXTURE)
+		distance = next_distance
+
+func _vine_normal(points: PackedVector2Array, index: int) -> Vector2:
+	var tangent: Vector2
+	if index == 0:
+		tangent = points[1] - points[0]
+	elif index == points.size() - 1:
+		tangent = points[index] - points[index - 1]
+	else:
+		tangent = (points[index] - points[index - 1]).normalized() + (points[index + 1] - points[index]).normalized()
+	if tangent.length_squared() <= 0.0001:
+		return Vector2.RIGHT
+	tangent = tangent.normalized()
+	return Vector2(-tangent.y, tangent.x)
 
 func _draw_centered_texture(texture: Texture2D, position: Vector2, scale_value: Vector2) -> void:
 	draw_set_transform(position, 0.0, scale_value)
