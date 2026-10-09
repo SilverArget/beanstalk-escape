@@ -19,6 +19,7 @@ var music := AudioStreamPlayer.new()
 var wind := AudioStreamPlayer.new()
 var sfx := AudioStreamPlayer.new()
 var heartbeat := AudioStreamPlayer.new()
+var game_music_prewarm := AudioStreamPlayer.new()
 var muted := false
 var last_app_state := -1
 var last_stage := 1
@@ -45,6 +46,17 @@ func _ready() -> void:
 	wind.stream = STREAMS.wind_loop
 	wind.play()
 	played_roles["wind_loop"] = true
+	# Web decodes this larger OGG on first playback. Trigger that work while the
+	# menu is loading so the first ENTER does not stall the gameplay transition.
+	game_music_prewarm.stream = STREAMS.music_game
+	game_music_prewarm.volume_db = -80.0
+	add_child(game_music_prewarm)
+	game_music_prewarm.play()
+	call_deferred("_finish_game_music_prewarm")
+
+func _finish_game_music_prewarm() -> void:
+	game_music_prewarm.stop()
+	game_music_prewarm.queue_free()
 
 func _process(delta: float) -> void:
 	var game := get_parent() as GameManager

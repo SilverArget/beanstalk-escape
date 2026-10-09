@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://yghdlh2v5ngq"
-path="res://.godot/imported/branch_seamless.png-fe448d44ad13e2c7704dc0a704c44896.ctex"
+uid="uid://2oeudkgc5gmk"
+path="res://.godot/imported/trunk_wide.png-d1a183aba8f0ec2e0d9b3b5493b6e17b.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/art/gpt/world/branch_seamless.png"
-dest_files=["res://.godot/imported/branch_seamless.png-fe448d44ad13e2c7704dc0a704c44896.ctex"]
+source_file="res://assets/art/gpt/world/trunk_wide.png"
+dest_files=["res://.godot/imported/trunk_wide.png-d1a183aba8f0ec2e0d9b3b5493b6e17b.ctex"]
 
 [params]
 

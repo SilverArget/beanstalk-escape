@@ -20,6 +20,9 @@ RAW_NAMES = {
     "spider": "03b-orumcek-sayfasi-duzeltme.png",
     "world": "04-sirik-kiti.png",
     "items": "05-esyalar.png",
+    "trunk_wide": "06-genis-govde.png",
+    "branch_woven": "07-dal.png",
+    "split_transition": "08-ayrilma.png",
 }
 PLAYER_NAMES = [
     "climb_right", "climb_alt", "jump", "climb_left",
@@ -124,6 +127,98 @@ def keep_largest_component(rgba: np.ndarray) -> np.ndarray:
 def save_rgba(path: Path, rgba: np.ndarray) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     Image.fromarray(rgba, "RGBA").save(path, optimize=True)
+
+
+def crop_x_centered(rgba: np.ndarray, center_x: int, padding: int = 10) -> np.ndarray:
+    """Crop transparent sides symmetrically while preserving the vine center."""
+    _, xs = np.nonzero(rgba[..., 3] > 10)
+    if xs.size == 0:
+        raise RuntimeError("Cannot crop an empty vine image")
+    radius = max(center_x - int(xs.min()), int(xs.max()) - center_x) + padding
+    x0 = max(center_x - radius, 0)
+    x1 = min(center_x + radius + 1, rgba.shape[1])
+    cropped = rgba[:, x0:x1]
+    # Alpha must stay clear at the side borders for the extraction QA.
+    return np.pad(cropped, ((0, 0), (2, 2), (0, 0)), mode="constant")
+
+
+def make_vertical_seamless(rgba: np.ndarray, band: int = 192) -> np.ndarray:
+    """Blend matching cut edges without mirroring the approved artwork."""
+    output = rgba.astype(np.float32).copy()
+    height = output.shape[0]
+    band = min(band, height // 3)
+    for offset in range(band):
+        progress = float(offset) / float(max(band - 1, 1))
+        smooth = progress * progress * (3.0 - 2.0 * progress)
+        top = output[offset].copy()
+        bottom = output[height - 1 - offset].copy()
+        seam = (top + bottom) * 0.5
+        output[offset] = seam * (1.0 - smooth) + top * smooth
+        output[height - 1 - offset] = seam * (1.0 - smooth) + bottom * smooth
+    result = np.clip(np.round(output), 0, 255).astype(np.uint8)
+    result[-1] = result[0]
+    return result
+
+
+def resize_rgba(rgba: np.ndarray, scale: float, match_vertical_edges: bool = True) -> np.ndarray:
+    width = max(1, round(rgba.shape[1] * scale))
+    height = max(1, round(rgba.shape[0] * scale))
+    resized = np.array(Image.fromarray(rgba, "RGBA").resize((width, height), Image.Resampling.LANCZOS), copy=True)
+    resized[resized[..., 3] < 2] = 0
+    if match_vertical_edges:
+        resized[-1] = resized[0]
+    return resized
+
+
+def warp_split_inward(rgba: np.ndarray) -> np.ndarray:
+    """Keep the base width while easing the three approved tops to route spacing."""
+    height, width = rgba.shape[:2]
+    center_x = 510.0
+    grid_x, grid_y = np.meshgrid(np.arange(width, dtype=np.float32), np.arange(height, dtype=np.float32))
+    vertical = grid_y / float(height - 1)
+    ease = vertical * vertical * (3.0 - 2.0 * vertical)
+    # Raw top centers are about +/-184 px. After the 2.13x base match they
+    # become +/-392 px; 0.612 brings them to the gameplay +/-240 routes.
+    horizontal_scale = 0.612 + (1.0 - 0.612) * ease
+    map_x = center_x + (grid_x - center_x) / horizontal_scale
+    warped = cv2.remap(rgba, map_x, grid_y, cv2.INTER_LANCZOS4, borderMode=cv2.BORDER_CONSTANT, borderValue=(0, 0, 0, 0))
+    warped[warped[..., 3] < 2] = 0
+    return warped
+
+
+def process_new_vines(raw_dir: Path, cut_dir: Path, game_dir: Path) -> dict[str, np.ndarray]:
+    """Process manager-approved 06/07/08 geometry without touching originals."""
+    trunk, _ = matte(raw_dir / RAW_NAMES["trunk_wide"])
+    trunk = remove_small_components(trunk)
+    trunk = crop_x_centered(trunk, 498)
+    trunk = resize_rgba(make_vertical_seamless(trunk), 2.0)
+
+    branch, _ = matte(raw_dir / RAW_NAMES["branch_woven"])
+    branch = remove_small_components(branch)
+    branch = crop_x_centered(branch, 501)
+    branch = resize_rgba(make_vertical_seamless(branch), 1.4)
+
+    split, _ = matte(raw_dir / RAW_NAMES["split_transition"])
+    split = remove_small_components(split)
+    # Remove the approved sheet's small lower-right curl touching the cut edge.
+    split[1450:, 653:] = 0
+    split = warp_split_inward(split)
+    split = crop_x_centered(split, 510)
+    base_alpha = split[-1, :, 3] > 128
+    base_positions = np.where(base_alpha)[0]
+    base_width = int(base_positions.max() - base_positions.min() + 1) if base_positions.size else 277
+    split = resize_rgba(split, 590.0 / float(base_width), match_vertical_edges=False)
+
+    outputs = {
+        "trunk_wide": trunk,
+        "branch_woven": branch,
+        "split_transition": split,
+    }
+    for name, sprite in outputs.items():
+        save_rgba(cut_dir / f"{name}.png", sprite)
+        save_rgba(game_dir / f"{name}.png", sprite)
+    write_checker_preview(cut_dir / "qa-dark-light-new-vines.png", list(outputs.values()))
+    return outputs
 
 
 def grid_cells(rgba: np.ndarray, columns: int, rows: int) -> list[np.ndarray]:
@@ -313,7 +408,9 @@ def process_world(rgba: np.ndarray, cut_dir: Path, game_dir: Path) -> list[np.nd
     }
     for name, sprite in named.items():
         save_rgba(cut_dir / f"{name}.png", sprite)
-        if name != "trunk_source":
+        # 06/07/08 replace the original kit's A/B/C geometry in-game. Keep the
+        # older cuts only in research output for traceability.
+        if name not in {"trunk_source", "trunk_seamless", "trunk_contour", "split", "branch", "branch_seamless"}:
             save_rgba(game_dir / f"{name}.png", sprite)
     write_checker_preview(cut_dir / "qa-dark-light.png", list(named.values()))
     return list(named.values())
@@ -354,7 +451,20 @@ def main() -> None:
     parser.add_argument("--cut-dir", type=Path, required=True)
     parser.add_argument("--game-dir", type=Path, required=True)
     parser.add_argument("--analyze-world", action="store_true")
+    parser.add_argument("--new-vines-only", action="store_true")
     args = parser.parse_args()
+    if args.new_vines_only:
+        outputs = process_new_vines(
+            args.raw_dir,
+            args.cut_dir / "world",
+            args.game_dir / "world",
+        )
+        for name, rgba in outputs.items():
+            top = rgba[0].astype(np.float32)
+            bottom = rgba[-1].astype(np.float32)
+            delta = float(np.max(np.abs(top - bottom)))
+            print(f"NEW_VINE {name} size={rgba.shape[1]}x{rgba.shape[0]} edge_delta={delta:.3f}/255")
+        return
 
     for kind in ("player", "spider"):
         process_grid(

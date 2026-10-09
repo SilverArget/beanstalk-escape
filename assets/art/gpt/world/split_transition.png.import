@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://bohbei8adm436"
-path="res://.godot/imported/trunk_contour.png-a47e08eb8b01e2e8e8f8a9c54e6770c4.ctex"
+uid="uid://evqy854s4ekt"
+path="res://.godot/imported/split_transition.png-c35cc2b1004e12be5b99df7eb338fc0c.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/art/gpt/world/trunk_contour.png"
-dest_files=["res://.godot/imported/trunk_contour.png-a47e08eb8b01e2e8e8f8a9c54e6770c4.ctex"]
+source_file="res://assets/art/gpt/world/split_transition.png"
+dest_files=["res://.godot/imported/split_transition.png-c35cc2b1004e12be5b99df7eb338fc0c.ctex"]
 
 [params]
 
