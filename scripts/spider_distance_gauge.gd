@@ -18,8 +18,10 @@ func level_for(value: float) -> String:
 	return "DANGER"
 
 func _draw() -> void:
-	var colors := {"GREEN": Color("55d66b"), "YELLOW": Color("e8d650"), "ORANGE": Color("ed9b3a"), "RED": Color("d84949"), "DANGER": Color("8d1830")}
-	draw_rect(Rect2(0, 0, 28, 220), Color("21322b"), true)
+	var colors := {"GREEN": Palette.GAUGE_GREEN, "YELLOW": Palette.GAUGE_YELLOW, "ORANGE": Palette.GAUGE_ORANGE, "RED": Palette.GAUGE_RED, "DANGER": Palette.DANGER_SPIDER}
+	draw_rect(Rect2(0, 0, 28, 220), Palette.UI_PANEL, true)
 	var height := normalized_danger * 212.0
 	draw_rect(Rect2(4, 216.0 - height, 20, height), colors[level], true)
-
+	draw_circle(Vector2(14, 232), 10.0, Palette.SPIDER_BODY)
+	draw_circle(Vector2(10, 229), 2.5, Palette.DANGER_GLOW)
+	draw_circle(Vector2(18, 229), 2.5, Palette.DANGER_GLOW)

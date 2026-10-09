@@ -10,17 +10,23 @@ var app_state := AppState.MENU
 @onready var gauge: SpiderDistanceGauge = $HUD/Gauge
 @onready var stages: StageManager = $StageManager
 @onready var beans: BeanSpawner = $BeanSpawner
+@onready var audio: BeanstalkAudio = $Audio
 var total_time := 0.0
 var close_calls := 0
 var danger_was_active := false
 var skills_used := 0
 var best_spider_distance := 0.0
 var time_wings_remaining := 0.0
+var time_wings_started_remaining := 0.0
 var time_wings_used_stage := {}
 var tutorial_remaining := 0.0
 var tutorial_text := ""
 var touch_actions := {}
 var dead_restart_delay := 0.0
+var reduced_motion := false
+var ui_theme: Theme
+var stage_restart_count := 0
+var stage_restart_start_distance := 0.0
 
 func _ready() -> void:
 	process_physics_priority = 10
@@ -59,6 +65,21 @@ func _physics_process(delta: float) -> void:
 	_publish_readonly_web_state()
 
 func _unhandled_input(event: InputEvent) -> void:
+	if event is InputEventKey and event.pressed and not event.echo and _debug_state_enabled():
+		if event.physical_keycode == KEY_3:
+			_debug_evidence_stage(3)
+			return
+		if event.physical_keycode == KEY_4:
+			_debug_evidence_stage(4)
+			beans.spawn_bean(player.active_branch, player.global_position.y + 180.0, "gate-b-evidence")
+			return
+		if event.physical_keycode == KEY_9:
+			spider.global_position = player.global_position + Vector2(0, 48)
+			return
+	if event.is_action_pressed("mute"):
+		audio.toggle_mute()
+		_update_hud()
+		return
 	if app_state == AppState.PLAYING and event.is_action_pressed("move_left") and not (event is InputEventKey and event.echo):
 		player.request_branch_direction(-1)
 	elif app_state == AppState.PLAYING and event.is_action_pressed("move_right") and not (event is InputEventKey and event.echo):
@@ -78,6 +99,18 @@ func _unhandled_input(event: InputEvent) -> void:
 		try_time_wings()
 	if event is InputEventScreenTouch:
 		_handle_screen_touch(event)
+
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_APPLICATION_FOCUS_OUT and is_node_ready() and app_state == AppState.PLAYING:
+		_pause_game()
+
+func _debug_evidence_stage(stage_number: int) -> void:
+	if not _debug_state_enabled() or stage_number < 1 or stage_number > Balance.STAGE_COUNT:
+		return
+	player.global_position = Vector2(0, -Balance.STAGE_HEIGHT * (float(stage_number) - 0.35))
+	spider.global_position = player.global_position + Vector2(0, Balance.START_DISTANCE)
+	player._sync_stage_mode()
+	stages.update_progress(player.global_position.y)
 
 func _handle_screen_touch(event: InputEventScreenTouch) -> void:
 	if event.pressed and app_state == AppState.MENU:
@@ -126,6 +159,9 @@ func restart() -> void:
 	skills_used = 0
 	best_spider_distance = 0.0
 	time_wings_remaining = 0.0
+	time_wings_started_remaining = 0.0
+	stage_restart_count = 0
+	stage_restart_start_distance = 0.0
 	time_wings_used_stage.clear()
 	player.time_wings_active = false
 	player.remove_from_group("time_wings_active")
@@ -134,9 +170,11 @@ func restart() -> void:
 	_update_hud()
 
 func start_game() -> void:
+	audio.play_sfx("ui_click")
 	restart()
 
 func restart_stage() -> void:
+	audio.play_sfx("ui_click")
 	_clear_direction_inputs()
 	var stage_number := stages.current_stage
 	var start_y := -float(stage_number - 1) * Balance.STAGE_HEIGHT
@@ -144,10 +182,13 @@ func restart_stage() -> void:
 	beans.reset_run()
 	player.reset_run(Vector2(0, start_y))
 	spider.reset_run(Vector2(0, start_y + Balance.START_DISTANCE))
+	stage_restart_count += 1
+	stage_restart_start_distance = spider.global_position.y - player.global_position.y
 	player.set_physics_process(true)
 	spider.set_physics_process(true)
 	beans.set_physics_process(true)
 	time_wings_remaining = 0.0
+	time_wings_started_remaining = 0.0
 	player.time_wings_active = false
 	player.remove_from_group("time_wings_active")
 	time_wings_used_stage.erase(stage_number)
@@ -174,6 +215,7 @@ func try_time_wings() -> bool:
 		return false
 	time_wings_used_stage[stage_number] = true
 	time_wings_remaining = Balance.TIME_WINGS_SECONDS
+	time_wings_started_remaining = time_wings_remaining
 	player.time_wings_active = true
 	player.add_to_group("time_wings_active")
 	skills_used += 1
@@ -189,6 +231,7 @@ func _die() -> void:
 	_update_hud()
 
 func _pause_game() -> void:
+	audio.play_sfx("ui_click")
 	_clear_direction_inputs()
 	app_state = AppState.PAUSED
 	player.set_physics_process(false)
@@ -199,6 +242,7 @@ func _pause_game() -> void:
 	_update_hud()
 
 func _resume_game() -> void:
+	audio.play_sfx("ui_click")
 	app_state = AppState.PLAYING
 	player.set_physics_process(true)
 	spider.set_physics_process(true)
@@ -225,12 +269,14 @@ func show_bean_tutorial() -> void:
 		tutorial_remaining = Balance.TUTORIAL_SECONDS
 
 func _setup_hud() -> void:
-	$HUD/Title.text = "BEANSTALK ESCAPE"
+	_apply_theme()
+	$HUD/Title.text = ""
 	$HUD/Hint.text = ""
 	$HUD/Dead.text = "CAUGHT\nENTER / TAP TO RETRY"
 	$HUD/Complete.text = ""
 	$HUD/Complete.position = Vector2(300, 170)
-	_add_label("Menu", Vector2(300, 210), "BEANSTALK ESCAPE\nPRESS ENTER / TAP TO START", 28)
+	_add_menu_logo()
+	_add_label("Menu", Vector2(320, 330), "PRESS ENTER / TAP TO START", 28)
 	_add_label("Pause", Vector2(315, 235), "PAUSED - ESC TO RESUME", 22)
 	_add_label("StageBanner", Vector2(360, 90), "", 20)
 	_add_label("Tutorial", Vector2(360, 130), "", 22)
@@ -244,6 +290,15 @@ func _setup_hud() -> void:
 	mini.size = Vector2(48, 360)
 	$HUD.add_child(mini)
 	mini.game = self
+	var danger_overlay := Control.new()
+	danger_overlay.name = "DangerOverlay"
+	danger_overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	danger_overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	danger_overlay.set_script(load("res://scripts/danger_overlay.gd"))
+	$HUD.add_child(danger_overlay)
+	danger_overlay.game = self
+	_add_mute_button()
+	_add_reduce_motion_toggle()
 	_add_touch_button("TouchLeft", Rect2(36, 392, 136, 132), "LEFT", "move_left")
 	_add_touch_button("TouchRight", Rect2(180, 392, 136, 132), "RIGHT", "move_right")
 	_add_touch_button("TouchWings", Rect2(760, 392, 150, 132), "TIME WINGS", "time_wings")
@@ -254,16 +309,76 @@ func _add_label(name: String, pos: Vector2, text: String, font_size: int) -> Lab
 	label.position = pos
 	label.text = text
 	label.add_theme_font_size_override("font_size", font_size)
+	label.theme = ui_theme
 	$HUD.add_child(label)
 	return label
+
+func _apply_theme() -> void:
+	var theme := Theme.new()
+	var font: FontFile = load("res://assets/fonts/LilitaOne-Regular.ttf")
+	theme.default_font = font
+	theme.default_font_size = 18
+	theme.set_color("font_color", "Label", Palette.UI_TEXT)
+	theme.set_color("font_shadow_color", "Label", Palette.UI_SHADOW)
+	theme.set_constant("shadow_offset_x", "Label", 2)
+	theme.set_constant("shadow_offset_y", "Label", 2)
+	var normal := StyleBoxFlat.new()
+	normal.bg_color = Palette.UI_PANEL_SOFT
+	normal.corner_radius_top_left = 14
+	normal.corner_radius_top_right = 14
+	normal.corner_radius_bottom_left = 14
+	normal.corner_radius_bottom_right = 14
+	normal.border_width_left = 2
+	normal.border_width_top = 2
+	normal.border_width_right = 2
+	normal.border_width_bottom = 2
+	normal.border_color = Palette.ACCENT_PROGRESS
+	theme.set_stylebox("normal", "Button", normal)
+	theme.set_stylebox("hover", "Button", normal)
+	theme.set_color("font_color", "Button", Palette.UI_TEXT)
+	ui_theme = theme
+	for control in [$HUD/Title, $HUD/Hint, $HUD/Dead, $HUD/Complete, $HUD/Gauge]:
+		control.theme = ui_theme
+
+func _add_menu_logo() -> void:
+	var logo := TextureRect.new()
+	logo.name = "MenuLogo"
+	logo.texture = load("res://assets/ui/beanstalk-escape-logo-v1.png")
+	logo.position = Vector2(220, 34)
+	logo.size = Vector2(520, 300)
+	logo.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	logo.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	logo.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	$HUD.add_child(logo)
+
+func _add_mute_button() -> void:
+	var button := Button.new()
+	button.name = "Mute"
+	button.theme = ui_theme
+	button.position = Vector2(824, 18)
+	button.size = Vector2(112, 52)
+	button.pressed.connect(func(): audio.toggle_mute(); _update_hud())
+	$HUD.add_child(button)
+
+func _add_reduce_motion_toggle() -> void:
+	var toggle := CheckButton.new()
+	toggle.name = "ReduceMotion"
+	toggle.theme = ui_theme
+	toggle.text = "REDUCE EFFECTS"
+	toggle.position = Vector2(372, 278)
+	toggle.size = Vector2(220, 48)
+	toggle.toggled.connect(func(value: bool): reduced_motion = value)
+	$HUD.add_child(toggle)
 
 func _add_touch_button(name: String, rect: Rect2, text: String, action: String) -> void:
 	var button := Button.new()
 	button.name = name
+	button.theme = ui_theme
 	button.position = rect.position
 	button.size = rect.size
 	button.text = text
 	button.mouse_filter = Control.MOUSE_FILTER_STOP
+	button.visible = DisplayServer.is_touchscreen_available()
 	$HUD.add_child(button)
 	button.button_down.connect(_on_touch_action_down.bind(action))
 	button.button_up.connect(_on_touch_action_up.bind(action))
@@ -294,6 +409,9 @@ func _update_hud() -> void:
 	$HUD/Dead.visible = app_state == AppState.PLAYER_DEAD
 	$HUD/Complete.visible = app_state == AppState.GAME_COMPLETE
 	$HUD/Replay.visible = app_state == AppState.GAME_COMPLETE
+	$HUD/MenuLogo.visible = app_state == AppState.MENU
+	$HUD/ReduceMotion.visible = app_state == AppState.PAUSED
+	$HUD/Mute.text = "SOUND OFF" if audio.muted else "SOUND ON"
 	$HUD/StageBanner.text = stages.stage_banner if stages.stage_banner_remaining > 0.0 and app_state == AppState.PLAYING else ""
 	$HUD/Tutorial.text = tutorial_text if tutorial_remaining > 0.0 and app_state == AppState.PLAYING else ""
 	$HUD/TimeWings.text = _time_wings_status()
@@ -353,7 +471,7 @@ func _readonly_state_snapshot() -> Dictionary:
 		"player": {"x": player.global_position.x, "y": player.global_position.y, "vy": player.velocity.y},
 		"spider": {"y": spider.global_position.y, "distance": gauge.distance_px, "ratio": spider.speed_ratio, "boost": spider.boost_remaining > 0.0},
 		"gauge_level": gauge.level,
-		"time_wings": {"unlocked": stages.stage_for_y(player.global_position.y) >= Balance.TIME_WINGS_STAGE, "active": time_wings_remaining > 0.0, "remaining": time_wings_remaining, "used": time_wings_used_stage.has(stages.stage_for_y(player.global_position.y))},
+		"time_wings": {"unlocked": stages.stage_for_y(player.global_position.y) >= Balance.TIME_WINGS_STAGE, "active": time_wings_remaining > 0.0, "remaining": time_wings_remaining, "started_remaining": time_wings_started_remaining, "used": time_wings_used_stage.has(stages.stage_for_y(player.global_position.y))},
 		"beans": state_beans,
 		"next_dead_end": {"route": dead_end_route, "distance_px": null if is_inf(dead_end_distance) else dead_end_distance},
 		"open_routes_at_player": stages.open_routes_at(player.global_position.y),
@@ -363,11 +481,13 @@ func _readonly_state_snapshot() -> Dictionary:
 		"branch_transition_count": player.branch_transition_count,
 		"on_support": player.on_support,
 		"stats": {"time": total_time, "bean_hits": beans.hit_count, "close_calls": close_calls, "skills_used": skills_used, "best_distance": best_spider_distance},
+		"restart": {"count": stage_restart_count, "start_distance": stage_restart_start_distance},
 	}
 
 func _ensure_actions() -> void:
 	_add_key_action("time_wings", [KEY_F])
 	_add_key_action("pause", [KEY_ESCAPE, KEY_P])
+	_add_key_action("mute", [KEY_M])
 	_add_key_action("ui_accept", [KEY_ENTER, KEY_KP_ENTER, KEY_SPACE])
 
 func _add_key_action(action: String, keys: Array) -> void:
