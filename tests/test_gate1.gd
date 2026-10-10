@@ -77,15 +77,32 @@ func test_t03_transfer() -> void:
 func test_t04_support_loss() -> void:
 	var game := await make_game()
 	var player := game.player
-	player.reset_run(Vector2(Balance.ROUTE_X[2], -Balance.STAGE_HEIGHT * 2.0 - Balance.STAGE_HEIGHT * 0.50))
+	var dead_tip_y := -Balance.STAGE_HEIGHT * 2.0 - Balance.STAGE_HEIGHT * 0.46
+	player.reset_run(Vector2(Balance.ROUTE_X[2], dead_tip_y + 1.0))
 	player.active_branch = 2
 	player._sync_stage_mode()
-	await physics_frame
-	var entered_recovery := player.support_state == PlayerController.SupportState.FALLING_RECOVERY
-	var start_y := player.global_position.y
-	for _tick in 46:
+	var recovery_entries := 0
+	var supported_after_loss := 0
+	var previous_state := player.support_state
+	var recovery_start_y := 0.0
+	var first_recovery_velocity := 0.0
+	var recovery_elapsed := 0.0
+	for _tick in 120:
 		await physics_frame
-	check(entered_recovery and player.global_position.y > start_y and game.app_state == GameManager.AppState.PLAYER_DEAD, "T04", "entered_recovery=%s fell=%.3f final_app_state=%s" % [str(entered_recovery), player.global_position.y - start_y, GameManager.AppState.keys()[game.app_state]])
+		if player.support_state == PlayerController.SupportState.FALLING_RECOVERY and previous_state != PlayerController.SupportState.FALLING_RECOVERY:
+			recovery_entries += 1
+			recovery_start_y = player.global_position.y
+			first_recovery_velocity = player.recovery_velocity_y
+		if recovery_entries > 0 and player.support_state == PlayerController.SupportState.SUPPORTED:
+			supported_after_loss += 1
+		if recovery_entries > 0 and game.app_state == GameManager.AppState.PLAYING:
+			recovery_elapsed += 1.0 / float(Engine.physics_ticks_per_second)
+		previous_state = player.support_state
+		if game.app_state == GameManager.AppState.PLAYER_DEAD:
+			break
+	var fell := player.global_position.y - recovery_start_y
+	var summit_route_stays_open := game.stages.is_route_open_at(5, 2, 1.0)
+	check(recovery_entries == 1 and supported_after_loss == 0 and first_recovery_velocity >= 120.0 and fell > 25.0 and recovery_elapsed >= 0.34 and recovery_elapsed <= 0.37 and game.app_state == GameManager.AppState.PLAYER_DEAD and summit_route_stays_open, "T04", "recovery_entries=%d supported_after_loss=%d initial_vy=%.3f fell=%.3f recovery_s=%.3f dead_tip_death=%s summit_open=%s" % [recovery_entries, supported_after_loss, first_recovery_velocity, fell, recovery_elapsed, GameManager.AppState.keys()[game.app_state], str(summit_route_stays_open)])
 	game.queue_free()
 	await physics_frame
 

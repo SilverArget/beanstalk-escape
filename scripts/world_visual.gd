@@ -48,6 +48,7 @@ func _draw_stage_branches(stage_number: int) -> void:
 	var stage_bottom := -float(stage_number - 1) * Balance.STAGE_HEIGHT
 	var stage_top := -float(stage_number) * Balance.STAGE_HEIGHT
 	for route in 3:
+		var route_end_y := stages.route_end_world_y(stage_number, route)
 		var points := PackedVector2Array()
 		if stage_number == 3:
 			points.append(Vector2(0.0, stage_bottom - 140.0))
@@ -58,19 +59,24 @@ func _draw_stage_branches(stage_number: int) -> void:
 		var cursor_y := stage_bottom - (350.0 if stage_number == 3 else 0.0)
 		if points.is_empty():
 			points.append(Vector2(Balance.ROUTE_X[route], cursor_y))
-		while cursor_y > stage_top:
-			cursor_y = maxf(cursor_y - 120.0, stage_top)
+		while cursor_y > route_end_y:
+			cursor_y = maxf(cursor_y - 120.0, route_end_y)
 			points.append(Vector2(Balance.ROUTE_X[route], cursor_y))
 		branch_point_count += points.size()
 		draw_polyline(points, Color("173d2f"), ScaleLock.BRANCH_WIDTH + ScaleLock.OUTLINE_WIDTH * 2.0, true)
 		draw_polyline(points, Color("4c9a4d"), ScaleLock.BRANCH_WIDTH, true)
+		draw_circle(points[-1], (ScaleLock.BRANCH_WIDTH + ScaleLock.OUTLINE_WIDTH * 2.0) * 0.5, Color("173d2f"))
+		draw_circle(points[-1], ScaleLock.BRANCH_WIDTH * 0.5, Color("4c9a4d"))
+		draw_line(points[-1] + Vector2(-13.0, -3.0), points[-1] + Vector2(13.0, -3.0), Color("9bd66d"), ScaleLock.OUTLINE_WIDTH)
 		for point_index in range(1, points.size(), 2):
 			var point := points[point_index]
 			draw_line(point + Vector2(-12, 0), point + Vector2(12, -8), Color("77bb58"), ScaleLock.OUTLINE_WIDTH)
 	var connection_y := stage_bottom - (430.0 if stage_number == 3 else 180.0)
 	while connection_y > stage_top + 120.0:
-		_draw_transfer_connection(0, 1, connection_y, Color("3d8144"))
-		_draw_transfer_connection(1, 2, connection_y - 90.0, Color("3d8144"))
+		if branch_graph.can_transfer(stages, 0, 1, connection_y):
+			_draw_transfer_connection(0, 1, connection_y, Color("3d8144"))
+		if branch_graph.can_transfer(stages, 1, 2, connection_y - 90.0):
+			_draw_transfer_connection(1, 2, connection_y - 90.0, Color("3d8144"))
 		connection_y -= 360.0
 
 func _draw_transfer_connection(from_branch: int, to_branch: int, world_y: float, color: Color) -> void:

@@ -1,5 +1,12 @@
 # Implementation Progress
 
+## 2026-10-10 — GATE 1 T04 closure checkpoint
+
+- Fixed same-tip recovery looping with red-first coverage: visible physical branch ends, explicit recovery-edge eligibility, 120 u/s initial fall, and 600 u/s² gravity.
+- Captured and measured dead-end/fall production frames; migrated named legacy assertions; `sprite_fixes` now exits 21/0 without hanging.
+- Fresh PCK SHA-256: `8C2E37DCE7987A25006EC1E2F1F07F081E8823BFDB67C36EDA47AF6D8E32BF80`.
+- Final clean single-worker Playwright run did not complete inside the limit; GATE 1 remains open and GATE 2 was not started.
+
 ## 2026-10-10 — GATE 1 production checkpoint
 
 - Applied `ScaleLock` to production: rendered character 44×108 at y=390, collider 30×86, trunk 180, branches 44, adjacent centers 150, zoom 1.0, and fully painted viewport.

@@ -36,6 +36,16 @@ func _initialize() -> void:
 	while game.player.support_state == PlayerController.SupportState.TRANSFERRING:
 		await physics_frame
 	await _capture("production-stage3-transfer-end.png", "transfer_end", game)
+	var dead_tip_y := game.stages.route_end_world_y(3, 2)
+	await _position(game, Vector2(Balance.ROUTE_X[2], dead_tip_y + 100.0), 2)
+	game.player.set_physics_process(false)
+	await _capture("production-stage3-dead-end.png", "branch_end", game)
+	game.player.set_physics_process(true)
+	game.player.reset_run(Vector2(Balance.ROUTE_X[2], dead_tip_y + 1.0))
+	game.player.active_branch = 2
+	for _tick in 20:
+		await physics_frame
+	await _capture("production-stage3-falling-recovery.png", "falling_recovery", game)
 	var file := FileAccess.open(OUT_DIR.path_join("production-measurements.json"), FileAccess.WRITE)
 	file.store_string(JSON.stringify({"reference_size": [960, 540], "source": "rendered production frames sampled by exact pixel colors", "frames": results, "status": "PASS" if failures == 0 else "FAIL"}, "\t"))
 	game.queue_free()
@@ -83,6 +93,17 @@ func _capture(file_name: String, kind: String, game: GameManager) -> void:
 		var wrong_hint := (game.get_node("HUD/Tutorial") as Label).text == "CHANGE BRANCH"
 		record["trunk_spans"] = spans
 		check(save_error == OK and opaque and spans == [180, 180, 180] and not wrong_hint, "VIS12", "%s trunk_spans=%s visible_seams=0 change_branch=%s opaque=%s" % [file_name, str(spans), str(wrong_hint), str(opaque)])
+	elif kind == "branch_end":
+		var dead_route_absent_above := _color_span_in_window(image, 250, VINE_FILL, 450, 510) == 0
+		var open_route_continues := _color_span_in_window(image, 250, VINE_FILL, 300, 360) == 44
+		record["dead_route_absent_above"] = dead_route_absent_above
+		record["open_route_width_above"] = _color_span_in_window(image, 250, VINE_FILL, 300, 360)
+		check(save_error == OK and opaque and dead_route_absent_above and open_route_continues, "T04/VIS03-end", "%s dead_route_above=%s open_route_width=%d opaque=%s" % [file_name, str(not dead_route_absent_above), record.open_route_width_above, str(opaque)])
+	elif kind == "falling_recovery":
+		record["support_state"] = game.player.support_state_name()
+		record["fall_velocity_y"] = game.player.velocity.y
+		record["recovery_remaining"] = game.player.recovery_remaining
+		check(save_error == OK and opaque and game.player.support_state == PlayerController.SupportState.FALLING_RECOVERY and game.player.velocity.y > 120.0 and game.player.recovery_remaining > 0.0, "T04/VIS03-fall", "%s state=%s vy=%.3f remaining=%.3f character_bounds=%s opaque=%s" % [file_name, game.player.support_state_name(), game.player.velocity.y, game.player.recovery_remaining, str(char_bounds), str(opaque)])
 	else:
 		check(save_error == OK and opaque and char_bounds.size.x > 0 and char_bounds.size.y > 0, "VIS03-transfer", "%s character_bounds=%s state=%s progress=%.3f opaque=%s" % [file_name, str(char_bounds), game.player.support_state_name(), game.player.transition_progress, str(opaque)])
 	results[kind] = record

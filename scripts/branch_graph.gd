@@ -27,8 +27,11 @@ func transfer_point(stages: StageManager, from_branch: int, to_branch: int, worl
 	return point
 
 func recovery_target(stages: StageManager, from_branch: int, position: Vector2) -> Dictionary:
-	for target in [from_branch, from_branch - 1, from_branch + 1]:
-		if target < 0 or target >= ROUTE_COUNT or not has_support(stages, target, position.y):
+	var stage_number := stages.stage_for_y(position.y)
+	for target in [from_branch - 1, from_branch + 1]:
+		if target < 0 or target >= ROUTE_COUNT:
+			continue
+		if not stages.has_recovery_edge(stage_number, from_branch, target) or not has_support(stages, target, position.y):
 			continue
 		var point := support_point(stages, target, position.y)
 		if absf(point.x - position.x) <= 36.0:

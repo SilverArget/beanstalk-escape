@@ -97,3 +97,17 @@ Project physics remains `120 Hz`; legacy elapsed-time assertions now derive seco
 | Cloud atlas must contain four legacy raster clouds | §5.1 Gate 1 production greybox may be vector/opaque; final art asset acceptance moves to GATE 3A. |
 | Legacy Stage 3 branch draw budget tied to old art constants | §5.1 branches `44` wide at `150` centers; final art/performance acceptance moves to GATE 3A. |
 | Transfer has zero vertical travel while unsupported | §4.3–4.4: real 0.40 s connection curve, `TRANSFERRING`, then `SUPPORTED` or `FALLING_RECOVERY` (`T03`, `T04`). |
+
+## Checkpoint: GATE 1 T04 closure attempt — 2026-10-10
+
+| Item ID | Status | Evidence / open work |
+|---|---|---|
+| T04 | PASS (Godot/render) | Red test reproduced 35 recovery entries/70 false-supported frames. Fix gives one recovery, zero reattach, initial `vy=120`, gravity `600`, 79.625-unit fall, 0.350 s death. |
+| VIS03-end/fall | PASS | Windowed 960×540: dead branch absent above its visible cap, adjacent branch width 44; fall frame `FALLING_RECOVERY`, `vy=215`, remaining 0.192 s. |
+| Godot-13-file-regression | PASS before final summit fix | 3/0, 7/0, 9/0, visual trace, 15/0, 8/0, 5/0, 6/0, 5/0, 9/0, 7/0, 21/0, 5/0. Post-fix Gate1 rerun 5/0; complete post-fix rerun NOT RUN. |
+| Legacy migration | PASS (edited) | A10b 0.400 s; A15/A15_full → §6/T06; A18/GA10 → §4.4; GPT/FIX IDs retained with §5.1/ART_ASSET_GAP replacements. `sprite_fixes` exits 21/0 without hang. |
+| Web export | PASS | PCK SHA-256 `8C2E37DCE7987A25006EC1E2F1F07F081E8823BFDB67C36EDA47AF6D8E32BF80`. |
+| Browser regression | NOT RUN complete | Final clean single-worker `npm.cmd test` did not finish inside the call limit; four-worker real-time run was invalid under contention. |
+| GATE 1 | NOT RUN overall | T01–T05/render pass; closure still requires one clean single-worker browser run. GATE 2 not started. |
+
+Additional retained supersessions: A15/A15_full max distance 288 → §6/T06; A18 stop/resume and GA10 same-support recovery → §4.4; GPT/FIX texture/hitbox contracts → §5.1 plus ART_ASSET_GAP/GATE 3A.

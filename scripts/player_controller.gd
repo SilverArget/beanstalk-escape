@@ -194,11 +194,12 @@ func _begin_falling_recovery() -> void:
 	on_support = false
 	recovery_remaining = 0.35
 	recovery_velocity_y = 120.0
-	velocity = Vector2.ZERO
+	velocity = Vector2(0.0, recovery_velocity_y)
 
 func _update_falling_recovery(delta: float) -> void:
 	recovery_remaining = maxf(recovery_remaining - delta, 0.0)
 	recovery_velocity_y += 600.0 * delta
+	velocity = Vector2(0.0, recovery_velocity_y)
 	global_position.y += recovery_velocity_y * delta
 	var target := branch_graph.recovery_target(stages, active_branch, global_position)
 	if not target.is_empty():

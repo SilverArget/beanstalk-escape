@@ -176,7 +176,19 @@ func branch_x_at(route: int, player_y: float) -> float:
 
 func is_route_open_at(stage_number: int, route: int, progress: float) -> bool:
 	var pattern := pattern_for_stage(stage_number)
-	return progress < float(pattern.route_end_progress[route])
+	var end_progress := float(pattern.route_end_progress[route])
+	return end_progress >= 1.0 or progress < end_progress
+
+func route_end_world_y(stage_number: int, route: int) -> float:
+	var stage_bottom := -float(stage_number - 1) * Balance.STAGE_HEIGHT
+	return stage_bottom - float(pattern_for_stage(stage_number).route_end_progress[route]) * Balance.STAGE_HEIGHT
+
+func has_recovery_edge(stage_number: int, from_route: int, to_route: int) -> bool:
+	var pattern := pattern_for_stage(stage_number)
+	for edge in pattern.get("recovery_edges", []):
+		if int(edge[0]) == from_route and int(edge[1]) == to_route:
+			return true
+	return false
 
 func current_route_open(player_y: float, x: float) -> bool:
 	return is_route_open_at(stage_for_y(player_y), route_for_x(x), progress_in_stage(player_y))
