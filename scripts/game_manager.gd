@@ -5,8 +5,10 @@ const TIME_WINGS_ORB := preload("res://assets/art/gpt/items/wing_orb.png")
 
 enum State { PLAYING, PLAYER_DEAD, PROTOTYPE_COMPLETE }
 enum AppState { MENU, PLAYING, PAUSED, PLAYER_DEAD, GAME_COMPLETE }
+enum DeathCause { NONE, FALL, CAUGHT, OBSTACLE }
 var state := State.PLAYING
 var app_state := AppState.MENU
+var death_cause := DeathCause.NONE
 @onready var player: PlayerController = $Player
 @onready var spider: SpiderController = $Spider
 @onready var gauge: SpiderDistanceGauge = $HUD/Gauge
@@ -25,6 +27,7 @@ var tutorial_remaining := 0.0
 var tutorial_text := ""
 var touch_actions := {}
 var dead_restart_delay := 0.0
+var confirm_pending := false
 var reduced_motion := false
 var ui_theme: Theme
 var stage_restart_count := 0
@@ -43,6 +46,10 @@ func _ready() -> void:
 func _physics_process(delta: float) -> void:
 	if dead_restart_delay > 0.0:
 		dead_restart_delay = maxf(dead_restart_delay - delta, 0.0)
+		if dead_restart_delay <= 0.0 and confirm_pending and app_state == AppState.PLAYER_DEAD:
+			confirm_pending = false
+			restart_stage()
+			return
 	if app_state == AppState.PAUSED or app_state == AppState.MENU or app_state == AppState.PLAYER_DEAD or app_state == AppState.GAME_COMPLETE:
 		_update_hud()
 		_publish_readonly_web_state()
@@ -63,8 +70,8 @@ func _physics_process(delta: float) -> void:
 	elif gauge.level != "DANGER" and danger_was_active:
 		close_calls += 1
 		danger_was_active = false
-	if gauge.distance_px <= Balance.CATCH_DISTANCE:
-		_die()
+	if _spider_can_catch():
+		_die(DeathCause.CAUGHT)
 	_update_hud()
 	_publish_readonly_web_state()
 
@@ -88,13 +95,8 @@ func _unhandled_input(event: InputEvent) -> void:
 		player.request_branch_direction(-1)
 	elif app_state == AppState.PLAYING and event.is_action_pressed("move_right") and not (event is InputEventKey and event.echo):
 		player.request_branch_direction(1)
-	if event.is_action_pressed("ui_accept"):
-		if app_state == AppState.MENU:
-			start_game()
-		elif app_state == AppState.PLAYER_DEAD and dead_restart_delay <= 0.0:
-			restart_stage()
-		elif app_state == AppState.GAME_COMPLETE:
-			restart()
+	if event.is_action_pressed("ui_accept") and not (event is InputEventKey and event.echo):
+		_request_confirm()
 	if event.is_action_pressed("pause") and app_state == AppState.PLAYING:
 		_pause_game()
 	elif event.is_action_pressed("pause") and app_state == AppState.PAUSED:
@@ -117,14 +119,8 @@ func _debug_evidence_stage(stage_number: int) -> void:
 	stages.update_progress(player.global_position.y)
 
 func _handle_screen_touch(event: InputEventScreenTouch) -> void:
-	if event.pressed and app_state == AppState.MENU:
-		start_game()
-		return
-	if event.pressed and app_state == AppState.PLAYER_DEAD and dead_restart_delay <= 0.0:
-		restart_stage()
-		return
-	if event.pressed and app_state == AppState.GAME_COMPLETE:
-		restart()
+	if event.pressed and app_state != AppState.PLAYING:
+		_request_confirm()
 		return
 	if app_state != AppState.PLAYING:
 		return
@@ -156,7 +152,9 @@ func restart() -> void:
 	stages.reset_run()
 	state = State.PLAYING
 	app_state = AppState.PLAYING
+	death_cause = DeathCause.NONE
 	dead_restart_delay = 0.0
+	confirm_pending = false
 	total_time = 0.0
 	close_calls = 0
 	danger_was_active = false
@@ -198,7 +196,9 @@ func restart_stage() -> void:
 	time_wings_used_stage.erase(stage_number)
 	state = State.PLAYING
 	app_state = AppState.PLAYING
+	death_cause = DeathCause.NONE
 	dead_restart_delay = 0.0
+	confirm_pending = false
 	_show_tutorial_for_stage(stage_number)
 	gauge.update_from_positions(player.global_position.y, spider.global_position.y)
 	_update_hud()
@@ -226,13 +226,38 @@ func try_time_wings() -> bool:
 	_update_hud()
 	return true
 
-func _die() -> void:
+func _die(cause: DeathCause = DeathCause.CAUGHT) -> void:
+	if app_state == AppState.PLAYER_DEAD:
+		return
 	state = State.PLAYER_DEAD
 	app_state = AppState.PLAYER_DEAD
+	death_cause = cause
 	dead_restart_delay = 0.25
+	confirm_pending = false
 	player.time_wings_active = false
 	player.remove_from_group("time_wings_active")
+	player.set_physics_process(false)
+	spider.set_physics_process(false)
+	beans.set_physics_process(false)
+	for bean in get_tree().get_nodes_in_group("beans"):
+		bean.set_physics_process(false)
 	_update_hud()
+	_publish_readonly_web_state()
+
+func _request_confirm() -> void:
+	if app_state == AppState.MENU:
+		start_game()
+	elif app_state == AppState.PLAYER_DEAD:
+		if dead_restart_delay <= 0.0:
+			restart_stage()
+		else:
+			confirm_pending = true
+	elif app_state == AppState.GAME_COMPLETE:
+		restart()
+
+func _spider_can_catch() -> bool:
+	var claw_half_width := ScaleLock.BRANCH_CENTER_GAP + ScaleLock.BRANCH_WIDTH * 0.5
+	return gauge.distance_px <= Balance.CATCH_DISTANCE and absf(player.global_position.x - spider.global_position.x) <= claw_half_width
 
 func _pause_game() -> void:
 	audio.play_sfx("ui_click")
@@ -441,10 +466,7 @@ func _add_touch_button(name: String, rect: Rect2, text: String, action: String) 
 	$HUD.add_child(button)
 	button.button_down.connect(_on_touch_action_down.bind(action))
 	button.button_up.connect(_on_touch_action_up.bind(action))
-	button.pressed.connect(func():
-		if app_state == AppState.MENU: start_game()
-		elif app_state == AppState.PLAYER_DEAD and dead_restart_delay <= 0.0: restart_stage()
-		elif app_state == AppState.GAME_COMPLETE: restart())
+	button.pressed.connect(_request_confirm)
 
 func _on_touch_action_down(action: String) -> void:
 	if action == "time_wings":
@@ -467,6 +489,7 @@ func _update_hud() -> void:
 	$HUD/Menu.visible = app_state == AppState.MENU
 	$HUD/Pause.visible = app_state == AppState.PAUSED
 	$HUD/Dead.visible = app_state == AppState.PLAYER_DEAD
+	$HUD/Dead.text = _death_text()
 	$HUD/Complete.visible = app_state == AppState.GAME_COMPLETE
 	$HUD/Stats.visible = app_state == AppState.GAME_COMPLETE
 	$HUD/Replay.visible = app_state == AppState.GAME_COMPLETE
@@ -495,6 +518,15 @@ func _update_hud() -> void:
 		$HUD/Stats.text = ""
 		$HUD/Replay.text = ""
 	$HUD/MiniMap.queue_redraw()
+
+func _death_text() -> String:
+	match death_cause:
+		DeathCause.FALL:
+			return "FELL FROM THE BEANSTALK\nENTER / TAP TO RETRY"
+		DeathCause.OBSTACLE:
+			return "STRUCK BY AN OBSTACLE\nENTER / TAP TO RETRY"
+		_:
+			return "CAUGHT BY THE SPIDER\nENTER / TAP TO RETRY"
 
 func _time_wings_status() -> String:
 	var stage_number := stages.stage_for_y(player.global_position.y)
@@ -551,6 +583,7 @@ func _readonly_state_snapshot() -> Dictionary:
 			})
 	return {
 		"app_state": AppState.keys()[app_state],
+		"death_cause": DeathCause.keys()[death_cause],
 		"stage": stages.stage_for_y(player.global_position.y),
 		"player": {"x": player.global_position.x, "y": player.global_position.y, "vy": player.velocity.y},
 		"spider": {"y": spider.global_position.y, "distance": gauge.distance_px, "ratio": spider.speed_ratio, "boost": spider.boost_remaining > 0.0},

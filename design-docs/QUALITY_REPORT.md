@@ -1,5 +1,15 @@
 # Quality Report
 
+## Checkpoint: GATE 1 death/confirm/browser closure — 2026-10-10
+
+| Item | Result | Evidence |
+|---|---|---|
+| T04 death cause/freeze | PASS | `death_cause=FALL`, fall-specific HUD copy, post-death player delta `0.000`; catches require gap `<=28` plus the three-route claw span. |
+| Confirm edge | PASS | One Enter keydown and one tap during the guard each produce exactly one restart. |
+| Browser | PASS | Fresh PCK `B727F8D...D30D4C6`; single-worker full run 8 PASS / 0 FAIL / 2 expected skips. S1/GPT/GPT-fix each 2/2 complete. |
+| Godot | FAIL (timeout) | 13 files exited with zero assertion failures. `test_tur3.gd` passed its first 6 assertions, then exceeded 600 s in the sequential 10-seed/2-pressure matrix. |
+| GATE 1 | NOT CLOSED | Browser and product acceptance pass; one requested fresh full Godot file remains incomplete. GATE 2 not started. |
+
 ## Checkpoint: GATE 0 complete / GATE 1 §5.1 started — 2026-10-10
 
 Environment: Windows, Godot `4.7.2.stable.official.ed1daf0bf`, branch `full-30-stage`, start HEAD `823401a63788ff842f4e0748c142a94c59af27bb`. Backup branch: `backup/full-30-stage-pre-gate0-823401a`.

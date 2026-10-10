@@ -214,7 +214,7 @@ func _update_falling_recovery(delta: float) -> void:
 	if recovery_remaining <= 0.0:
 		var game := get_parent()
 		if game != null and game.has_method("_die"):
-			game.call("_die")
+			game.call("_die", GameManager.DeathCause.FALL)
 
 func reset_run(at_position: Vector2) -> void:
 	global_position = at_position

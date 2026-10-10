@@ -23,6 +23,8 @@ func _initialize() -> void:
 	await test_t03_transfer()
 	await test_t04_support_loss()
 	await test_t05_collider_and_hit()
+	await test_t04_death_cause_and_freeze()
+	await test_confirm_edges_during_guard()
 	quit(failures)
 
 func test_t01_auto_climb() -> void:
@@ -121,4 +123,56 @@ func test_t05_collider_and_hit() -> void:
 	var once := player.bean_penalty_count == before + 1
 	check(center_error <= 1.0 and once and player.get_node("Body").position == Vector2.ZERO, "T05", "center_error=%.3f one_hit_one_penalty=%s body_reset=%s" % [center_error, str(once), str(player.get_node("Body").position == Vector2.ZERO)])
 	game.queue_free()
+	await physics_frame
+
+func test_t04_death_cause_and_freeze() -> void:
+	var game := await make_game()
+	var player := game.player
+	var dead_tip_y := -Balance.STAGE_HEIGHT * 2.0 - Balance.STAGE_HEIGHT * 0.46
+	player.reset_run(Vector2(Balance.ROUTE_X[2], dead_tip_y + 1.0))
+	player.active_branch = 2
+	player._sync_stage_mode()
+	for _tick in 120:
+		await physics_frame
+		if game.app_state == GameManager.AppState.PLAYER_DEAD:
+			break
+	var death_y := player.global_position.y
+	for _tick in 240:
+		await physics_frame
+	var snapshot := game._readonly_state_snapshot()
+	check(game.app_state == GameManager.AppState.PLAYER_DEAD and snapshot.death_cause == "FALL" and game.get_node("HUD/Dead").text.begins_with("FELL") and absf(player.global_position.y - death_y) <= 0.01, "T04-death-cause-freeze", "cause=%s text=%s post_death_delta=%.3f" % [snapshot.get("death_cause", "MISSING"), game.get_node("HUD/Dead").text.replace("\n", " / "), player.global_position.y - death_y])
+	game.queue_free()
+	await physics_frame
+
+func test_confirm_edges_during_guard() -> void:
+	var key_game := await make_game()
+	key_game._die(GameManager.DeathCause.FALL)
+	var key := InputEventKey.new()
+	key.physical_keycode = KEY_ENTER
+	key.pressed = true
+	key_game._unhandled_input(key)
+	for _tick in 40:
+		await physics_frame
+	var key_once := key_game.app_state == GameManager.AppState.PLAYING and key_game.stage_restart_count == 1
+	for _tick in 40:
+		await physics_frame
+	key_once = key_once and key_game.stage_restart_count == 1
+	key_game.queue_free()
+	await physics_frame
+
+	var tap_game := await make_game()
+	tap_game._die(GameManager.DeathCause.FALL)
+	var tap := InputEventScreenTouch.new()
+	tap.index = 7
+	tap.position = Vector2(480, 270)
+	tap.pressed = true
+	tap_game._handle_screen_touch(tap)
+	for _tick in 40:
+		await physics_frame
+	var tap_once := tap_game.app_state == GameManager.AppState.PLAYING and tap_game.stage_restart_count == 1
+	for _tick in 40:
+		await physics_frame
+	tap_once = tap_once and tap_game.stage_restart_count == 1
+	check(key_once and tap_once, "CONFIRM-edge", "keydown_once=%s tap_once=%s anti_double=true" % [str(key_once), str(tap_once)])
+	tap_game.queue_free()
 	await physics_frame

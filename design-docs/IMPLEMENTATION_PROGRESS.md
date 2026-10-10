@@ -1,5 +1,12 @@
 # Implementation Progress
 
+## 2026-10-10 — GATE 1 death/confirm/browser closure checkpoint
+
+- Added explicit read-only `death_cause` (`FALL / CAUGHT / OBSTACLE`), cause-specific death copy, catch contact bounds, and a full gameplay physics freeze after death. T04 now measures zero post-death player displacement.
+- Confirm is edge-driven: one keydown or tap received during the 0.25 s retry guard is queued and consumed once; duplicate restart remains blocked.
+- Fresh Web PCK SHA-256: `B727F8D65547D72F1803D2B9AAFD93E2A252DBD9D2CD8A87BB8509F74D30D4C6`. Full single-worker Playwright: 8 PASS / 0 FAIL / 2 expected project skips. S1 and both GPT flows each completed twice with the corrected decision bot.
+- Godot: 13 files completed with zero assertion failures; `test_tur3.gd` passed A07b–A11b (6/0) but its 10 full seeds + two pressure runs exceeded the 600 s file timeout. GATE 1 therefore remains open on this one fresh full-file result; GATE 2 was not started.
+
 ## 2026-10-10 — GATE 1 T04 closure checkpoint
 
 - Fixed same-tip recovery looping with red-first coverage: visible physical branch ends, explicit recovery-edge eligibility, 120 u/s initial fall, and 600 u/s² gravity.
