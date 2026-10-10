@@ -76,3 +76,24 @@ Windowed command: `Godot_v4.7.2-stable_win64_console.exe --path . --resolution 9
 | GATE 1 | NOT RUN overall / core PASS | Core player/branch/camera/support contract and related unit/render checks pass. Gate closure still requires a fresh web export/browser regression; the existing export predates these source changes. |
 
 Per-file counts: `tests/test_gate1.gd` 5 PASS / 0 FAIL; `tests/capture_gate1_frames.gd` 6 PASS / 0 FAIL. Compatibility run `../03-test/godot/test_tur1.gd` 7 PASS / 1 FAIL (obsolete 60-tick iteration assumption); partial `test_gate_a.gd` is NOT RUN as a complete file and is not included in pass totals.
+
+## Checkpoint: GATE 1 legacy migration — 2026-10-10
+
+Project physics remains `120 Hz`; legacy elapsed-time assertions now derive seconds and frame budgets from `Engine.physics_ticks_per_second`. Support assertions use `SUPPORTED / TRANSFERRING / FALLING_RECOVERY`, and Playwright reads the new read-only `window.beanstalkState.support_state` field. The compatibility `transition_state` field remains read-only and present.
+
+| Item ID | Status | Evidence / open work |
+|---|---|---|
+| T01–T05 | PASS | `tests/test_gate1.gd`: 5 PASS / 0 FAIL after exact post-move support-centering and first-command-wins touch arbitration fixes. |
+| Legacy-contract-migration | PASS (edited) | External `../03-test` tests migrated from 60-tick timing and `ATTACHED/TRANSITION` assertions; no assertion was silently deleted. |
+| Godot-13-file-regression | NOT RUN complete | Completed this call: `test_gate_b` 3/0, `test_gate_b_fix` 7/0, `test_gate_a` 9/0, `test_gate_a_visual` 0/0 headless trace, `test_scale_lock` 15/0/2 headless frames, `test_tur1` 8/0, `test_tur2` 5/0, `test_gate1` 5/0. `test_tur3` was interrupted at the 50-minute call limit; `test_tur3b`, `test_tur4`, `test_gpt_sprites`, and `test_sprite_fixes` were not reached in the final run. |
+| Web-export / browser | NOT RUN | Fresh export and `npm.cmd test` were not started before the call limit. Existing `index.pck` is stale: SHA-256 `109fd02a8a80674ccaa897ae85cec3d198e5037c907a22c5c8f098ffb0c49798`. |
+| GATE 1 | NOT RUN overall | Cannot close until the 13-file run, fresh export, and per-spec Playwright run complete. |
+
+### Superseded legacy assertions (retained here; no silent deletion)
+
+| Legacy assertion | Replaced by v1.3 |
+|---|---|
+| Player opaque height `63 px` and capsule `r15/h44` | §5.1 scale lock: character `44×108`, collider `30×86` (`T02`, `VIS02`). |
+| Cloud atlas must contain four legacy raster clouds | §5.1 Gate 1 production greybox may be vector/opaque; final art asset acceptance moves to GATE 3A. |
+| Legacy Stage 3 branch draw budget tied to old art constants | §5.1 branches `44` wide at `150` centers; final art/performance acceptance moves to GATE 3A. |
+| Transfer has zero vertical travel while unsupported | §4.3–4.4: real 0.40 s connection curve, `TRANSFERRING`, then `SUPPORTED` or `FALLING_RECOVERY` (`T03`, `T04`). |

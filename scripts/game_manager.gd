@@ -560,6 +560,7 @@ func _readonly_state_snapshot() -> Dictionary:
 		"next_dead_end": {"route": dead_end_route, "distance_px": null if is_inf(dead_end_distance) else dead_end_distance},
 		"open_routes_at_player": stages.open_routes_at(player.global_position.y),
 		"active_branch": player.active_branch,
+		"support_state": player.support_state_name(),
 		"transition_state": player.transition_state_name(),
 		"branch_target": player.transition_to,
 		"branch_transition_count": player.branch_transition_count,

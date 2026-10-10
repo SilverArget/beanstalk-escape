@@ -57,6 +57,8 @@ func _physics_process(delta: float) -> void:
 	move_and_slide()
 	if movement_mode == MovementMode.TRUNK:
 		global_position.x = clampf(global_position.x, -Balance.TRUNK_HALF_WIDTH, Balance.TRUNK_HALF_WIDTH)
+	elif support_state == SupportState.SUPPORTED:
+		global_position.x = stages.branch_x_at(active_branch, global_position.y) + support_offset
 
 func _sync_stage_mode() -> void:
 	if stages == null:
@@ -133,7 +135,7 @@ func _update_branch_movement(delta: float) -> void:
 	_begin_branch_transition(requested_direction)
 
 func request_branch_direction(direction: int) -> void:
-	if (direction == -1 or direction == 1) and stages != null and stages.stage_for_y(global_position.y) >= 3 and movement_mode == MovementMode.ATTACHED:
+	if (direction == -1 or direction == 1) and _pending_branch_direction == 0 and stages != null and stages.stage_for_y(global_position.y) >= 3 and movement_mode == MovementMode.ATTACHED:
 		_pending_branch_direction = direction
 
 func _begin_branch_transition(direction: int) -> bool:
