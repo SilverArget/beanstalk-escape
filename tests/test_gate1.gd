@@ -57,7 +57,9 @@ func test_t03_transfer() -> void:
 	var durations := []
 	var endpoints := []
 	for hz in [30.0, 60.0, 120.0]:
-		player.reset_run(Vector2(0, -Balance.STAGE_HEIGHT * 2.0 - 500.0))
+		# Gate 2 keeps the pre-FORK connection region open; the encounter itself
+		# intentionally rejects transfers onto its missing support.
+		player.reset_run(Vector2(0, -Balance.STAGE_HEIGHT * 2.0 - 400.0))
 		player.active_branch = 1
 		player.global_position.x = game.stages.branch_x_at(1, player.global_position.y)
 		var start_y := player.global_position.y
@@ -79,7 +81,7 @@ func test_t03_transfer() -> void:
 func test_t04_support_loss() -> void:
 	var game := await make_game()
 	var player := game.player
-	var dead_tip_y := -Balance.STAGE_HEIGHT * 2.0 - Balance.STAGE_HEIGHT * 0.46
+	var dead_tip_y := -Balance.STAGE_HEIGHT * 2.0 - 500.0
 	player.reset_run(Vector2(Balance.ROUTE_X[2], dead_tip_y + 1.0))
 	player.active_branch = 2
 	player._sync_stage_mode()
@@ -128,7 +130,7 @@ func test_t05_collider_and_hit() -> void:
 func test_t04_death_cause_and_freeze() -> void:
 	var game := await make_game()
 	var player := game.player
-	var dead_tip_y := -Balance.STAGE_HEIGHT * 2.0 - Balance.STAGE_HEIGHT * 0.46
+	var dead_tip_y := -Balance.STAGE_HEIGHT * 2.0 - 500.0
 	player.reset_run(Vector2(Balance.ROUTE_X[2], dead_tip_y + 1.0))
 	player.active_branch = 2
 	player._sync_stage_mode()

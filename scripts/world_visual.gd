@@ -21,6 +21,7 @@ func _draw() -> void:
 	var bottom_y := 600.0
 	_draw_sky(top_y, bottom_y)
 	_draw_trunk()
+	_draw_trunk_features()
 	for stage_number in range(3, Balance.STAGE_COUNT + 1):
 		_draw_stage_branches(stage_number)
 	if player != null and player.support_state == PlayerController.SupportState.TRANSFERRING:
@@ -48,29 +49,8 @@ func _draw_stage_branches(stage_number: int) -> void:
 	var stage_bottom := -float(stage_number - 1) * Balance.STAGE_HEIGHT
 	var stage_top := -float(stage_number) * Balance.STAGE_HEIGHT
 	for route in 3:
-		var route_end_y := stages.route_end_world_y(stage_number, route)
-		var points := PackedVector2Array()
-		if stage_number == 3:
-			points.append(Vector2(0.0, stage_bottom - 140.0))
-			for step in range(1, 8):
-				var t := float(step) / 7.0
-				var smooth := t * t * (3.0 - 2.0 * t)
-				points.append(Vector2(lerpf(0.0, Balance.ROUTE_X[route], smooth), lerpf(stage_bottom - 140.0, stage_bottom - 350.0, t)))
-		var cursor_y := stage_bottom - (350.0 if stage_number == 3 else 0.0)
-		if points.is_empty():
-			points.append(Vector2(Balance.ROUTE_X[route], cursor_y))
-		while cursor_y > route_end_y:
-			cursor_y = maxf(cursor_y - 120.0, route_end_y)
-			points.append(Vector2(Balance.ROUTE_X[route], cursor_y))
-		branch_point_count += points.size()
-		draw_polyline(points, Color("173d2f"), ScaleLock.BRANCH_WIDTH + ScaleLock.OUTLINE_WIDTH * 2.0, true)
-		draw_polyline(points, Color("4c9a4d"), ScaleLock.BRANCH_WIDTH, true)
-		draw_circle(points[-1], (ScaleLock.BRANCH_WIDTH + ScaleLock.OUTLINE_WIDTH * 2.0) * 0.5, Color("173d2f"))
-		draw_circle(points[-1], ScaleLock.BRANCH_WIDTH * 0.5, Color("4c9a4d"))
-		draw_line(points[-1] + Vector2(-13.0, -3.0), points[-1] + Vector2(13.0, -3.0), Color("9bd66d"), ScaleLock.OUTLINE_WIDTH)
-		for point_index in range(1, points.size(), 2):
-			var point := points[point_index]
-			draw_line(point + Vector2(-12, 0), point + Vector2(12, -8), Color("77bb58"), ScaleLock.OUTLINE_WIDTH)
+		for segment: Array in stages.support_segments(stage_number, route):
+			_draw_branch_segment(stage_number, route, float(segment[0]), float(segment[1]))
 	var connection_y := stage_bottom - (430.0 if stage_number == 3 else 180.0)
 	while connection_y > stage_top + 120.0:
 		if branch_graph.can_transfer(stages, 0, 1, connection_y):
@@ -78,6 +58,45 @@ func _draw_stage_branches(stage_number: int) -> void:
 		if branch_graph.can_transfer(stages, 1, 2, connection_y - 90.0):
 			_draw_transfer_connection(1, 2, connection_y - 90.0, Color("3d8144"))
 		connection_y -= 360.0
+
+func _draw_branch_segment(stage_number: int, route: int, start_progress: float, end_progress: float) -> void:
+	var stage_bottom := -float(stage_number - 1) * Balance.STAGE_HEIGHT
+	var points := PackedVector2Array()
+	if stage_number == 3 and start_progress <= 0.0:
+		points.append(Vector2(0.0, stage_bottom - 140.0))
+		for step in range(1, 8):
+			var t := float(step) / 7.0
+			var smooth := t * t * (3.0 - 2.0 * t)
+			points.append(Vector2(lerpf(0.0, Balance.ROUTE_X[route], smooth), lerpf(stage_bottom - 140.0, stage_bottom - 350.0, t)))
+		start_progress = maxf(start_progress, 350.0 / Balance.STAGE_HEIGHT)
+	var start_y := stage_bottom - start_progress * Balance.STAGE_HEIGHT
+	var end_y := stage_bottom - end_progress * Balance.STAGE_HEIGHT
+	if points.is_empty(): points.append(Vector2(Balance.ROUTE_X[route], start_y))
+	var cursor_y := minf(points[-1].y, start_y)
+	while cursor_y > end_y:
+		cursor_y = maxf(cursor_y - 120.0, end_y)
+		points.append(Vector2(Balance.ROUTE_X[route], cursor_y))
+	if points.size() < 2: return
+	branch_point_count += points.size()
+	draw_polyline(points, Color("173d2f"), ScaleLock.BRANCH_WIDTH + ScaleLock.OUTLINE_WIDTH * 2.0, true)
+	draw_polyline(points, Color("4c9a4d"), ScaleLock.BRANCH_WIDTH, true)
+	for endpoint in [points[0], points[-1]]:
+		draw_circle(endpoint, (ScaleLock.BRANCH_WIDTH + ScaleLock.OUTLINE_WIDTH * 2.0) * 0.5, Color("173d2f"))
+		draw_circle(endpoint, ScaleLock.BRANCH_WIDTH * 0.5, Color("4c9a4d"))
+		draw_line(endpoint + Vector2(-13.0, -3.0), endpoint + Vector2(13.0, -3.0), Color("9bd66d"), ScaleLock.OUTLINE_WIDTH)
+
+func _draw_trunk_features() -> void:
+	for stage_number in [1, 2]:
+		var stage_bottom := -float(stage_number - 1) * Balance.STAGE_HEIGHT
+		for feature: Dictionary in stages.pattern_for_stage(stage_number).trunk_features:
+			var center_x := lerpf(-ScaleLock.TRUNK_WIDTH * 0.5, ScaleLock.TRUNK_WIDTH * 0.5, float(feature.x))
+			var top_y := stage_bottom - float(feature.occupancy[1])
+			var bottom_y := stage_bottom - float(feature.warning_height)
+			if feature.kind == "GUIDE":
+				draw_line(Vector2(center_x, bottom_y), Vector2(center_x, top_y), Color("b8dd72"), 8.0)
+			else:
+				var side := -1.0 if feature.x >= 0.5 else 1.0
+				draw_circle(Vector2(side * 70.0, (top_y + bottom_y) * 0.5), 22.0, Color("286b3e"))
 
 func _draw_transfer_connection(from_branch: int, to_branch: int, world_y: float, color: Color) -> void:
 	var points := PackedVector2Array()

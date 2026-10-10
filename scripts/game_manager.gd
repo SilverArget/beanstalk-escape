@@ -32,6 +32,7 @@ var reduced_motion := false
 var ui_theme: Theme
 var stage_restart_count := 0
 var stage_restart_start_distance := 0.0
+var last_time_command_source := ""
 
 func _ready() -> void:
 	process_physics_priority = 10
@@ -102,7 +103,7 @@ func _unhandled_input(event: InputEvent) -> void:
 	elif event.is_action_pressed("pause") and app_state == AppState.PAUSED:
 		_resume_game()
 	if event.is_action_pressed("time_wings"):
-		try_time_wings()
+		dispatch_command("time_wings", "keyboard")
 	if event is InputEventScreenTouch:
 		_handle_screen_touch(event)
 
@@ -128,7 +129,7 @@ func _handle_screen_touch(event: InputEventScreenTouch) -> void:
 		var wings_button := get_node_or_null("HUD/TouchWings") as Button
 		if wings_button != null and Rect2(wings_button.position, wings_button.size).has_point(event.position):
 			touch_actions[event.index] = "time_wings"
-			try_time_wings()
+			dispatch_command("time_wings", "mobile")
 			return
 		var action := "move_left" if event.position.x < 172.0 else "move_right"
 		touch_actions[event.index] = action
@@ -183,7 +184,7 @@ func restart_stage() -> void:
 	for child in get_tree().get_nodes_in_group("run_transient"): child.free()
 	beans.reset_run()
 	player.reset_run(Vector2(0, start_y))
-	spider.reset_run(Vector2(0, start_y + Balance.START_DISTANCE))
+	spider.reset_run(Vector2(0, start_y + SpiderController.retry_gap_for_stage(stage_number)))
 	stage_restart_count += 1
 	stage_restart_start_distance = spider.global_position.y - player.global_position.y
 	player.set_physics_process(true)
@@ -225,6 +226,12 @@ func try_time_wings() -> bool:
 	skills_used += 1
 	_update_hud()
 	return true
+
+func dispatch_command(command: String, source := "runtime") -> bool:
+	if command == "time_wings":
+		last_time_command_source = source
+		return try_time_wings()
+	return false
 
 func _die(cause: DeathCause = DeathCause.CAUGHT) -> void:
 	if app_state == AppState.PLAYER_DEAD:
@@ -470,7 +477,7 @@ func _add_touch_button(name: String, rect: Rect2, text: String, action: String) 
 
 func _on_touch_action_down(action: String) -> void:
 	if action == "time_wings":
-		try_time_wings()
+		dispatch_command("time_wings", "mobile")
 	else:
 		Input.action_press(action)
 		player.request_branch_direction(-1 if action == "move_left" else 1)
@@ -580,13 +587,14 @@ func _readonly_state_snapshot() -> Dictionary:
 				"route": bean.blocked_route,
 				"phase": "falling" if bean.falling else "warning",
 				"y": bean.global_position.y,
+				"warning_visible_seconds": bean.warning_visible_seconds,
 			})
 	return {
 		"app_state": AppState.keys()[app_state],
 		"death_cause": DeathCause.keys()[death_cause],
 		"stage": stages.stage_for_y(player.global_position.y),
 		"player": {"x": player.global_position.x, "y": player.global_position.y, "vy": player.velocity.y},
-		"spider": {"y": spider.global_position.y, "distance": gauge.distance_px, "ratio": spider.speed_ratio, "boost": spider.boost_remaining > 0.0},
+		"spider": {"y": spider.global_position.y, "distance": gauge.distance_px, "ratio": spider.speed_ratio, "boost": spider.boost_remaining > 0.0, "boost_remaining": spider.boost_remaining, "catchup_active": spider.catchup_active, "catchup_blend": spider.catchup_blend},
 		"gauge_level": gauge.level,
 		"time_wings": {"unlocked": stages.stage_for_y(player.global_position.y) >= Balance.TIME_WINGS_STAGE, "active": time_wings_remaining > 0.0, "remaining": time_wings_remaining, "started_remaining": time_wings_started_remaining, "used": time_wings_used_stage.has(stages.stage_for_y(player.global_position.y))},
 		"beans": state_beans,

@@ -1,5 +1,17 @@
 # Quality Report
 
+## Checkpoint: GATE 2 runtime encounters, spider, and Time Wings — 2026-10-10
+
+| Item | Result | Evidence |
+|---|---|---|
+| G2-RUNTIME-01 | PASS | Stage 1–2 expose five data-owned GUIDE/BULGE features each. Stage 3 derives five FORK support windows from `StageDatabase`; missing supports end visibly for A..A+220 and return afterward. |
+| T06 slice | PASS | Six-band pressure data, full speed equation, 420/365 catch-up hysteresis with 0.50 s blend, 5-level gap gauge, three-route claw catch, and retry gaps 240/180 are covered. K1/K2 and 30-stage double-skill simulation remain NOT RUN. |
+| T07 slice | PASS | Warning starts at W=A−360, is visible/audible for at least 1.60 active seconds before height-triggered release, one projectile gives one penalty, and bean factor refreshes without stacking for 2.00 active seconds. Fire reaction-budget coverage remains NOT RUN. |
+| T10/T12 slice | PASS | TIME unlocks at Stage 5, keyboard/mobile share `dispatch_command`, lasts exactly 10 active seconds, freezes during pause, leaves player/global time unchanged, and halves bean/spider threat movement. Later hazard clocks remain owned by their gates. |
+| Targeted Godot | PASS | `test_gate2_runtime.gd` 5/0, `test_gate2_stage_database.gd` 5/0, `test_gate1.gd` 7/0. Existing ObjectDB/resource-exit warnings remain open cleanup work. |
+
+This checkpoint does not claim anti-cheese, ReachabilityValidator/ReplayVerifier, rendered visual acceptance, browser acceptance, K1/K2, or full 30-stage skill simulation.
+
 ## Checkpoint: GATE 1 death/confirm/browser closure — 2026-10-10
 
 | Item | Result | Evidence |

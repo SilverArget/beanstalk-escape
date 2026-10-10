@@ -48,30 +48,23 @@ func generate_patterns(seed_value: int) -> Array:
 		var stage_number := int(stage.number)
 		var route_end_progress := [1.0, 1.0, 1.0]
 		var open_routes := [0, 1, 2]
-		# Gate 1 dead-tip geometry remains active until the Gate 2 FORK runtime slice
-		# replaces it with encounter-height support windows.
-		if stage_number == 2:
-			route_end_progress[1] = 0.55
-			route_end_progress[0] = 0.995
-		elif stage_number == 3:
-			route_end_progress = [1.0, 0.78, 0.46]
-		elif stage_number == 4:
-			route_end_progress[0] = 0.64
-		elif stage_number == 5:
-			route_end_progress[1] = 0.78
-		for route in 3:
-			if route_end_progress[route] < 1.0:
-				open_routes.erase(route)
+		var trunk_features: Array = []
+		var support_windows: Array = []
 		var bean_slots: Array = []
 		for encounter: Dictionary in stage.encounters:
-			if String(encounter.recipe.kind) == "BEAN":
+			var kind := String(encounter.recipe.kind)
+			if kind == "GUIDE" or kind == "BULGE":
+				trunk_features.append({"id": encounter.id, "kind": kind, "x": float(encounter.recipe.x), "warning_height": encounter.warning_height, "occupancy": encounter.occupancy})
+			elif kind == "FORK":
+				support_windows.append({"id": encounter.id, "start_progress": float(encounter.anchor) / float(stage.length), "end_progress": float(encounter.occupancy[1]) / float(stage.length), "supports": encounter.recipe.supports.duplicate(), "warning_progress": float(encounter.warning_height) / float(stage.length)})
+			elif kind == "BEAN":
 				var blocked := int(encounter.recipe.lane)
 				var slot_progress := float(encounter.anchor) / float(stage.length)
 				var safe_routes := [0, 1, 2]
 				safe_routes.erase(blocked)
 				var safety_route := int(encounter.witness)
 				bean_slots.append({"id": encounter.id, "anchor": encounter.anchor, "warning_height": encounter.warning_height, "occupancy": encounter.occupancy, "progress": slot_progress, "blocked_route": blocked, "safe_routes": safe_routes, "safety_route": safety_route, "warning_seconds": Balance.BEAN_WARNING_SECONDS})
-		result.append({"stage": stage_number, "entry": 1, "open_routes": open_routes, "route_end_progress": route_end_progress, "bean_slots": bean_slots, "encounters": stage.encounters, "variant": run_variant})
+		result.append({"stage": stage_number, "entry": 1, "open_routes": open_routes, "route_end_progress": route_end_progress, "trunk_features": trunk_features, "support_windows": support_windows, "bean_slots": bean_slots, "encounters": stage.encounters, "variant": run_variant})
 	return result
 func pattern_hash(seed_value: int) -> int: return hash(var_to_str(generate_patterns(seed_value)))
 func patterns_are_reachable(candidate: Array) -> bool:
@@ -161,8 +154,25 @@ func branch_x_at(route: int, player_y: float) -> float:
 
 func is_route_open_at(stage_number: int, route: int, progress: float) -> bool:
 	var pattern := pattern_for_stage(stage_number)
-	var end_progress := float(pattern.route_end_progress[route])
-	return end_progress >= 1.0 or progress < end_progress
+	for window: Dictionary in pattern.get("support_windows", []):
+		if progress >= float(window.start_progress) and progress <= float(window.end_progress) and not window.supports.has(route):
+			return false
+	return true
+
+func support_segments(stage_number: int, route: int) -> Array:
+	var segments: Array = []
+	var cursor := 0.0
+	for window: Dictionary in pattern_for_stage(stage_number).get("support_windows", []):
+		if window.supports.has(route):
+			continue
+		var gap_start := float(window.start_progress)
+		var gap_end := float(window.end_progress)
+		if gap_start > cursor:
+			segments.append([cursor, gap_start])
+		cursor = maxf(cursor, gap_end)
+	if cursor < 1.0:
+		segments.append([cursor, 1.0])
+	return segments
 
 func route_end_world_y(stage_number: int, route: int) -> float:
 	var stage_bottom := -float(stage_number - 1) * Balance.STAGE_HEIGHT
@@ -182,11 +192,15 @@ func next_dead_end_distance(player_y: float, x: float, active_route := -1) -> fl
 	var stage_number := stage_for_y(player_y)
 	var route := active_route if active_route >= 0 else route_for_x(x)
 	var pattern := pattern_for_stage(stage_number)
-	var end_progress := float(pattern.route_end_progress[route])
 	var progress := progress_in_stage(player_y)
-	if end_progress >= 1.0 or progress >= end_progress:
-		return INF if end_progress >= 1.0 else 0.0
-	return (end_progress - progress) * Balance.STAGE_HEIGHT
+	for window: Dictionary in pattern.get("support_windows", []):
+		if window.supports.has(route):
+			continue
+		if progress >= float(window.start_progress) and progress <= float(window.end_progress):
+			return 0.0
+		if progress < float(window.start_progress):
+			return (float(window.start_progress) - progress) * Balance.STAGE_HEIGHT
+	return INF
 
 func open_routes_at(player_y: float) -> Array:
 	var stage_number := stage_for_y(player_y)

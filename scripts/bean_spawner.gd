@@ -17,10 +17,15 @@ func _physics_process(_delta: float) -> void:
 			var slot: Dictionary = stage_pattern.bean_slots[slot_index]
 			var target_y: float = -((stage_pattern.stage - 1 + slot.progress) * Balance.STAGE_HEIGHT)
 			var key := "%d:%d" % [stage_pattern.stage, slot_index]
-			if not spawned_keys.has(key) and player.global_position.y <= target_y + Balance.BEAN_SPAWN_LEAD_PX:
+			var warning_y: float = -(float(stage_pattern.stage - 1) * Balance.STAGE_HEIGHT + float(slot.warning_height))
+			if not spawned_keys.has(key) and player.global_position.y <= warning_y:
 				if game != null:
 					game.show_bean_tutorial()
 				spawn_bean(slot.blocked_route, target_y, key)
+			if spawned_keys.has(key) and player.global_position.y <= target_y:
+				var spawned := get_node_or_null(NodePath(str(spawned_keys[key]))) as BeanProjectile
+				if spawned != null:
+					spawned.request_release()
 	for bean in get_tree().get_nodes_in_group("beans"):
 		var relative_y: float = bean.global_position.y - player.global_position.y
 		var previous_y: float = bean.get_meta("previous_relative_y", relative_y)
@@ -38,8 +43,10 @@ func spawn_bean(route: int, target_y: float, key := "forced") -> BeanProjectile:
 	bean.add_to_group("beans")
 	bean.add_to_group("run_transient")
 	add_child(bean)
-	bean.setup(route, target_y - Balance.BEAN_FALL_SPEED * Balance.BEAN_WARNING_SECONDS)
-	spawned_keys[key] = true
+	# The top of the collider begins at A+120 and stays world-fixed through warning.
+	bean.setup(route, target_y - 120.0)
+	bean.set_meta("encounter_key", key)
+	spawned_keys[key] = bean.get_path()
 	warning_count += 1
 	return bean
 
@@ -47,6 +54,8 @@ func force_contact(bean: BeanProjectile) -> void:
 	if bean.active: _hit(bean)
 
 func _hit(bean: BeanProjectile) -> void:
+	if not bean.active:
+		return
 	player.apply_bean_hit()
 	spider.apply_bean_boost()
 	hit_count += 1

@@ -8,13 +8,20 @@ var level := "GREEN"
 func update_from_positions(player_y: float, spider_y: float) -> void:
 	distance_px = maxf(spider_y - player_y, 0.0)
 	normalized_danger = clampf(1.0 - distance_px / Balance.GAUGE_MAX_DISTANCE, 0.0, 1.0)
-	level = level_for(normalized_danger)
+	level = level_for_gap(distance_px)
 	queue_redraw()
 
 func level_for(value: float) -> String:
 	for name: String in Balance.GAUGE_THRESHOLDS:
 		if value <= Balance.GAUGE_THRESHOLDS[name]:
 			return name
+	return "DANGER"
+
+static func level_for_gap(gap: float) -> String:
+	if gap >= 240.0: return "GREEN"
+	if gap >= 180.0: return "YELLOW"
+	if gap >= 96.0: return "ORANGE"
+	if gap >= 56.0: return "RED"
 	return "DANGER"
 
 func _draw() -> void:

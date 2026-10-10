@@ -13,6 +13,20 @@ const SPIDER_RAMP_FULL_DISTANCE := 288.0
 const START_DISTANCE := 240.0
 const CATCH_DISTANCE := 28.0
 const GAUGE_MAX_DISTANCE := 360.0
+const SPIDER_RAMP_SPAN := 108.0
+const SPIDER_CATCHUP_ON_GAP := 420.0
+const SPIDER_CATCHUP_OFF_GAP := 365.0
+const SPIDER_CATCHUP_BLEND_SECONDS := 0.50
+const SPIDER_CATCHUP_ORIGIN := 360.0
+const SPIDER_CATCHUP_SPAN := 180.0
+const SPIDER_PRESSURE_BANDS := [
+	{"from": 1, "to": 14, "g_lo": 180.0, "pressure": 0.0},
+	{"from": 15, "to": 19, "g_lo": 180.0, "pressure": 4.0},
+	{"from": 20, "to": 24, "g_lo": 180.0, "pressure": 12.0},
+	{"from": 25, "to": 28, "g_lo": 156.0, "pressure": 12.0},
+	{"from": 29, "to": 29, "g_lo": 108.0, "pressure": 12.0},
+	{"from": 30, "to": 30, "g_lo": 156.0, "pressure": 12.0},
+]
 const ROUTE_X := [-150.0, 0.0, 150.0]
 const STAGE_DURATION_SECONDS := 28.0
 const STAGE_COUNT := 5
@@ -23,7 +37,7 @@ const BEAN_KNOCKBACK_SECONDS := 0.36
 const BEAN_STUN_SECONDS := 0.18
 const BEAN_KNOCKBACK_SPEED := 180.0
 const BEAN_FALL_SPEED := 220.0
-const BEAN_SPAWN_LEAD_PX := 270.0
+const BEAN_SPAWN_LEAD_PX := 360.0
 const BEAN_HIT_RADIUS := 30.0
 const SPIDER_BOOST_RATIO := 1.15
 const SPIDER_BOOST_SECONDS := 2.0
@@ -43,3 +57,4 @@ const GAUGE_THRESHOLDS := {
 	"RED": 0.80,
 	"DANGER": 1.00,
 }
+const GAUGE_GAP_THRESHOLDS := {"GREEN": 240.0, "YELLOW": 180.0, "ORANGE": 96.0, "RED": 56.0, "DANGER": 28.0}
