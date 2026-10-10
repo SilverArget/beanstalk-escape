@@ -71,13 +71,19 @@ func test_spider_catch_and_retry() -> void:
 	game.player.global_position = Vector2(Balance.ROUTE_X[0], -1000.0)
 	game.spider.global_position = Vector2(0.0, -972.0)
 	game.gauge.update_from_positions(game.player.global_position.y, game.spider.global_position.y)
-	var left_catch := game._spider_can_catch()
+	var route_catches := []
+	for route_x in Balance.ROUTE_X:
+		game.player.global_position.x = float(route_x)
+		route_catches.append(game._spider_can_catch())
+	for transfer_x in [-75.0, 75.0]:
+		game.player.global_position.x = transfer_x
+		route_catches.append(game._spider_can_catch())
 	game.player.global_position.x = ScaleLock.BRANCH_CENTER_GAP + ScaleLock.BRANCH_WIDTH * 0.5 + 1.0
 	var outside_claw := not game._spider_can_catch()
 	game.stages.current_stage = 1
 	game.restart_stage()
 	var retry_ok := is_equal_approx(game.stage_restart_start_distance, 240.0) and SpiderController.retry_gap_for_stage(24) == 240.0 and SpiderController.retry_gap_for_stage(25) == 180.0
-	check(left_catch and outside_claw and retry_ok, "T06-catch", "left=%s outside=%s retry=%.1f future25=%.1f" % [str(left_catch), str(outside_claw), game.stage_restart_start_distance, SpiderController.retry_gap_for_stage(25)])
+	check(not route_catches.has(false) and outside_claw and retry_ok, "T06-catch", "routes+transfers=%s outside=%s retry=%.1f future25=%.1f" % [str(route_catches), str(outside_claw), game.stage_restart_start_distance, SpiderController.retry_gap_for_stage(25)])
 	game.queue_free()
 	await physics_frame
 

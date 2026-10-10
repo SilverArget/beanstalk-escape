@@ -93,9 +93,9 @@ func _unhandled_input(event: InputEvent) -> void:
 		_update_hud()
 		return
 	if app_state == AppState.PLAYING and event.is_action_pressed("move_left") and not (event is InputEventKey and event.echo):
-		player.request_branch_direction(-1)
+		dispatch_command("move_left", "keyboard")
 	elif app_state == AppState.PLAYING and event.is_action_pressed("move_right") and not (event is InputEventKey and event.echo):
-		player.request_branch_direction(1)
+		dispatch_command("move_right", "keyboard")
 	if event.is_action_pressed("ui_accept") and not (event is InputEventKey and event.echo):
 		_request_confirm()
 	if event.is_action_pressed("pause") and app_state == AppState.PLAYING:
@@ -134,7 +134,7 @@ func _handle_screen_touch(event: InputEventScreenTouch) -> void:
 		var action := "move_left" if event.position.x < 172.0 else "move_right"
 		touch_actions[event.index] = action
 		Input.action_press(action)
-		player.request_branch_direction(-1 if action == "move_left" else 1)
+		dispatch_command(action, "mobile")
 	elif touch_actions.has(event.index):
 		var released_action: String = touch_actions[event.index]
 		touch_actions.erase(event.index)
@@ -228,6 +228,10 @@ func try_time_wings() -> bool:
 	return true
 
 func dispatch_command(command: String, source := "runtime") -> bool:
+	if command == "move_left" or command == "move_right":
+		if app_state != AppState.PLAYING:
+			return false
+		return player.request_branch_direction(-1 if command == "move_left" else 1)
 	if command == "time_wings":
 		last_time_command_source = source
 		return try_time_wings()
@@ -597,6 +601,7 @@ func _readonly_state_snapshot() -> Dictionary:
 		"spider": {"y": spider.global_position.y, "distance": gauge.distance_px, "ratio": spider.speed_ratio, "boost": spider.boost_remaining > 0.0, "boost_remaining": spider.boost_remaining, "catchup_active": spider.catchup_active, "catchup_blend": spider.catchup_blend},
 		"gauge_level": gauge.level,
 		"time_wings": {"unlocked": stages.stage_for_y(player.global_position.y) >= Balance.TIME_WINGS_STAGE, "active": time_wings_remaining > 0.0, "remaining": time_wings_remaining, "started_remaining": time_wings_started_remaining, "used": time_wings_used_stage.has(stages.stage_for_y(player.global_position.y))},
+		"audio_events": audio.audio_event_snapshot(),
 		"beans": state_beans,
 		"next_dead_end": {"route": dead_end_route, "distance_px": null if is_inf(dead_end_distance) else dead_end_distance},
 		"open_routes_at_player": stages.open_routes_at(player.global_position.y),

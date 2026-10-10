@@ -133,3 +133,17 @@ Project physics remains `120 Hz`; legacy elapsed-time assertions now derive seco
 | GATE 1 | NOT RUN overall | T01–T05/render pass; closure still requires one clean single-worker browser run. GATE 2 not started. |
 
 Additional retained supersessions: A15/A15_full max distance 288 → §6/T06; A18 stop/resume and GA10 same-support recovery → §4.4; GPT/FIX texture/hitbox contracts → §5.1 plus ART_ASSET_GAP/GATE 3A.
+
+## Checkpoint: GATE 2 fairness/replay slice — 2026-10-10
+
+| Item ID | Status | Evidence / open work |
+|---|---|---|
+| T14 deterministic Stage 1–5 | PASS | Five fixed agents × `canonical_v1`/`mirror_v1` = 10/10 failed before completing Stage 5; no input-specific runtime traps were added. |
+| T14 random experiment | NOT RUN for 30-stage acceptance | Descriptive Stage 1–5 partial: 3,000/3,000 attempts, 9 completions, rate 0.300%, one-sided 95% Clopper–Pearson upper 0.523%. The v1.3 threshold applies to full 30-stage attempts and is not claimed here. |
+| T15 Stage 1–5 | PASS (slice) | Both catalog entries completed two independent real gameplay-scene replays through the shared command router at 120 Hz; 15/15 route/support checkpoint hashes matched per entry, 0 hits, no skill, minimum gap 240.044. Full physics-snapshot search, stages 6–30, boundary states, and uninterrupted 30-stage replay remain NOT RUN. |
+| T06 K1/K2 Stage 1–5 | PASS | Active P=0 band bean-penalty simulation: minimum gap 181.956, post-penalty 184.621, after 5 s 214.927. Both skill-less damage-free catalog replays stayed at minimum gap 240.044. All six future-band equilibrium equations produced 288/261/234/210/162/210; their hazard simulations remain later-stage work. |
+| T06 three-route catch | PASS | L/C/R and both adjacent transfer midpoints caught at gap 28; x outside the real claw span did not. |
+| T07 audio observability | PASS | Bounded 24-entry read-only `audio_events` snapshot exposes `{event,t}` records; bean warning is observable without a production setter. |
+| T10 pause | PASS | 240 explicit paused physics ticks left Time Wings remaining time unchanged. |
+
+Targeted Godot results: `tests/test_gate2_fairness.gd` 8 PASS / 0 FAIL; `tests/test_gate2_runtime.gd` 5/0; `tests/test_gate2_stage_database.gd` 5/0; `tests/test_gate1.gd` 7/0. The first red run failed because the new classes/API did not exist; the first replay run then exposed a witness command attempted while its target support was still closed, and the validator was corrected to wait for a real connected support window.

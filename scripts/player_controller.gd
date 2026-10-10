@@ -134,9 +134,11 @@ func _update_branch_movement(delta: float) -> void:
 		return
 	_begin_branch_transition(requested_direction)
 
-func request_branch_direction(direction: int) -> void:
+func request_branch_direction(direction: int) -> bool:
 	if (direction == -1 or direction == 1) and _pending_branch_direction == 0 and stages != null and stages.stage_for_y(global_position.y) >= 3 and movement_mode == MovementMode.ATTACHED:
 		_pending_branch_direction = direction
+		return true
+	return false
 
 func _begin_branch_transition(direction: int) -> bool:
 	var target := active_branch + direction

@@ -55,6 +55,31 @@ static func pressure_profile(stage_number: int) -> Dictionary:
 static func retry_gap_for_stage(stage_number: int) -> float:
 	return 240.0 if stage_number <= 24 else 180.0
 
+static func pressure_equilibrium_table() -> Array:
+	var result: Array = []
+	for band: Dictionary in Balance.SPIDER_PRESSURE_BANDS:
+		var pressure := float(band.pressure)
+		result.append(float(band.g_lo) + 108.0 * 12.0 / (12.0 + pressure))
+	return result
+
+static func simulate_bean_penalty_safety(stage_number: int) -> Dictionary:
+	var profile := pressure_profile(stage_number)
+	var gap := float(profile.g_lo) + 108.0 * 12.0 / (12.0 + float(profile.pressure))
+	var minimum_gap := gap
+	var boost_remaining := Balance.SPIDER_BOOST_SECONDS
+	var penalty_ticks := int(round(Balance.BEAN_KNOCKBACK_SECONDS * 120.0))
+	var total_ticks := penalty_ticks + 5 * 120
+	var post_penalty_gap := gap
+	for tick in total_ticks:
+		var player_speed := -Balance.BEAN_KNOCKBACK_SPEED if tick < penalty_ticks else Balance.PLAYER_VERTICAL_SPEED
+		var spider_speed := speed_for_state(gap, stage_number, 0.0, boost_remaining > 0.0, false)
+		gap += (player_speed - spider_speed) / 120.0
+		minimum_gap = minf(minimum_gap, gap)
+		boost_remaining = maxf(boost_remaining - 1.0 / 120.0, 0.0)
+		if tick == penalty_ticks - 1:
+			post_penalty_gap = gap
+	return {"minimum_gap": minimum_gap, "post_penalty_gap": post_penalty_gap, "final_gap": gap}
+
 static func catchup_state(gap: float, active: bool, blend: float, delta: float) -> Dictionary:
 	if not active and gap >= Balance.SPIDER_CATCHUP_ON_GAP:
 		active = true

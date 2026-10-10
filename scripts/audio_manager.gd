@@ -14,6 +14,7 @@ const STREAMS := {
 	"climb_rustle_2": preload("res://assets/audio/climb_rustle_2.ogg"), "climb_rustle_3": preload("res://assets/audio/climb_rustle_3.ogg"),
 }
 const VOLUME_DB := {"music": -14.0, "ambience": -24.0, "sfx": -7.0, "heartbeat": -12.0}
+const EVENT_RING_CAPACITY := 24
 
 var music := AudioStreamPlayer.new()
 var wind := AudioStreamPlayer.new()
@@ -32,6 +33,7 @@ var spider_cooldown := 0.0
 var wings_was_active := false
 var danger_was_active := false
 var played_roles := {}
+var audio_events: Array = []
 
 func _ready() -> void:
 	for player in [music, wind, sfx, heartbeat]:
@@ -134,6 +136,7 @@ func _update_movement_sounds(game: GameManager, delta: float) -> void:
 
 func play_music(name: String) -> void:
 	played_roles[name] = true
+	_record_event(name)
 	if music.stream == STREAMS[name] and music.playing:
 		return
 	music.stream = STREAMS[name]
@@ -141,12 +144,23 @@ func play_music(name: String) -> void:
 
 func play_sfx(name: String) -> void:
 	played_roles[name] = true
+	_record_event(name)
 	var one_shot := AudioStreamPlayer.new()
 	one_shot.stream = STREAMS[name]
 	one_shot.volume_db = VOLUME_DB.sfx
 	add_child(one_shot)
 	one_shot.finished.connect(one_shot.queue_free)
 	one_shot.play()
+
+func _record_event(event_name: String) -> void:
+	var game := get_parent() as GameManager
+	var event_time := game.total_time if game != null else 0.0
+	audio_events.append({"event": event_name, "t": snappedf(event_time, 0.001)})
+	while audio_events.size() > EVENT_RING_CAPACITY:
+		audio_events.pop_front()
+
+func audio_event_snapshot() -> Array:
+	return audio_events.duplicate(true)
 
 func toggle_mute() -> void:
 	muted = not muted
