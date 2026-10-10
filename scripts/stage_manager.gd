@@ -5,17 +5,11 @@ signal stage_completed(stage_number: int)
 signal prototype_completed
 const BRANCH_HALF_WIDTH := 18.0
 const STAGE_3_SPLIT_HEIGHT := 350.0
-const STAGES := [
-	{"number": 1, "layout": "TRUNK", "bean_slots": [], "skill_slots": []},
-	{"number": 2, "layout": "SIMPLE_ROUTE_CHANGE", "bean_slots": [], "skill_slots": []},
-	{"number": 3, "layout": "THREE_BRANCH_SPLIT", "bean_slots": [], "skill_slots": []},
-	{"number": 4, "layout": "THREE_BRANCHES", "bean_slots": [], "skill_slots": []},
-	{"number": 5, "layout": "THREE_BRANCHES", "bean_slots": [], "skill_slots": []},
-]
 var current_stage := 1
 var completion_count := 0
 var completed_stages: Dictionary = {}
 var run_seed := Balance.PATTERN_SEED
+var run_variant := StageDatabase.CANONICAL_VARIANT
 var patterns: Array = []
 var summit_flash_count := 0
 var stage_banner := ""
@@ -49,15 +43,14 @@ func reset_run() -> void:
 	stage_banner_remaining = 0.0
 	patterns = generate_patterns(run_seed)
 func generate_patterns(seed_value: int) -> Array:
-	var rng := RandomNumberGenerator.new()
-	rng.seed = seed_value
 	var result: Array = []
-	for stage_index in Balance.STAGE_COUNT:
-		var stage_number := stage_index + 1
+	for stage: Dictionary in StageDatabase.stages_for_variant(run_variant):
+		var stage_number := int(stage.number)
 		var route_end_progress := [1.0, 1.0, 1.0]
 		var open_routes := [0, 1, 2]
+		# Gate 1 dead-tip geometry remains active until the Gate 2 FORK runtime slice
+		# replaces it with encounter-height support windows.
 		if stage_number == 2:
-			rng.randi_range(0, 2) # Preserve later stage pattern data from the previous seed stream.
 			route_end_progress[1] = 0.55
 			route_end_progress[0] = 0.995
 		elif stage_number == 3:
@@ -70,23 +63,15 @@ func generate_patterns(seed_value: int) -> Array:
 			if route_end_progress[route] < 1.0:
 				open_routes.erase(route)
 		var bean_slots: Array = []
-		if stage_number >= 4:
-			for slot_index in 4:
-				var blocked := 0
-				if stage_number == 4:
-					blocked = [0, [0, 2][rng.randi_range(0, 1)], [0, 2][rng.randi_range(0, 1)], 1][slot_index]
-				else:
-					blocked = [2, [0, 2][rng.randi_range(0, 1)], 1, [1, 2][rng.randi_range(0, 1)]][slot_index]
-				var slot_progress := 0.18 + slot_index * 0.20
+		for encounter: Dictionary in stage.encounters:
+			if String(encounter.recipe.kind) == "BEAN":
+				var blocked := int(encounter.recipe.lane)
+				var slot_progress := float(encounter.anchor) / float(stage.length)
 				var safe_routes := [0, 1, 2]
 				safe_routes.erase(blocked)
-				safe_routes = safe_routes.filter(func(route: int) -> bool: return route_end_progress[route] > slot_progress)
-				if safe_routes.is_empty():
-					blocked = (blocked + 1) % 3
-					safe_routes = [0, 1, 2].filter(func(route: int) -> bool: return route != blocked and route_end_progress[route] > slot_progress)
-				var safety_route: int = safe_routes[rng.randi_range(0, safe_routes.size() - 1)]
-				bean_slots.append({"progress": slot_progress, "blocked_route": blocked, "safe_routes": safe_routes, "safety_route": safety_route, "warning_seconds": Balance.BEAN_WARNING_SECONDS})
-		result.append({"stage": stage_number, "entry": 1, "open_routes": open_routes, "route_end_progress": route_end_progress, "bean_slots": bean_slots})
+				var safety_route := int(encounter.witness)
+				bean_slots.append({"id": encounter.id, "anchor": encounter.anchor, "warning_height": encounter.warning_height, "occupancy": encounter.occupancy, "progress": slot_progress, "blocked_route": blocked, "safe_routes": safe_routes, "safety_route": safety_route, "warning_seconds": Balance.BEAN_WARNING_SECONDS})
+		result.append({"stage": stage_number, "entry": 1, "open_routes": open_routes, "route_end_progress": route_end_progress, "bean_slots": bean_slots, "encounters": stage.encounters, "variant": run_variant})
 	return result
 func pattern_hash(seed_value: int) -> int: return hash(var_to_str(generate_patterns(seed_value)))
 func patterns_are_reachable(candidate: Array) -> bool:
