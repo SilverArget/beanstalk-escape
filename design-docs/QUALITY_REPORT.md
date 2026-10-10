@@ -134,6 +134,18 @@ Project physics remains `120 Hz`; legacy elapsed-time assertions now derive seco
 
 Additional retained supersessions: A15/A15_full max distance 288 → §6/T06; A18 stop/resume and GA10 same-support recovery → §4.4; GPT/FIX texture/hitbox contracts → §5.1 plus ART_ASSET_GAP/GATE 3A.
 
+### Gate 2 legacy supersessions retained at closure
+
+| Legacy assertion | v1.3 replacement and active coverage |
+|---|---|
+| A08 seeded RNG must produce multiple patterns | Ek A fixed `canonical_v1` + `mirror_v1` catalog; `A08_v13`, `G2-DATA-04`. |
+| A17 Stage 2 center-first / Stage 3 ordered random closures | Ek A encounter recipes and Stage 3 FORK windows; `A17_v13`, `G2-DATA-03/04`, `G2-RUNTIME-01`. |
+| A14 spider ratio capped at 1.0 above 420 px | §6 catch-up hysteresis/full formula; `A14`, `T06`. |
+| A20 TIME ratio measured against fixed 0.88 base | §6 gap/catch-up formula, then §9 0.50 threat factor; `A20`, `T10`. |
+| FIX11/FIX14/FIX21 GPT source-string contracts | §5.1, §4.4, `T04`, `VIS03`, `G2-RUNTIME-01`; final art remains GATE 3A. |
+
+Active migrated behavior remains asserted: GA03 samples an actual open FORK interval; GA06/GA07 follow the Ek A witness; A10 isolates the 1.15 bean factor below catch-up; A10b observes no climb/transfer during stun then a 0.400 s transfer; A11b requests release and measures the 1.600 s warning; A14/A20 compare against the complete §6 formula.
+
 ## Checkpoint: GATE 2 fairness/replay slice — 2026-10-10
 
 | Item ID | Status | Evidence / open work |
