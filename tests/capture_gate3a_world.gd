@@ -54,13 +54,26 @@ func _capture_stage(sample: Dictionary) -> void:
 	var position := Vector2(0.0, -float(requested_stage - 1) * Balance.STAGE_HEIGHT - float(sample.get("progress", 0.35)) * Balance.STAGE_HEIGHT)
 	if bool(sample.get("split", false)):
 		position.y = -Balance.STAGE_HEIGHT * 2.0 - 245.0
+	elif requested_stage >= 3:
+		var progress := float(sample.get("progress", 0.35))
+		for route in 3:
+			if game.stages.is_route_open_at(requested_stage, route, progress):
+				position.x = float(Balance.ROUTE_X[route])
+				break
 	await _place_player(position)
 	rig.visible = false
 	var background := await _render_frame()
+	var world_only := await _render_world_only(false)
+	var sky_only := await _render_world_only(true)
+	var support_mask := await _render_support_mask()
+	var outline_mask := await _render_support_mask(true)
+	world_only.save_png(OUTPUT_ROOT.path_join("%s-world-only.png" % sample.label))
+	sky_only.save_png(OUTPUT_ROOT.path_join("%s-sky-only.png" % sample.label))
+	support_mask.save_png(OUTPUT_ROOT.path_join("%s-support-mask.png" % sample.label))
 	rig.visible = true
 	var image := await _render_frame()
 	image.save_png(OUTPUT_ROOT.path_join("%s-960x540.png" % sample.label))
-	var measurement := _measure_frame(image, background, requested_stage, game.player.global_position)
+	var measurement := _measure_frame(image, background, world_only, support_mask, outline_mask, sky_only, requested_stage, game.player.global_position)
 	if bool(sample.get("split", false)):
 		var split_start_world := Vector2(0.0, -Balance.STAGE_HEIGHT * 2.0 - 140.0)
 		var split_end_world := Vector2(0.0, -Balance.STAGE_HEIGHT * 2.0 - 350.0)
@@ -76,6 +89,7 @@ func _capture_stage(sample: Dictionary) -> void:
 			"visible_in_frame": split_start_screen.y >= 0.0 and split_start_screen.y <= 540.0 and split_end_screen.y >= 0.0 and split_end_screen.y <= 540.0,
 		}
 	measurement["file"] = "%s-960x540.png" % sample.label
+	measurement["support_mask_file"] = "%s-support-mask.png" % sample.label
 	measurement["label"] = sample.label
 	document.frames.append(measurement)
 
@@ -86,19 +100,29 @@ func _capture_seam(kind: String, index: int) -> void:
 		position.y = -Balance.STAGE_HEIGHT * 3.0 - 260.0 - shift
 	await _place_player(position)
 	var image := await _render_frame()
+	var world_only := await _render_world_only(false)
+	var sky_only := await _render_world_only(true)
+	var support_mask := await _render_support_mask()
+	var outline_mask := await _render_support_mask(true)
 	var file_name := "%s-seam-%02d.png" % [kind, index]
+	var mask_file_name := "%s-seam-%02d-support-mask.png" % [kind, index]
 	image.save_png(SEAM_ROOT.path_join(file_name))
+	support_mask.save_png(SEAM_ROOT.path_join(mask_file_name))
 	var scan_y := 270
 	var expected_width := 180 if kind == "trunk" else 44
 	var run := _best_surface_run(image, 480, scan_y, expected_width - 12, expected_width + 12, 20)
 	document.seam_frames.append({
 		"file": file_name,
+		"support_mask_file": mask_file_name,
 		"surface": kind,
 		"stage_for_y": game.stages.stage_for_y(game.player.global_position.y),
 		"camera_shift_px": shift,
 		"module_quarter_step": shift / 64.0,
 		"surface_scan_y": run.scan_y,
 		"visible_width_px": run.width,
+		"support_mask_sky_pixel_count": _mask_sky_pixel_count(world_only, support_mask, sky_only),
+		"outline_thickness_px": _outline_thickness_at(outline_mask, support_mask, int(run.scan_y), int(run.center_x)),
+		"branch_visual_center_deviation_px": _branch_deviation_measurements(game.player.global_position.y) if kind == "branch" else [],
 	})
 
 func _place_player(position: Vector2) -> void:
@@ -128,7 +152,49 @@ func _render_frame() -> Image:
 	await RenderingServer.frame_post_draw
 	return get_root().get_texture().get_image()
 
-func _measure_frame(image: Image, background: Image, stage_number: int, player_position: Vector2) -> Dictionary:
+func _render_world_only(sky_only: bool) -> Image:
+	var hidden_nodes := _hide_non_world_canvas_nodes()
+	world.qa_sky_only = sky_only
+	world.queue_redraw()
+	var image := await _render_frame()
+	world.qa_sky_only = false
+	_restore_canvas_nodes(hidden_nodes)
+	return image
+
+func _render_support_mask(include_outline := false) -> Image:
+	var hidden_nodes := _hide_non_world_canvas_nodes()
+	world.qa_support_mask = true
+	world.qa_support_mask_include_outline = include_outline
+	world.queue_redraw()
+	var raw := await _render_frame()
+	world.qa_support_mask = false
+	world.qa_support_mask_include_outline = false
+	_restore_canvas_nodes(hidden_nodes)
+	var mask := Image.create(raw.get_width(), raw.get_height(), false, Image.FORMAT_RGBA8)
+	for y in raw.get_height():
+		for x in raw.get_width():
+			var pixel := raw.get_pixel(x, y)
+			mask.set_pixel(x, y, Color.WHITE if pixel.r > 0.95 and pixel.g > 0.95 and pixel.b > 0.95 else Color.BLACK)
+	return mask
+
+func _hide_non_world_canvas_nodes() -> Array[Dictionary]:
+	var hidden_nodes: Array[Dictionary] = []
+	for child: Node in game.get_children():
+		if child == world:
+			continue
+		if child is CanvasItem:
+			hidden_nodes.append({"node": child, "visible": (child as CanvasItem).visible})
+			(child as CanvasItem).visible = false
+		elif child is CanvasLayer:
+			hidden_nodes.append({"node": child, "visible": (child as CanvasLayer).visible})
+			(child as CanvasLayer).visible = false
+	return hidden_nodes
+
+func _restore_canvas_nodes(hidden_nodes: Array[Dictionary]) -> void:
+	for entry: Dictionary in hidden_nodes:
+		entry.node.visible = entry.visible
+
+func _measure_frame(image: Image, background: Image, world_only: Image, support_mask: Image, outline_mask: Image, sky_only: Image, stage_number: int, player_position: Vector2) -> Dictionary:
 	var surface_runs := []
 	if stage_number <= 2:
 		surface_runs.append(_best_surface_run(image, 480, 270, 160, 200))
@@ -139,6 +205,10 @@ func _measure_frame(image: Image, background: Image, stage_number: int, player_p
 			var run := _best_surface_run(image, screen_x, 270, 36, 56, 130, int(center_ranges[route][0]), int(center_ranges[route][1]))
 			run["route"] = route
 			surface_runs.append(run)
+	var outline_samples := []
+	for run: Dictionary in surface_runs:
+		if int(run.width) > 0:
+			outline_samples.append(_outline_thickness_at(outline_mask, support_mask, int(run.scan_y), int(run.center_x)))
 	return {
 		"requested_stage": stage_number,
 		"stage_for_y": game.stages.stage_for_y(player_position.y),
@@ -150,8 +220,63 @@ func _measure_frame(image: Image, background: Image, stage_number: int, player_p
 		"largest_texture_element_px": float(world.qa_visual_contract().texture_repeat_px),
 		"largest_leaf_px": float(world.qa_visual_contract().max_leaf_px),
 		"outline_px": float(world.qa_visual_contract().outline_px),
+		"outline_thickness_measured_px": outline_samples,
+		"support_mask_sky_pixel_count": _mask_sky_pixel_count(world_only, support_mask, sky_only),
+		"branch_visual_center_deviation_px": _branch_deviation_measurements(player_position.y) if stage_number >= 3 else [],
 		"character_boundary_contrast_ge_3_ratio": snappedf(_character_contrast(image, background), 0.0001),
 	}
+
+func _branch_deviation_measurements(world_y: float) -> Array:
+	var values := []
+	for route in 3:
+		values.append(snappedf(world.qa_branch_visual_deviation(route, world_y), 0.01))
+	return values
+
+func _mask_sky_pixel_count(image: Image, support_mask: Image, sky_only: Image) -> int:
+	var count := 0
+	for y in image.get_height():
+		for x in image.get_width():
+			if support_mask.get_pixel(x, y).r > 0.95 and _color_delta(image.get_pixel(x, y), sky_only.get_pixel(x, y)) < 0.01:
+				count += 1
+	return count
+
+func _outline_thickness_at(image: Image, support_mask: Image, y: int, expected_x: int) -> float:
+	if y < 0 or y >= image.get_height():
+		return 0.0
+	var mask_run := _binary_run(support_mask, expected_x, y, true)
+	var painted_run := _binary_run(image, expected_x, y, false)
+	if int(mask_run.width) <= 0 or int(painted_run.width) <= 0:
+		return 0.0
+	return snappedf(maxf(0.0, float(int(painted_run.width) - int(mask_run.width)) * 0.5), 0.1)
+
+func _binary_run(image: Image, expected_x: int, y: int, mask_mode: bool) -> Dictionary:
+	var center := clampi(expected_x, 0, image.get_width() - 1)
+	var found := -1
+	for radius in 80:
+		for candidate in [center - radius, center + radius]:
+			if candidate < 0 or candidate >= image.get_width():
+				continue
+			var matches := image.get_pixel(candidate, y).r > 0.95 if mask_mode else _is_surface(image.get_pixel(candidate, y))
+			if matches:
+				found = candidate
+				break
+		if found >= 0:
+			break
+	if found < 0:
+		return {"width": 0}
+	var left := found
+	var right := found
+	while left > 0:
+		var left_matches := image.get_pixel(left - 1, y).r > 0.95 if mask_mode else _is_surface(image.get_pixel(left - 1, y))
+		if not left_matches:
+			break
+		left -= 1
+	while right < image.get_width() - 1:
+		var right_matches := image.get_pixel(right + 1, y).r > 0.95 if mask_mode else _is_surface(image.get_pixel(right + 1, y))
+		if not right_matches:
+			break
+		right += 1
+	return {"left": left, "right": right, "width": right - left + 1}
 
 func _surface_run(image: Image, expected_x: int, expected_y: int) -> Dictionary:
 	var y := clampi(expected_y, 0, image.get_height() - 1)
