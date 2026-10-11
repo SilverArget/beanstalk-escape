@@ -1,8 +1,8 @@
 {
-  "reference_version": "gate-3a-pilot-0.4",
+  "reference_version": "gate-3a-pilot-0.5-timebox",
   "date": "2026-10-11",
   "status": "PILOT_PENDING_OWNER_REVIEW",
-  "reason": "Tur 4 pilot revision: joint overlaps and image_gen Time Wings are ready for owner review; no owner lock is asserted.",
+  "reason": "Tur 5 timebox checkpoint: measured proportions, atmosphere-selected outline, upper-back wing anchor, and contact telemetry are implemented; alpha>127 component cleanup and sunny contrast remain pending. No owner lock is asserted.",
   "source": "Codex built-in image_gen, 11.10.2026",
   "rig_contract": {
     "scene": "res://scenes/character_rig.tscn",
@@ -30,7 +30,7 @@
       "source": "Codex image_gen, 11.10.2026, yönetici kararı 10.10.2026",
       "dimensions": [1254, 1254],
       "alpha_result": "PASS: Format32bppArgb; 98,596 sampled pixels: 75.85% alpha=0, 24.05% partial alpha, 0.10% alpha=255; all outer corners alpha=0; per-cell detached components removed",
-      "control_result": "PASS measured: all 150 rig-only animation samples are one 8-connected alpha component at native 960x540"
+      "control_result": "PARTIAL measured at alpha>127: 129/150 rig-only samples are one 8-connected component; idle 103-104 px and climb 102-105 px head-to-foot; body width 40 px; sunny minimum contrast-boundary pass ratio 73.30%; contact gap maximum 1.9 px"
     },
     {
       "skin": "F1",
@@ -40,7 +40,7 @@
       "source": "Codex image_gen, 11.10.2026, yönetici kararı 10.10.2026",
       "dimensions": [1254, 1254],
       "alpha_result": "PASS: Format32bppArgb; 98,596 sampled pixels: 73.03% alpha=0, 26.82% partial alpha, 0.14% alpha=255; all outer corners alpha=0; per-cell detached components removed",
-      "control_result": "PASS measured: all 150 rig-only animation samples are one 8-connected alpha component at native 960x540"
+      "control_result": "PARTIAL measured at alpha>127: 73/150 rig-only samples are one 8-connected component; idle 104-105 px and climb 103-106 px head-to-foot; body width 40 px; sunny minimum contrast-boundary pass ratio 73.05%; contact gap maximum 1.8 px"
     },
     {
       "skin": "SHARED",

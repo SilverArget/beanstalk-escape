@@ -26,6 +26,7 @@ var skeleton: Node2D
 var time_wings: Sprite2D
 var cutout_material: ShaderMaterial
 var non_hair_material: ShaderMaterial
+var silhouette_material: ShaderMaterial
 var _last_state := ""
 var _last_penalty := 0
 
@@ -95,6 +96,18 @@ func seek_animation(animation_name: String, time_seconds: float) -> void:
 	animation_player.seek(time_seconds, true)
 	animation_player.pause()
 
+func set_outline_background(background: Color) -> void:
+	var red := background.r / 12.92 if background.r <= 0.04045 else pow((background.r + 0.055) / 1.055, 2.4)
+	var green := background.g / 12.92 if background.g <= 0.04045 else pow((background.g + 0.055) / 1.055, 2.4)
+	var blue := background.b / 12.92 if background.b <= 0.04045 else pow((background.b + 0.055) / 1.055, 2.4)
+	var luminance := 0.2126 * red + 0.7152 * green + 0.0722 * blue
+	var dark_contrast := (luminance + 0.05) / 0.058
+	var light_contrast := 0.95 / (luminance + 0.05)
+	var use_light := light_contrast > dark_contrast
+	cutout_material.set_shader_parameter("use_light_outline", use_light)
+	non_hair_material.set_shader_parameter("use_light_outline", use_light)
+	silhouette_material.set_shader_parameter("use_light_outline", use_light)
+
 func rig_contract() -> Dictionary:
 	return {
 		"skin": skin_id,
@@ -113,39 +126,91 @@ func _build_rig() -> void:
 	cutout_shader.code = """
 shader_type canvas_item;
 uniform bool suppress_stray_red = false;
+uniform vec4 dark_outline : source_color = vec4(0.035, 0.045, 0.070, 1.0);
+uniform vec4 light_outline : source_color = vec4(0.965, 0.950, 0.895, 1.0);
+uniform bool use_light_outline = false;
+
 void fragment() {
 	vec4 pixel = texture(TEXTURE, UV);
 	bool red_fringe = suppress_stray_red && pixel.r > 0.45 && pixel.g < 0.30 && pixel.b < 0.22 && pixel.r > pixel.g * 2.6;
-	if (pixel.a < 0.18 || red_fringe) { discard; }
-	COLOR = pixel * COLOR;
+	if (pixel.a >= 0.90 && !red_fringe) {
+		COLOR = pixel * COLOR;
+	} else {
+		float neighbour_alpha = 0.0;
+		for (int y = -2; y <= 2; y++) {
+			for (int x = -2; x <= 2; x++) {
+				vec4 neighbour = texture(TEXTURE, UV + vec2(float(x), float(y)) * 9.0 * TEXTURE_PIXEL_SIZE);
+				bool neighbour_red_fringe = suppress_stray_red && neighbour.r > 0.45 && neighbour.g < 0.30 && neighbour.b < 0.22 && neighbour.r > neighbour.g * 2.6;
+				neighbour_alpha = max(neighbour_alpha, neighbour_red_fringe ? 0.0 : neighbour.a);
+			}
+		}
+		if (neighbour_alpha < 0.90) {
+			discard;
+		} else {
+			COLOR = use_light_outline ? light_outline : dark_outline;
+		}
+	}
 }
 """
 	cutout_material.shader = cutout_shader
 	non_hair_material = cutout_material.duplicate() as ShaderMaterial
 	non_hair_material.set_shader_parameter("suppress_stray_red", true)
-	skeleton = Node2D.new()
+	# All parts share the same atmosphere-selected 2–4 px shader outline.
+	silhouette_material = ShaderMaterial.new()
+	var silhouette_shader := Shader.new()
+	silhouette_shader.code = """
+shader_type canvas_item;
+uniform vec4 dark_outline : source_color = vec4(0.035, 0.045, 0.070, 1.0);
+uniform vec4 light_outline : source_color = vec4(0.965, 0.950, 0.895, 1.0);
+uniform bool use_light_outline = false;
+void fragment() {
+	vec4 pixel = texture(TEXTURE, UV);
+	if (pixel.a >= 0.18) {
+		COLOR = pixel;
+	} else {
+		float neighbour_alpha = 0.0;
+		for (int y = -2; y <= 2; y++) {
+			for (int x = -2; x <= 2; x++) {
+				if (x * x + y * y <= 4) {
+					neighbour_alpha = max(neighbour_alpha, texture(TEXTURE, UV + vec2(float(x), float(y)) * TEXTURE_PIXEL_SIZE).a);
+				}
+			}
+		}
+		if (neighbour_alpha < 0.18) {
+			discard;
+		} else {
+			COLOR = use_light_outline ? light_outline : dark_outline;
+		}
+	}
+}
+"""
+	silhouette_material.shader = silhouette_shader
+	skeleton = CanvasGroup.new()
 	skeleton.name = "Skeleton"
 	skeleton.position = CLIMB_BODY_OFFSET
-	skeleton.scale = Vector2.ONE * 0.85
+	skeleton.scale = Vector2(1.12, 1.02)
 	skeleton.z_index = 10
+	(skeleton as CanvasGroup).fit_margin = 4.0
+	(skeleton as CanvasGroup).clear_margin = 4.0
+	skeleton.material = silhouette_material
 	add_child(skeleton)
 	var pelvis := _add_bone("pelvis", skeleton, Vector2(0, 15))
 	var torso := _add_bone("torso", pelvis, Vector2(0, -15))
 	var head := _add_bone("head", torso, Vector2(0, -27))
-	var upper_arm_l := _add_bone("upper_arm_l", torso, Vector2(-4, 0))
-	var upper_arm_r := _add_bone("upper_arm_r", torso, Vector2(4, 0))
+	var upper_arm_l := _add_bone("upper_arm_l", torso, Vector2(-14.5, 0))
+	var upper_arm_r := _add_bone("upper_arm_r", torso, Vector2(14, 0))
 	var forearm_l := _add_bone("forearm_l", upper_arm_l, Vector2(0, 14))
 	var forearm_r := _add_bone("forearm_r", upper_arm_r, Vector2(0, 14))
-	var hand_l := _add_bone("hand_l", forearm_l, Vector2(0, 16))
-	var hand_r := _add_bone("hand_r", forearm_r, Vector2(0, 16))
-	var thigh_l := _add_bone("thigh_l", pelvis, Vector2(-7, 6))
-	var thigh_r := _add_bone("thigh_r", pelvis, Vector2(7, 6))
+	var hand_l := _add_bone("hand_l", forearm_l, Vector2(0, 13))
+	var hand_r := _add_bone("hand_r", forearm_r, Vector2(0, 13))
+	var thigh_l := _add_bone("thigh_l", pelvis, Vector2(-20, 6))
+	var thigh_r := _add_bone("thigh_r", pelvis, Vector2(12.5, 6))
 	var shin_l := _add_bone("shin_l", thigh_l, Vector2(0, 19))
 	var shin_r := _add_bone("shin_r", thigh_r, Vector2(0, 19))
 	var foot_l := _add_bone("foot_l", shin_l, Vector2(0, 18))
 	var foot_r := _add_bone("foot_r", shin_r, Vector2(0, 18))
 	var accessory := _add_bone("accessory", torso, Vector2(0, 2))
-	var wing_anchor := _add_bone("wing_anchor", torso, Vector2(0, 1))
+	var wing_anchor := _add_bone("wing_anchor", torso, Vector2(0, -8))
 
 	_add_part("hair_back", head, 2, -5)
 	_add_part("head_neutral", head, 0, 4)
@@ -214,10 +279,12 @@ func _configure_part_pose() -> void:
 	part_sprites.head_neutral.position = Vector2(-1, 4)
 	part_sprites.head_hurt.position = Vector2(-1, 4)
 	part_sprites.torso.position = Vector2(0, -7)
+	part_sprites.torso.scale = Vector2(ART_SCALE * 1.73, ART_SCALE)
 	part_sprites.pelvis.position = Vector2(0, -12)
+	part_sprites.pelvis.scale = Vector2(ART_SCALE * 1.73, ART_SCALE)
 	for part_name in ["upper_arm_l", "upper_arm_r"]:
-		part_sprites[part_name].position = Vector2(0, 4)
-		part_sprites[part_name].scale = Vector2.ONE * (ART_SCALE * 1.10)
+		part_sprites[part_name].position = Vector2(0, 1)
+		part_sprites[part_name].scale = Vector2.ONE * (ART_SCALE * 1.25)
 	for part_name in ["forearm_l", "forearm_r"]:
 		part_sprites[part_name].position = Vector2(0, 7)
 	for part_name in ["hand_l_open", "hand_r_open", "hand_l_grip", "hand_r_grip"]:
@@ -228,10 +295,11 @@ func _configure_part_pose() -> void:
 		part_sprites[part_name].position = Vector2(0, 4)
 	for part_name in ["foot_l", "foot_r"]:
 		part_sprites[part_name].position = Vector2(0, 8)
-	part_sprites.accessory.position = Vector2(5, 5)
-	part_sprites.accessory.scale = Vector2.ONE * (ART_SCALE * 0.78)
+	part_sprites.accessory.position = Vector2(0, 5)
+	part_sprites.accessory.scale = Vector2.ONE * (ART_SCALE * 0.90)
 	part_sprites.wing_anchor.position = Vector2(3, 3)
 	part_sprites.wing_anchor.scale = Vector2.ONE * (ART_SCALE * 0.72)
+	part_sprites.wing_anchor.visible = false
 
 func _build_time_wings(anchor: Node2D) -> void:
 	time_wings = Sprite2D.new()
