@@ -4,15 +4,12 @@ const OUTPUT_ROOT := "res://../03-test/qa/world"
 const SEAM_ROOT := OUTPUT_ROOT + "/seam"
 const MEASUREMENTS_PATH := OUTPUT_ROOT + "/measurements.json"
 const STAGE_SAMPLES := [
-	{"label": "stage-1", "stage": 1, "position": Vector2(0.0, -525.0)},
-	{"label": "stage-2", "stage": 2, "position": Vector2(0.0, -2025.0)},
-	{"label": "stage-3", "stage": 3, "position": Vector2(0.0, -3440.0)},
-	{"label": "stage-4", "stage": 4, "position": Vector2(0.0, -5025.0)},
-	{"label": "stage-5", "stage": 5, "position": Vector2(0.0, -6525.0)},
-]
-const SURFACE_COLORS := [
-	Color("173d2f"), Color("4c9a4d"), Color("276346"), Color("b8dd72"),
-	Color("397447"), Color("4e9556"), Color("5aa860"), Color("77bb58"),
+	{"label": "stage-1", "stage": 1, "progress": 0.35},
+	{"label": "stage-2", "stage": 2, "progress": 0.35},
+	{"label": "stage-3", "stage": 3, "progress": 0.55},
+	{"label": "stage-3-split", "stage": 3, "split": true},
+	{"label": "stage-4", "stage": 4, "progress": 0.35},
+	{"label": "stage-5", "stage": 5, "progress": 0.35},
 ]
 
 var game: GameManager
@@ -45,52 +42,84 @@ func _initialize() -> void:
 	for sample: Dictionary in STAGE_SAMPLES:
 		await _capture_stage(sample)
 	for index in 13:
-		await _capture_seam(index)
+		await _capture_seam("trunk", index)
+		await _capture_seam("branch", index)
 	var file := FileAccess.open(MEASUREMENTS_PATH, FileAccess.WRITE)
 	file.store_string(JSON.stringify(document, "\t") + "\n")
 	print("PASS G3A-WORLD-CAPTURE stages=%d seam=%d" % [document.frames.size(), document.seam_frames.size()])
 	quit(0)
 
 func _capture_stage(sample: Dictionary) -> void:
-	await _place_player(sample.position)
+	var requested_stage := int(sample.stage)
+	var position := Vector2(0.0, -float(requested_stage - 1) * Balance.STAGE_HEIGHT - float(sample.get("progress", 0.35)) * Balance.STAGE_HEIGHT)
+	if bool(sample.get("split", false)):
+		position.y = -Balance.STAGE_HEIGHT * 2.0 - 245.0
+	await _place_player(position)
 	rig.visible = false
 	var background := await _render_frame()
 	rig.visible = true
 	var image := await _render_frame()
 	image.save_png(OUTPUT_ROOT.path_join("%s-960x540.png" % sample.label))
-	var measurement := _measure_frame(image, background, int(sample.stage), game.player.global_position)
+	var measurement := _measure_frame(image, background, requested_stage, game.player.global_position)
+	if bool(sample.get("split", false)):
+		var split_start_world := Vector2(0.0, -Balance.STAGE_HEIGHT * 2.0 - 140.0)
+		var split_end_world := Vector2(0.0, -Balance.STAGE_HEIGHT * 2.0 - 350.0)
+		var split_start_screen := world.get_global_transform_with_canvas() * split_start_world
+		var split_end_screen := world.get_global_transform_with_canvas() * split_end_world
+		var branch_end_screen_x := []
+		for route in 3:
+			branch_end_screen_x.append(snappedf((world.get_global_transform_with_canvas() * Vector2(Balance.ROUTE_X[route], split_end_world.y)).x, 0.1))
+		measurement["split"] = {
+			"world_y_range": [split_start_world.y, split_end_world.y],
+			"screen_y_range": [snappedf(split_start_screen.y, 0.1), snappedf(split_end_screen.y, 0.1)],
+			"branch_end_screen_x": branch_end_screen_x,
+			"visible_in_frame": split_start_screen.y >= 0.0 and split_start_screen.y <= 540.0 and split_end_screen.y >= 0.0 and split_end_screen.y <= 540.0,
+		}
 	measurement["file"] = "%s-960x540.png" % sample.label
 	measurement["label"] = sample.label
 	document.frames.append(measurement)
 
-func _capture_seam(index: int) -> void:
+func _capture_seam(kind: String, index: int) -> void:
 	var shift := float(index) * 64.0
-	await _place_player(Vector2(0.0, -260.0 - shift))
+	var position := Vector2(0.0, -260.0 - shift)
+	if kind == "branch":
+		position.y = -Balance.STAGE_HEIGHT * 3.0 - 260.0 - shift
+	await _place_player(position)
 	var image := await _render_frame()
-	var file_name := "seam-%02d.png" % index
+	var file_name := "%s-seam-%02d.png" % [kind, index]
 	image.save_png(SEAM_ROOT.path_join(file_name))
-	var scan_y := clampi(roundi((world.get_global_transform_with_canvas() * Vector2(0.0, game.player.global_position.y + 150.0)).y), 0, image.get_height() - 1)
+	var scan_y := 270
+	var expected_width := 180 if kind == "trunk" else 44
+	var run := _best_surface_run(image, 480, scan_y, expected_width - 12, expected_width + 12, 20)
 	document.seam_frames.append({
 		"file": file_name,
+		"surface": kind,
+		"stage_for_y": game.stages.stage_for_y(game.player.global_position.y),
 		"camera_shift_px": shift,
 		"module_quarter_step": shift / 64.0,
-		"surface_scan_y": scan_y,
-		"trunk_visible_width_px": _best_surface_run(image, 480, scan_y, 160, 200).width,
+		"surface_scan_y": run.scan_y,
+		"visible_width_px": run.width,
 	})
 
 func _place_player(position: Vector2) -> void:
 	game.process_mode = Node.PROCESS_MODE_INHERIT
-	for settle_frame in 30:
-		game.player.global_position = position
-		game.spider.global_position = position + Vector2(0.0, Balance.START_DISTANCE * 2.0)
-		game.player._sync_stage_mode()
-		game.stages.update_progress(position.y)
-		rig.seek_animation("climb_loop", 0.20)
-		world.queue_redraw()
-		await physics_frame
 	game.player.global_position = position
 	game.spider.global_position = position + Vector2(0.0, Balance.START_DISTANCE * 2.0)
-	game.process_mode = Node.PROCESS_MODE_DISABLED
+	game.player.set_physics_process(false)
+	game.spider.set_physics_process(false)
+	game.beans.set_physics_process(false)
+	game.player._sync_stage_mode()
+	rig.seek_animation("climb_loop", 0.20)
+	game.stages.stage_banner_remaining = 0.0
+	game.tutorial_remaining = 0.0
+	game._update_hud()
+	var camera := game.player.get_node("Camera2D") as Camera2D
+	camera.reset_smoothing()
+	camera.force_update_scroll()
+	world.queue_redraw()
+	await process_frame
+	camera.force_update_scroll()
+	await process_frame
 	await process_frame
 
 func _render_frame() -> Image:
@@ -111,7 +140,10 @@ func _measure_frame(image: Image, background: Image, stage_number: int, player_p
 			run["route"] = route
 			surface_runs.append(run)
 	return {
-		"stage": stage_number,
+		"requested_stage": stage_number,
+		"stage_for_y": game.stages.stage_for_y(player_position.y),
+		"hud_stage_banner": str(game.get_node("HUD/StageBanner").text),
+		"hud_tutorial": str(game.get_node("HUD/Tutorial").text),
 		"player_world": [snappedf(player_position.x, 0.1), snappedf(player_position.y, 0.1)],
 		"surface_runs": surface_runs,
 		"branch_centers_world_x": Balance.ROUTE_X.duplicate(),
@@ -169,10 +201,9 @@ func _best_surface_run(image: Image, expected_x: int, expected_y: int, minimum_w
 	return best
 
 func _is_surface(pixel: Color) -> bool:
-	for target in SURFACE_COLORS:
-		if maxf(maxf(absf(pixel.r - target.r), absf(pixel.g - target.g)), absf(pixel.b - target.b)) <= 0.10:
-			return true
-	return false
+	# Texture-aware green classifier. It intentionally includes the dark painted
+	# rim and luminous veins instead of relying on the removed flat fill colors.
+	return pixel.g > 0.18 and pixel.g > pixel.r * 0.92 and pixel.g > pixel.b * 0.90
 
 func _character_contrast(image: Image, background: Image) -> float:
 	var center := game.player.get_global_transform_with_canvas().origin

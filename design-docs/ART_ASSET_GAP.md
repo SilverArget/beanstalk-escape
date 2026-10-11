@@ -18,3 +18,9 @@ Do not delete or overwrite originals. Do not count recoloring, cropping, or shri
 - The live Stage 1–2 trunk is now a continuous 172–188 px procedural ribbon with a 52 px feature rhythm; it is not a scaled/repeated raw illustration.
 - The Stage 3 split and Stage 3–5 branches use the existing gameplay centers and widths with a continuous organic ribbon/vein treatment.
 - `assets/art/world/sunny_atmosphere.png` is a new built-in image_gen background plate; deterministic gradient, cloud and parallax foliage layers are composited by `world_visual.gd`.
+
+## GATE 3A Sira 2 world-art revision (2026-10-11)
+
+- The live trunk, split, branches, bridge arcs, leaves, tendrils, and broken tips now use built-in image_gen raster art. `vine_surface_tile.png` is a vertically seamless 512 px module UV-mapped to the gameplay ribbons; `foliage_atlas.png` supplies the painted ornaments.
+- The former procedural white circle clouds were redundant with the accepted painted atmosphere plate and were removed. The former polygon-diamond leaves were replaced with the foliage atlas.
+- Raw `04/06/07/08` sources remain preserved and unused; resizing them would still violate the scale lock and would not provide a seam-safe textured spline surface.
