@@ -13,8 +13,8 @@ const PART_NAMES := [
 ]
 const CELL_WIDTH := 209.0
 const CELL_HEIGHT := 313.5
-const ART_SCALE := 0.16
-const CELL_CLIP_MARGIN := Vector2(30, 8)
+const ART_SCALE := 0.10
+const CELL_CLIP_MARGIN := Vector2.ZERO
 const WING_COLOR := Color("9969ec")
 const CLIMB_BODY_OFFSET := Vector2(8, 0)
 
@@ -115,14 +115,8 @@ shader_type canvas_item;
 uniform bool suppress_stray_red = false;
 void fragment() {
 	vec4 pixel = texture(TEXTURE, UV);
-	vec2 step_px = TEXTURE_PIXEL_SIZE * 6.0;
-	float support = 0.0;
-	support += step(0.18, texture(TEXTURE, UV + vec2(step_px.x, 0.0)).a);
-	support += step(0.18, texture(TEXTURE, UV - vec2(step_px.x, 0.0)).a);
-	support += step(0.18, texture(TEXTURE, UV + vec2(0.0, step_px.y)).a);
-	support += step(0.18, texture(TEXTURE, UV - vec2(0.0, step_px.y)).a);
 	bool red_fringe = suppress_stray_red && pixel.r > 0.45 && pixel.g < 0.30 && pixel.b < 0.22 && pixel.r > pixel.g * 2.6;
-	if (pixel.a < 0.18 || support < 3.5 || red_fringe) { discard; }
+	if (pixel.a < 0.18 || red_fringe) { discard; }
 	COLOR = pixel * COLOR;
 }
 """
@@ -132,6 +126,7 @@ void fragment() {
 	skeleton = Node2D.new()
 	skeleton.name = "Skeleton"
 	skeleton.position = CLIMB_BODY_OFFSET
+	skeleton.scale = Vector2.ONE * 0.85
 	skeleton.z_index = 10
 	add_child(skeleton)
 	var pelvis := _add_bone("pelvis", skeleton, Vector2(0, 15))
@@ -194,15 +189,12 @@ func _add_part(part_name: String, parent: Node2D, part_index: int, z: int) -> Sp
 	sprite.name = part_name
 	sprite.region_enabled = true
 	var cell_origin := Vector2(float(part_index % 6) * CELL_WIDTH, float(part_index / 6) * CELL_HEIGHT)
-	# Shared insets reject image-gen debris on atlas borders. Head cells receive
-	# an extra far-side crop to remove the last detached F1 ponytail fragment.
-	var far_margin_x := 60.0 if part_name in ["head_neutral", "head_hurt"] else CELL_CLIP_MARGIN.x
 	sprite.region_rect = Rect2(
 		cell_origin + CELL_CLIP_MARGIN,
-		Vector2(CELL_WIDTH - CELL_CLIP_MARGIN.x - far_margin_x, CELL_HEIGHT - CELL_CLIP_MARGIN.y * 2.0)
+		Vector2(CELL_WIDTH - CELL_CLIP_MARGIN.x * 2.0, CELL_HEIGHT - CELL_CLIP_MARGIN.y * 2.0)
 	)
 	sprite.region_filter_clip_enabled = true
-	sprite.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	sprite.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
 	sprite.material = cutout_material if part_name in ["head_neutral", "head_hurt", "hair_back", "hair_front"] else non_hair_material
 	sprite.scale = Vector2.ONE * ART_SCALE
 	sprite.z_index = z
@@ -216,18 +208,22 @@ func _configure_part_pose() -> void:
 	# composited a second time (which masked faces and duplicated F1's ponytail).
 	part_sprites.hair_back.visible = false
 	part_sprites.hair_front.visible = false
-	part_sprites.head_neutral.position = Vector2(-2, -2)
-	part_sprites.head_hurt.position = Vector2(-2, -2)
-	part_sprites.torso.position = Vector2(0, 7)
-	part_sprites.pelvis.position = Vector2(0, 4)
+	part_sprites.head_neutral.position = Vector2(-1, -6)
+	part_sprites.head_hurt.position = Vector2(-1, -6)
+	part_sprites.torso.position = Vector2(0, -7)
+	part_sprites.pelvis.position = Vector2(0, -9)
 	for part_name in ["upper_arm_l", "upper_arm_r"]:
-		part_sprites[part_name].position = Vector2(0, 8)
+		part_sprites[part_name].position = Vector2(0, 12)
 	for part_name in ["forearm_l", "forearm_r"]:
+		part_sprites[part_name].position = Vector2(0, 10)
+	for part_name in ["hand_l_open", "hand_r_open", "hand_l_grip", "hand_r_grip"]:
 		part_sprites[part_name].position = Vector2(0, 7)
 	for part_name in ["thigh_l", "thigh_r"]:
-		part_sprites[part_name].position = Vector2(0, 9)
+		part_sprites[part_name].position = Vector2(0, 11)
 	for part_name in ["shin_l", "shin_r"]:
-		part_sprites[part_name].position = Vector2(0, 8)
+		part_sprites[part_name].position = Vector2(0, 11)
+	for part_name in ["foot_l", "foot_r"]:
+		part_sprites[part_name].position = Vector2(0, 14)
 	part_sprites.accessory.position = Vector2(5, 5)
 	part_sprites.accessory.scale = Vector2.ONE * (ART_SCALE * 0.78)
 	part_sprites.wing_anchor.position = Vector2(3, 3)
@@ -266,14 +262,14 @@ func _make_idle() -> Animation:
 	animation.loop_mode = Animation.LOOP_LINEAR
 	_add_values(animation, "Skeleton/pelvis/torso:position", [0.0, 0.5, 1.0], [Vector2(0, -21), Vector2(0, -22), Vector2(0, -21)])
 	_add_values(animation, "Skeleton/pelvis/torso/head:rotation", [0.0, 0.5, 1.0], [-0.025, 0.025, -0.025])
-	_add_values(animation, "Skeleton/pelvis/torso/upper_arm_l:rotation", [0.0, 1.0], [-0.68, -0.68])
-	_add_values(animation, "Skeleton/pelvis/torso/upper_arm_l/forearm_l:rotation", [0.0, 1.0], [1.80, 1.80])
-	_add_values(animation, "Skeleton/pelvis/torso/upper_arm_r:rotation", [0.0, 1.0], [2.18, 2.18])
-	_add_values(animation, "Skeleton/pelvis/torso/upper_arm_r/forearm_r:rotation", [0.0, 1.0], [0.75, 0.75])
-	_add_values(animation, "Skeleton/pelvis/thigh_l:rotation", [0.0, 1.0], [-0.66, -0.66])
-	_add_values(animation, "Skeleton/pelvis/thigh_l/shin_l:rotation", [0.0, 1.0], [1.83, 1.83])
-	_add_values(animation, "Skeleton/pelvis/thigh_r:rotation", [0.0, 1.0], [0.29, 0.29])
-	_add_values(animation, "Skeleton/pelvis/thigh_r/shin_r:rotation", [0.0, 1.0], [2.29, 2.29])
+	_add_values(animation, "Skeleton/pelvis/torso/upper_arm_l:rotation", [0.0, 1.0], [2.90, 2.90])
+	_add_values(animation, "Skeleton/pelvis/torso/upper_arm_l/forearm_l:rotation", [0.0, 1.0], [0.05, 0.05])
+	_add_values(animation, "Skeleton/pelvis/torso/upper_arm_r:rotation", [0.0, 1.0], [-2.72, -2.72])
+	_add_values(animation, "Skeleton/pelvis/torso/upper_arm_r/forearm_r:rotation", [0.0, 1.0], [-0.35, -0.35])
+	_add_values(animation, "Skeleton/pelvis/thigh_l:rotation", [0.0, 1.0], [0.55, 0.55])
+	_add_values(animation, "Skeleton/pelvis/thigh_l/shin_l:rotation", [0.0, 1.0], [-0.75, -0.75])
+	_add_values(animation, "Skeleton/pelvis/thigh_r:rotation", [0.0, 1.0], [-0.55, -0.55])
+	_add_values(animation, "Skeleton/pelvis/thigh_r/shin_r:rotation", [0.0, 1.0], [0.75, 0.75])
 	_set_grip_tracks(animation, [0.0, 1.0], [true, true])
 	return animation
 
@@ -284,14 +280,14 @@ func _make_climb() -> Animation:
 	var times := [0.0, 0.2, 0.4, 0.6, 0.8]
 	# Four contact poses: one hand/foot pair reaches while the other pair pulls.
 	# The root moves only one pixel; locomotion reads as gripping, not bouncing.
-	_add_values(animation, "Skeleton/pelvis/torso/upper_arm_l:rotation", times, [-0.68, -3.95, -3.95, -0.68, -0.68])
-	_add_values(animation, "Skeleton/pelvis/torso/upper_arm_r:rotation", times, [2.18, 2.18, 0.18, 0.18, 2.18])
-	_add_values(animation, "Skeleton/pelvis/torso/upper_arm_l/forearm_l:rotation", times, [1.80, 1.57, 1.57, 1.80, 1.80])
-	_add_values(animation, "Skeleton/pelvis/torso/upper_arm_r/forearm_r:rotation", times, [0.75, 0.75, 1.25, 1.25, 0.75])
-	_add_values(animation, "Skeleton/pelvis/thigh_l:rotation", times, [-0.66, -0.46, -0.46, -0.66, -0.66])
-	_add_values(animation, "Skeleton/pelvis/thigh_r:rotation", times, [0.29, 0.29, -0.03, -0.03, 0.29])
-	_add_values(animation, "Skeleton/pelvis/thigh_l/shin_l:rotation", times, [1.83, 2.84, 2.84, 1.83, 1.83])
-	_add_values(animation, "Skeleton/pelvis/thigh_r/shin_r:rotation", times, [2.29, 2.29, 1.38, 1.38, 2.29])
+	_add_values(animation, "Skeleton/pelvis/torso/upper_arm_l:rotation", times, [2.90, 3.00, 2.75, 2.72, 2.90])
+	_add_values(animation, "Skeleton/pelvis/torso/upper_arm_r:rotation", times, [-2.72, -2.75, -2.90, -3.00, -2.72])
+	_add_values(animation, "Skeleton/pelvis/torso/upper_arm_l/forearm_l:rotation", times, [0.05, 0.00, 0.35, 0.35, 0.05])
+	_add_values(animation, "Skeleton/pelvis/torso/upper_arm_r/forearm_r:rotation", times, [-0.35, -0.35, -0.05, 0.00, -0.35])
+	_add_values(animation, "Skeleton/pelvis/thigh_l:rotation", times, [0.55, 0.82, 0.78, 0.32, 0.55])
+	_add_values(animation, "Skeleton/pelvis/thigh_r:rotation", times, [-0.55, -0.32, -0.38, -0.82, -0.55])
+	_add_values(animation, "Skeleton/pelvis/thigh_l/shin_l:rotation", times, [-0.75, -1.30, -1.20, -0.50, -0.75])
+	_add_values(animation, "Skeleton/pelvis/thigh_r/shin_r:rotation", times, [0.75, 0.50, 0.55, 1.30, 0.75])
 	_add_values(animation, "Skeleton/pelvis:position", times, [Vector2(0, 15), Vector2(0, 14), Vector2(0, 15), Vector2(0, 16), Vector2(0, 15)])
 	_set_grip_tracks(animation, times, [true, true, true, true, true])
 	return animation
