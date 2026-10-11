@@ -17,16 +17,19 @@ const CELL_HEIGHT := 313.5
 const ART_SCALE := 0.10
 const CELL_CLIP_MARGIN := Vector2.ZERO
 const CLIMB_BODY_OFFSET := Vector2(8, 0)
+static var _outline_mask_cache: Dictionary = {}
 
 var skin_id := "M1"
 var part_sprites: Dictionary = {}
+var outline_sprites: Dictionary = {}
 var bones: Dictionary = {}
 var animation_player: AnimationPlayer
 var skeleton: Node2D
 var time_wings: Sprite2D
 var cutout_material: ShaderMaterial
 var non_hair_material: ShaderMaterial
-var silhouette_material: ShaderMaterial
+var outline_material: ShaderMaterial
+var outline_non_hair_material: ShaderMaterial
 var _last_state := ""
 var _last_penalty := 0
 
@@ -79,9 +82,60 @@ func set_skin(requested_skin: String) -> bool:
 		return false
 	for sprite: Sprite2D in part_sprites.values():
 		sprite.texture = texture
+	if not _outline_mask_cache.has(normalized):
+		_outline_mask_cache[normalized] = _build_outline_mask(texture)
+	var outline_texture := _outline_mask_cache[normalized] as Texture2D
+	for part_name: String in outline_sprites:
+		var outline_sprite := outline_sprites[part_name] as Sprite2D
+		outline_sprite.texture = outline_texture
+		(outline_sprite.material as ShaderMaterial).set_shader_parameter("suppress_stray_red", normalized == "F1" and part_name not in ["head_neutral", "head_hurt", "hair_back", "hair_front"])
 	non_hair_material.set_shader_parameter("suppress_stray_red", normalized == "F1")
+	outline_non_hair_material.set_shader_parameter("suppress_stray_red", normalized == "F1")
 	skin_id = normalized
 	return true
+
+func _build_outline_mask(texture: Texture2D) -> Texture2D:
+	var source := texture.get_image()
+	var mask := Image.create(source.get_width(), source.get_height(), false, Image.FORMAT_RGBA8)
+	for part_index in PART_NAMES.size():
+		var cell_x := part_index % 6
+		var cell_y := part_index / 6
+		var left := roundi(float(cell_x) * CELL_WIDTH)
+		var top := roundi(float(cell_y) * CELL_HEIGHT)
+		var right := roundi(float(cell_x + 1) * CELL_WIDTH)
+		var bottom := roundi(float(cell_y + 1) * CELL_HEIGHT)
+		var width := right - left
+		var height := bottom - top
+		var visited := PackedByteArray()
+		visited.resize(width * height)
+		var largest: Array[Vector2i] = []
+		for local_y in height:
+			for local_x in width:
+				var start_index := local_y * width + local_x
+				if visited[start_index] or source.get_pixel(left + local_x, top + local_y).a8 <= 127:
+					continue
+				var component: Array[Vector2i] = []
+				var queue: Array[Vector2i] = [Vector2i(local_x, local_y)]
+				visited[start_index] = 1
+				var queue_index := 0
+				while queue_index < queue.size():
+					var current := queue[queue_index]
+					queue_index += 1
+					component.append(current)
+					for offset_y in range(-1, 2):
+						for offset_x in range(-1, 2):
+							var next := current + Vector2i(offset_x, offset_y)
+							if next.x < 0 or next.y < 0 or next.x >= width or next.y >= height:
+								continue
+							var next_index := next.y * width + next.x
+							if not visited[next_index] and source.get_pixel(left + next.x, top + next.y).a8 > 127:
+								visited[next_index] = 1
+								queue.append(next)
+				if component.size() > largest.size():
+					largest = component
+		for point in largest:
+			mask.set_pixel(left + point.x, top + point.y, Color.WHITE)
+	return ImageTexture.create_from_image(mask)
 
 func play_animation(animation_name: String, restart := false) -> void:
 	if animation_player == null or not animation_player.has_animation(animation_name):
@@ -104,9 +158,10 @@ func set_outline_background(background: Color) -> void:
 	var dark_contrast := (luminance + 0.05) / 0.058
 	var light_contrast := 0.95 / (luminance + 0.05)
 	var use_light := light_contrast > dark_contrast
-	cutout_material.set_shader_parameter("use_light_outline", use_light)
-	non_hair_material.set_shader_parameter("use_light_outline", use_light)
-	silhouette_material.set_shader_parameter("use_light_outline", use_light)
+	outline_material.set_shader_parameter("use_light_outline", use_light)
+	outline_non_hair_material.set_shader_parameter("use_light_outline", use_light)
+	for sprite: Sprite2D in outline_sprites.values():
+		(sprite.material as ShaderMaterial).set_shader_parameter("use_light_outline", use_light)
 
 func rig_contract() -> Dictionary:
 	return {
@@ -126,73 +181,54 @@ func _build_rig() -> void:
 	cutout_shader.code = """
 shader_type canvas_item;
 uniform bool suppress_stray_red = false;
-uniform vec4 dark_outline : source_color = vec4(0.035, 0.045, 0.070, 1.0);
-uniform vec4 light_outline : source_color = vec4(0.965, 0.950, 0.895, 1.0);
-uniform bool use_light_outline = false;
-
 void fragment() {
 	vec4 pixel = texture(TEXTURE, UV);
 	bool red_fringe = suppress_stray_red && pixel.r > 0.45 && pixel.g < 0.30 && pixel.b < 0.22 && pixel.r > pixel.g * 2.6;
-	if (pixel.a >= 0.90 && !red_fringe) {
-		COLOR = pixel * COLOR;
-	} else {
-		float neighbour_alpha = 0.0;
-		for (int y = -2; y <= 2; y++) {
-			for (int x = -2; x <= 2; x++) {
-				vec4 neighbour = texture(TEXTURE, UV + vec2(float(x), float(y)) * 9.0 * TEXTURE_PIXEL_SIZE);
-				bool neighbour_red_fringe = suppress_stray_red && neighbour.r > 0.45 && neighbour.g < 0.30 && neighbour.b < 0.22 && neighbour.r > neighbour.g * 2.6;
-				neighbour_alpha = max(neighbour_alpha, neighbour_red_fringe ? 0.0 : neighbour.a);
-			}
-		}
-		if (neighbour_alpha < 0.90) {
-			discard;
-		} else {
-			COLOR = use_light_outline ? light_outline : dark_outline;
-		}
-	}
+	if (pixel.a < 0.18 || red_fringe) { discard; }
+	COLOR = pixel * COLOR;
 }
 """
 	cutout_material.shader = cutout_shader
 	non_hair_material = cutout_material.duplicate() as ShaderMaterial
 	non_hair_material.set_shader_parameter("suppress_stray_red", true)
-	# All parts share the same atmosphere-selected 2–4 px shader outline.
-	silhouette_material = ShaderMaterial.new()
-	var silhouette_shader := Shader.new()
-	silhouette_shader.code = """
+	# Compatibility-safe silhouette copies sit behind every textured part. Their
+	# 27 atlas-texel dilation renders as a consistent 2-4 px outer rim at the
+	# production rig scale; original sprites cover joins and interior fill.
+	outline_material = ShaderMaterial.new()
+	var outline_shader := Shader.new()
+	outline_shader.code = """
 shader_type canvas_item;
+uniform bool suppress_stray_red = false;
 uniform vec4 dark_outline : source_color = vec4(0.035, 0.045, 0.070, 1.0);
 uniform vec4 light_outline : source_color = vec4(0.965, 0.950, 0.895, 1.0);
 uniform bool use_light_outline = false;
+uniform vec2 region_min = vec2(0.0);
+uniform vec2 region_max = vec2(1.0);
 void fragment() {
-	vec4 pixel = texture(TEXTURE, UV);
-	if (pixel.a >= 0.18) {
-		COLOR = pixel;
-	} else {
-		float neighbour_alpha = 0.0;
-		for (int y = -2; y <= 2; y++) {
-			for (int x = -2; x <= 2; x++) {
-				if (x * x + y * y <= 4) {
-					neighbour_alpha = max(neighbour_alpha, texture(TEXTURE, UV + vec2(float(x), float(y)) * TEXTURE_PIXEL_SIZE).a);
-				}
+	float neighbour_alpha = 0.0;
+	for (int y = -27; y <= 27; y++) {
+		for (int x = -27; x <= 27; x++) {
+			if (x * x + y * y <= 729) {
+				vec2 sample_uv = UV + vec2(float(x), float(y)) * TEXTURE_PIXEL_SIZE;
+				if (any(lessThan(sample_uv, region_min)) || any(greaterThanEqual(sample_uv, region_max))) { continue; }
+				vec4 neighbour = texture(TEXTURE, sample_uv);
+				bool red_fringe = suppress_stray_red && neighbour.r > 0.45 && neighbour.g < 0.30 && neighbour.b < 0.22 && neighbour.r > neighbour.g * 2.6;
+				neighbour_alpha = max(neighbour_alpha, red_fringe ? 0.0 : neighbour.a);
 			}
 		}
-		if (neighbour_alpha < 0.18) {
-			discard;
-		} else {
-			COLOR = use_light_outline ? light_outline : dark_outline;
-		}
 	}
+	if (neighbour_alpha < 0.50) { discard; }
+	COLOR = use_light_outline ? light_outline : dark_outline;
 }
 """
-	silhouette_material.shader = silhouette_shader
-	skeleton = CanvasGroup.new()
+	outline_material.shader = outline_shader
+	outline_non_hair_material = outline_material.duplicate() as ShaderMaterial
+	outline_non_hair_material.set_shader_parameter("suppress_stray_red", true)
+	skeleton = Node2D.new()
 	skeleton.name = "Skeleton"
 	skeleton.position = CLIMB_BODY_OFFSET
 	skeleton.scale = Vector2(1.12, 1.02)
 	skeleton.z_index = 10
-	(skeleton as CanvasGroup).fit_margin = 4.0
-	(skeleton as CanvasGroup).clear_margin = 4.0
-	skeleton.material = silhouette_material
 	add_child(skeleton)
 	var pelvis := _add_bone("pelvis", skeleton, Vector2(0, 15))
 	var torso := _add_bone("torso", pelvis, Vector2(0, -15))
@@ -262,9 +298,24 @@ func _add_part(part_name: String, parent: Node2D, part_index: int, z: int) -> Sp
 	sprite.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
 	sprite.material = cutout_material if part_name in ["head_neutral", "head_hurt", "hair_back", "hair_front"] else non_hair_material
 	sprite.scale = Vector2.ONE * ART_SCALE
-	sprite.z_index = z
+	# Reserve a global band below every textured part for the silhouette copies.
+	# This keeps outlines above the world/background without drawing over joints.
+	sprite.z_index = z + 20
 	parent.add_child(sprite)
+	var outline := Sprite2D.new()
+	outline.name = part_name + "_outline"
+	outline.region_enabled = true
+	outline.region_rect = sprite.region_rect
+	outline.region_filter_clip_enabled = true
+	outline.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
+	var part_outline_material := (outline_material if part_name in ["head_neutral", "head_hurt", "hair_back", "hair_front"] else outline_non_hair_material).duplicate() as ShaderMaterial
+	part_outline_material.set_shader_parameter("region_min", cell_origin / Vector2(1254.0, 1254.0))
+	part_outline_material.set_shader_parameter("region_max", (cell_origin + Vector2(CELL_WIDTH, CELL_HEIGHT)) / Vector2(1254.0, 1254.0))
+	outline.material = part_outline_material
+	outline.z_index = -20
+	sprite.add_child(outline)
 	part_sprites[part_name] = sprite
+	outline_sprites[part_name] = outline
 	return sprite
 
 func _configure_part_pose() -> void:
@@ -311,6 +362,13 @@ func _build_time_wings(anchor: Node2D) -> void:
 	time_wings.scale = Vector2.ONE * 0.001
 	time_wings.visible = false
 	anchor.add_child(time_wings)
+	var wing_outline := Sprite2D.new()
+	wing_outline.name = "time_wings_outline"
+	wing_outline.texture = time_wings.texture
+	wing_outline.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
+	wing_outline.material = outline_material
+	wing_outline.z_index = -1
+	time_wings.add_child(wing_outline)
 
 func _build_animations() -> void:
 	var library := AnimationLibrary.new()

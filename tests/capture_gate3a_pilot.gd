@@ -2,6 +2,7 @@ extends SceneTree
 
 const OUTPUT_ROOT := "res://../03-test/qa/art-reference/pilot"
 const RIG_ONLY_ROOT := OUTPUT_ROOT + "/rig-only"
+const CONTRAST_ROOT := OUTPUT_ROOT + "/contrast"
 const MEASUREMENTS_PATH := OUTPUT_ROOT + "/measurements.json"
 const PILOT_ANIMATIONS := ["idle", "climb_loop", "branch_takeoff", "branch_midair", "branch_landing", "hurt", "skill_time"]
 const MEASURE_BACKGROUNDS := {
@@ -27,6 +28,7 @@ func _initialize() -> void:
 		skin = "M1"
 	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(OUTPUT_ROOT.path_join(skin.to_lower()).path_join("frames")))
 	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(RIG_ONLY_ROOT))
+	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(CONTRAST_ROOT))
 	var game := (load("res://scenes/main.tscn") as PackedScene).instantiate() as GameManager
 	get_root().add_child(game)
 	await process_frame
@@ -61,6 +63,7 @@ func _initialize() -> void:
 			var measurement := await _capture_rig_only(skin, animation_name, local_frame, sample_time)
 			if animation_name == "climb_loop":
 				measurement["stage3_contacts"] = _measure_stage3_contacts(image, rig)
+				measurement.criteria.f = measurement.stage3_contacts
 			measurement_document.skins[skin].animations[animation_name].append(measurement)
 			frame_number += 1
 	_write_measurements()
@@ -123,13 +126,21 @@ func _capture_rig_only(skin: String, animation_name: String, local_frame: int, s
 		"body_width_px": 0,
 		"alpha127_components": _component_count(image, full_bounds),
 		"contrast_boundary_ge_3_ratio": {},
+		"opaque_white_pixels": _opaque_white_pixel_count(image),
+		"opaque_white_rectangle_detected": _has_opaque_white_rectangle(image),
 	}
+	var missing_textures := []
+	for part_name: String in CharacterRig.PART_NAMES:
+		if isolated_rig.part_sprites[part_name].texture == null:
+			missing_textures.append(part_name)
 	for background_name: String in MEASURE_BACKGROUNDS:
 		background.color = MEASURE_BACKGROUNDS[background_name]
 		background.visible = true
 		viewport.transparent_bg = false
 		isolated_rig.set_outline_background(MEASURE_BACKGROUNDS[background_name])
 		var flat_image := await _render_viewport(viewport)
+		if animation_name in ["idle", "climb_loop"]:
+			flat_image.save_png(CONTRAST_ROOT.path_join("%s-%s-%s-%02d.png" % [skin.to_lower(), background_name, animation_name, local_frame]))
 		result.contrast_boundary_ge_3_ratio[background_name] = snappedf(
 			_boundary_contrast_ratio(image, flat_image, MEASURE_BACKGROUNDS[background_name]), 0.0001
 		)
@@ -145,6 +156,47 @@ func _capture_rig_only(skin: String, animation_name: String, local_frame: int, s
 	_show_only_parts(isolated_rig, original_visibility, ["torso", "pelvis"])
 	var body_image := await _render_viewport(viewport)
 	result.body_width_px = _alpha_bounds(body_image).size.x
+	var wing_measurement = null
+	if animation_name == "skill_time":
+		var body_for_wing := body_image
+		_show_only_parts(isolated_rig, original_visibility, [])
+		isolated_rig.time_wings.visible = true
+		var wing_image := await _render_viewport(viewport)
+		var wing_bounds := _alpha_bounds(wing_image)
+		var anchor_x := int(round(isolated_rig.time_wings.get_global_transform_with_canvas().origin.x))
+		if wing_bounds.size == Vector2i.ZERO:
+			wing_measurement = {"closed": true, "anchor_gap_px": -1.0, "width_px": 0, "height_px": 0, "left_extent_px": 0, "right_extent_px": 0, "symmetry_delta_px": 0, "alpha127_components": 0}
+		else:
+			wing_measurement = {
+				"closed": false,
+				"anchor_gap_px": _mask_gap_px(body_for_wing, wing_image, 12),
+				"width_px": wing_bounds.size.x,
+				"height_px": wing_bounds.size.y,
+				"left_extent_px": maxi(0, anchor_x - wing_bounds.position.x),
+				"right_extent_px": maxi(0, wing_bounds.end.x - 1 - anchor_x),
+				"symmetry_delta_px": abs((anchor_x - wing_bounds.position.x) - (wing_bounds.end.x - 1 - anchor_x)),
+				"alpha127_components": _component_count(wing_image, wing_bounds),
+			}
+	result["wing"] = wing_measurement
+	result["criteria"] = {
+		"a": {
+			"opaque_white_pixels": result.opaque_white_pixels,
+			"opaque_white_rectangle_detected": result.opaque_white_rectangle_detected,
+			"texture_parts_assigned": CharacterRig.PART_NAMES.size() - missing_textures.size(),
+			"missing_texture_parts": missing_textures,
+		},
+		"b": {"alpha127_components": result.alpha127_components},
+		"c": {
+			"head_to_foot_px": result.head_to_foot_px,
+			"body_width_px": result.body_width_px,
+			"collider_size": [ScaleLock.COLLIDER_WIDTH, ScaleLock.COLLIDER_HEIGHT],
+			"collider_within_visible_extents": result.body_width_px >= ScaleLock.COLLIDER_WIDTH and result.head_to_foot_px >= ScaleLock.COLLIDER_HEIGHT,
+		},
+		"d": {"contrast_boundary_ge_3_ratio": result.contrast_boundary_ge_3_ratio},
+		"e": wing_measurement,
+		"f": [],
+		"g": {"shared_rig": true, "local_pivot": [0, 0], "animation": animation_name, "sample_time": result.time_seconds},
+	}
 	viewport.queue_free()
 	await process_frame
 	return result
@@ -182,6 +234,52 @@ func _alpha_bounds(image: Image) -> Rect2i:
 				right = maxi(right, x)
 				bottom = maxi(bottom, y)
 	return Rect2i(left, top, right - left + 1, bottom - top + 1) if right >= left else Rect2i()
+
+func _opaque_white_pixel_count(image: Image) -> int:
+	var count := 0
+	var used := image.get_used_rect()
+	for y in range(used.position.y, used.end.y):
+		for x in range(used.position.x, used.end.x):
+			var pixel := image.get_pixel(x, y)
+			if pixel.a8 >= 250 and pixel.r8 >= 245 and pixel.g8 >= 245 and pixel.b8 >= 245:
+				count += 1
+	return count
+
+func _has_opaque_white_rectangle(image: Image) -> bool:
+	var used := image.get_used_rect()
+	for y in range(used.position.y, used.end.y - 7):
+		for x in range(used.position.x, used.end.x - 7):
+			var solid := true
+			for check_y in range(y, y + 8):
+				for check_x in range(x, x + 8):
+					var pixel := image.get_pixel(check_x, check_y)
+					if pixel.a8 < 250 or pixel.r8 < 245 or pixel.g8 < 245 or pixel.b8 < 245:
+						solid = false
+						break
+				if not solid:
+					break
+			if solid:
+				return true
+	return false
+
+func _mask_gap_px(first: Image, second: Image, search_limit: int) -> float:
+	var first_bounds := _alpha_bounds(first)
+	var second_bounds := _alpha_bounds(second)
+	if first_bounds.size == Vector2i.ZERO or second_bounds.size == Vector2i.ZERO:
+		return -1.0
+	for radius in range(search_limit + 1):
+		for y in range(first_bounds.position.y, first_bounds.end.y):
+			for x in range(first_bounds.position.x, first_bounds.end.x):
+				if first.get_pixel(x, y).a8 <= ALPHA_THRESHOLD:
+					continue
+				for offset_y in range(-radius, radius + 1):
+					for offset_x in range(-radius, radius + 1):
+						if maxi(abs(offset_x), abs(offset_y)) != radius:
+							continue
+						var point := Vector2i(x + offset_x, y + offset_y)
+						if point.x >= 0 and point.y >= 0 and point.x < second.get_width() and point.y < second.get_height() and second.get_pixelv(point).a8 > ALPHA_THRESHOLD:
+							return float(radius)
+	return float(search_limit + 1)
 
 func _component_count(image: Image, bounds: Rect2i) -> int:
 	if bounds.size == Vector2i.ZERO:

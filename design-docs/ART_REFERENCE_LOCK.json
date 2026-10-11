@@ -1,8 +1,8 @@
 {
-  "reference_version": "gate-3a-pilot-0.5-timebox",
+  "reference_version": "gate-3a-pilot-0.6-turn6",
   "date": "2026-10-11",
   "status": "PILOT_PENDING_OWNER_REVIEW",
-  "reason": "Tur 5 timebox checkpoint: measured proportions, atmosphere-selected outline, upper-back wing anchor, and contact telemetry are implemented; alpha>127 component cleanup and sunny contrast remain pending. No owner lock is asserted.",
+  "reason": "Tur 6 pilot revision: Compatibility-safe per-part silhouette backing, clean alpha>127 connectivity, measured proportions/contrast/contact, and symmetric upper-back Time Wings are ready for owner review. No owner lock is asserted.",
   "source": "Codex built-in image_gen, 11.10.2026",
   "rig_contract": {
     "scene": "res://scenes/character_rig.tscn",
@@ -30,7 +30,7 @@
       "source": "Codex image_gen, 11.10.2026, yönetici kararı 10.10.2026",
       "dimensions": [1254, 1254],
       "alpha_result": "PASS: Format32bppArgb; 98,596 sampled pixels: 75.85% alpha=0, 24.05% partial alpha, 0.10% alpha=255; all outer corners alpha=0; per-cell detached components removed",
-      "control_result": "PARTIAL measured at alpha>127: 129/150 rig-only samples are one 8-connected component; idle 103-104 px and climb 102-105 px head-to-foot; body width 40 px; sunny minimum contrast-boundary pass ratio 73.30%; contact gap maximum 1.9 px"
+      "control_result": "PASS measured: 150/150 rig-only samples are one 8-connected component at alpha>127; opaque white rectangle/pixels 0; idle 105-106 px and climb 104-107 px head-to-foot; body width 40 px; minimum contrast-boundary pass ratios sunny 97.99%, twilight 97.86%, storm 96.17%; contact gap maximum 1.9 px"
     },
     {
       "skin": "F1",
@@ -40,7 +40,7 @@
       "source": "Codex image_gen, 11.10.2026, yönetici kararı 10.10.2026",
       "dimensions": [1254, 1254],
       "alpha_result": "PASS: Format32bppArgb; 98,596 sampled pixels: 73.03% alpha=0, 26.82% partial alpha, 0.14% alpha=255; all outer corners alpha=0; per-cell detached components removed",
-      "control_result": "PARTIAL measured at alpha>127: 73/150 rig-only samples are one 8-connected component; idle 104-105 px and climb 103-106 px head-to-foot; body width 40 px; sunny minimum contrast-boundary pass ratio 73.05%; contact gap maximum 1.8 px"
+      "control_result": "PASS measured: 150/150 rig-only samples are one 8-connected component at alpha>127; opaque white rectangle/pixels 0; idle 106-107 px and climb 105-108 px head-to-foot; body width 40 px; minimum contrast-boundary pass ratios sunny 97.81%, twilight 96.59%, storm 94.54%; contact gap maximum 1.8 px"
     },
     {
       "skin": "SHARED",
@@ -50,7 +50,7 @@
       "source": "Codex built-in image_gen, 11.10.2026",
       "dimensions": [1415, 1111],
       "alpha_result": "PASS: Format32bppArgb; 1,176,664 alpha=0, 394,020 partial alpha, 1,381 alpha=255; all outer corners alpha=0",
-      "control_result": "PASS measured: image-backed purple Time Wings render from wing_anchor; polygon placeholder removed"
+      "control_result": "PASS measured: image-backed purple Time Wings render from upper-back wing_anchor; open width 64 px, height 31 px, root gap 0 px, left/right extent delta maximum 1 px; polygon placeholder removed"
     }
   ],
   "prompt_summary": [
