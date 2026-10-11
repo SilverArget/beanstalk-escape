@@ -1,6 +1,7 @@
 extends SceneTree
 
 const OUTPUT_ROOT := "res://../03-test/qa/art-reference/pilot"
+const RIG_ONLY_ROOT := OUTPUT_ROOT + "/rig-only"
 const PILOT_ANIMATIONS := ["idle", "climb_loop", "branch_takeoff", "branch_midair", "branch_landing", "hurt", "skill_time"]
 
 func _initialize() -> void:
@@ -12,6 +13,7 @@ func _initialize() -> void:
 	if skin not in ["M1", "F1"]:
 		skin = "M1"
 	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(OUTPUT_ROOT.path_join(skin.to_lower()).path_join("frames")))
+	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(RIG_ONLY_ROOT))
 	var game := (load("res://scenes/main.tscn") as PackedScene).instantiate() as GameManager
 	get_root().add_child(game)
 	await process_frame
@@ -26,6 +28,7 @@ func _initialize() -> void:
 	# Freeze gameplay so physics cannot overwrite a sampled rig pose or end the
 	# run while the deterministic 30 FPS evidence sequence is being rendered.
 	game.process_mode = Node.PROCESS_MODE_DISABLED
+	await _capture_skill_frame(rig, skin)
 	var frame_number := 0
 	for animation_name in PILOT_ANIMATIONS:
 		var frame_count := 30 if animation_name in ["idle", "climb_loop"] else 18
@@ -37,6 +40,7 @@ func _initialize() -> void:
 			await RenderingServer.frame_post_draw
 			var image := get_root().get_texture().get_image()
 			image.save_png(OUTPUT_ROOT.path_join(skin.to_lower()).path_join("frames").path_join("%05d-%s-%02d.png" % [frame_number, animation_name, local_frame]))
+			await _capture_rig_only(skin, animation_name, local_frame, sample_time)
 			frame_number += 1
 	print("PASS G3A-CAPTURE skin=%s frames=%d" % [skin, frame_number])
 	quit(0)
@@ -52,3 +56,31 @@ func _capture_game_frame(game: GameManager, rig: CharacterRig, skin: String, lab
 	await RenderingServer.frame_post_draw
 	var image := get_root().get_texture().get_image()
 	image.save_png(OUTPUT_ROOT.path_join("%s-%s-960x540.png" % [skin.to_lower(), label]))
+
+func _capture_skill_frame(rig: CharacterRig, skin: String) -> void:
+	rig.seek_animation("skill_time", 0.45)
+	await process_frame
+	await RenderingServer.frame_post_draw
+	var image := get_root().get_texture().get_image()
+	image.save_png(OUTPUT_ROOT.path_join("%s-skill-time-960x540.png" % skin.to_lower()))
+
+func _capture_rig_only(skin: String, animation_name: String, local_frame: int, sample_time: float) -> void:
+	var viewport := SubViewport.new()
+	viewport.size = Vector2i(960, 540)
+	viewport.transparent_bg = true
+	viewport.render_target_update_mode = SubViewport.UPDATE_ONCE
+	var isolated_rig := (load("res://scenes/character_rig.tscn") as PackedScene).instantiate() as CharacterRig
+	isolated_rig.position = Vector2(480, 270)
+	viewport.add_child(isolated_rig)
+	get_root().add_child(viewport)
+	await process_frame
+	isolated_rig.set_skin(skin)
+	isolated_rig.seek_animation(animation_name, sample_time)
+	await process_frame
+	if animation_name == "skill_time" and local_frame in [0, 17]:
+		print("G3A-WING skin=%s frame=%d visible=%s scale=%s texture=%s" % [skin, local_frame, isolated_rig.time_wings.visible, isolated_rig.time_wings.scale, isolated_rig.time_wings.texture != null])
+	await RenderingServer.frame_post_draw
+	var image := viewport.get_texture().get_image()
+	image.save_png(RIG_ONLY_ROOT.path_join("%s-%s-%02d.png" % [skin.to_lower(), animation_name, local_frame]))
+	viewport.queue_free()
+	await process_frame

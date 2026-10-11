@@ -5,6 +5,7 @@ const SKIN_TEXTURES := {
 	"M1": "res://assets/art/character_rig/skins/m1/parts_sheet.png",
 	"F1": "res://assets/art/character_rig/skins/f1/parts_sheet.png",
 }
+const WING_TEXTURE := "res://assets/art/character_rig/wing/time_wings.png"
 const PART_NAMES := [
 	"head_neutral", "head_hurt", "hair_back", "hair_front", "torso", "pelvis",
 	"upper_arm_l", "upper_arm_r", "forearm_l", "forearm_r", "hand_l_open", "hand_r_open",
@@ -15,7 +16,6 @@ const CELL_WIDTH := 209.0
 const CELL_HEIGHT := 313.5
 const ART_SCALE := 0.10
 const CELL_CLIP_MARGIN := Vector2.ZERO
-const WING_COLOR := Color("9969ec")
 const CLIMB_BODY_OFFSET := Vector2(8, 0)
 
 var skin_id := "M1"
@@ -23,8 +23,7 @@ var part_sprites: Dictionary = {}
 var bones: Dictionary = {}
 var animation_player: AnimationPlayer
 var skeleton: Node2D
-var wing_left: Polygon2D
-var wing_right: Polygon2D
+var time_wings: Sprite2D
 var cutout_material: ShaderMaterial
 var non_hair_material: ShaderMaterial
 var _last_state := ""
@@ -86,6 +85,7 @@ func set_skin(requested_skin: String) -> bool:
 func play_animation(animation_name: String, restart := false) -> void:
 	if animation_player == null or not animation_player.has_animation(animation_name):
 		return
+	time_wings.visible = animation_name == "skill_time"
 	if restart or _last_state != animation_name:
 		animation_player.play(animation_name)
 		_last_state = animation_name
@@ -130,12 +130,12 @@ void fragment() {
 	skeleton.z_index = 10
 	add_child(skeleton)
 	var pelvis := _add_bone("pelvis", skeleton, Vector2(0, 15))
-	var torso := _add_bone("torso", pelvis, Vector2(0, -21))
+	var torso := _add_bone("torso", pelvis, Vector2(0, -15))
 	var head := _add_bone("head", torso, Vector2(0, -27))
-	var upper_arm_l := _add_bone("upper_arm_l", torso, Vector2(-11, 0))
-	var upper_arm_r := _add_bone("upper_arm_r", torso, Vector2(11, 0))
-	var forearm_l := _add_bone("forearm_l", upper_arm_l, Vector2(0, 18))
-	var forearm_r := _add_bone("forearm_r", upper_arm_r, Vector2(0, 18))
+	var upper_arm_l := _add_bone("upper_arm_l", torso, Vector2(-4, 0))
+	var upper_arm_r := _add_bone("upper_arm_r", torso, Vector2(4, 0))
+	var forearm_l := _add_bone("forearm_l", upper_arm_l, Vector2(0, 14))
+	var forearm_r := _add_bone("forearm_r", upper_arm_r, Vector2(0, 14))
 	var hand_l := _add_bone("hand_l", forearm_l, Vector2(0, 16))
 	var hand_r := _add_bone("hand_r", forearm_r, Vector2(0, 16))
 	var thigh_l := _add_bone("thigh_l", pelvis, Vector2(-7, 6))
@@ -208,42 +208,41 @@ func _configure_part_pose() -> void:
 	# composited a second time (which masked faces and duplicated F1's ponytail).
 	part_sprites.hair_back.visible = false
 	part_sprites.hair_front.visible = false
-	part_sprites.head_neutral.position = Vector2(-1, -6)
-	part_sprites.head_hurt.position = Vector2(-1, -6)
+	# Every art cutout crosses its parent joint. These overlaps are deliberately
+	# larger than the bilinear edge fringe so no pose can expose a transparent
+	# seam between rigid pieces.
+	part_sprites.head_neutral.position = Vector2(-1, 4)
+	part_sprites.head_hurt.position = Vector2(-1, 4)
 	part_sprites.torso.position = Vector2(0, -7)
-	part_sprites.pelvis.position = Vector2(0, -9)
+	part_sprites.pelvis.position = Vector2(0, -12)
 	for part_name in ["upper_arm_l", "upper_arm_r"]:
-		part_sprites[part_name].position = Vector2(0, 12)
+		part_sprites[part_name].position = Vector2(0, 4)
+		part_sprites[part_name].scale = Vector2.ONE * (ART_SCALE * 1.10)
 	for part_name in ["forearm_l", "forearm_r"]:
-		part_sprites[part_name].position = Vector2(0, 10)
+		part_sprites[part_name].position = Vector2(0, 7)
 	for part_name in ["hand_l_open", "hand_r_open", "hand_l_grip", "hand_r_grip"]:
 		part_sprites[part_name].position = Vector2(0, 7)
 	for part_name in ["thigh_l", "thigh_r"]:
-		part_sprites[part_name].position = Vector2(0, 11)
+		part_sprites[part_name].position = Vector2(0, 6)
 	for part_name in ["shin_l", "shin_r"]:
-		part_sprites[part_name].position = Vector2(0, 11)
+		part_sprites[part_name].position = Vector2(0, 4)
 	for part_name in ["foot_l", "foot_r"]:
-		part_sprites[part_name].position = Vector2(0, 14)
+		part_sprites[part_name].position = Vector2(0, 8)
 	part_sprites.accessory.position = Vector2(5, 5)
 	part_sprites.accessory.scale = Vector2.ONE * (ART_SCALE * 0.78)
 	part_sprites.wing_anchor.position = Vector2(3, 3)
 	part_sprites.wing_anchor.scale = Vector2.ONE * (ART_SCALE * 0.72)
 
 func _build_time_wings(anchor: Node2D) -> void:
-	wing_left = Polygon2D.new()
-	wing_left.name = "time_wing_l"
-	wing_left.polygon = PackedVector2Array([Vector2.ZERO, Vector2(-38, -31), Vector2(-48, -5), Vector2(-40, 27), Vector2(-8, 11)])
-	wing_left.color = WING_COLOR
-	wing_left.z_index = -8
-	wing_left.scale = Vector2.ONE * 0.01
-	anchor.add_child(wing_left)
-	wing_right = Polygon2D.new()
-	wing_right.name = "time_wing_r"
-	wing_right.polygon = PackedVector2Array([Vector2.ZERO, Vector2(38, -31), Vector2(48, -5), Vector2(40, 27), Vector2(8, 11)])
-	wing_right.color = WING_COLOR
-	wing_right.z_index = -8
-	wing_right.scale = Vector2.ONE * 0.01
-	anchor.add_child(wing_right)
+	time_wings = Sprite2D.new()
+	time_wings.name = "time_wings"
+	time_wings.texture = load(WING_TEXTURE) as Texture2D
+	time_wings.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
+	time_wings.material = cutout_material
+	time_wings.z_index = -8
+	time_wings.scale = Vector2.ONE * 0.001
+	time_wings.visible = false
+	anchor.add_child(time_wings)
 
 func _build_animations() -> void:
 	var library := AnimationLibrary.new()
@@ -260,7 +259,7 @@ func _make_idle() -> Animation:
 	var animation := Animation.new()
 	animation.length = 1.0
 	animation.loop_mode = Animation.LOOP_LINEAR
-	_add_values(animation, "Skeleton/pelvis/torso:position", [0.0, 0.5, 1.0], [Vector2(0, -21), Vector2(0, -22), Vector2(0, -21)])
+	_add_values(animation, "Skeleton/pelvis/torso:position", [0.0, 0.5, 1.0], [Vector2(0, -15), Vector2(0, -16), Vector2(0, -15)])
 	_add_values(animation, "Skeleton/pelvis/torso/head:rotation", [0.0, 0.5, 1.0], [-0.025, 0.025, -0.025])
 	_add_values(animation, "Skeleton/pelvis/torso/upper_arm_l:rotation", [0.0, 1.0], [2.90, 2.90])
 	_add_values(animation, "Skeleton/pelvis/torso/upper_arm_l/forearm_l:rotation", [0.0, 1.0], [0.05, 0.05])
@@ -313,9 +312,8 @@ func _make_wing_open() -> Animation:
 	animation.length = 0.6
 	animation.loop_mode = Animation.LOOP_LINEAR
 	var times := [0.0, 0.20, 0.45, 0.60]
-	var values := [Vector2.ONE * 0.01, Vector2(0.45, 0.8), Vector2.ONE, Vector2(0.96, 1.03)]
-	_add_values(animation, "Skeleton/pelvis/torso/wing_anchor/time_wing_l:scale", times, values)
-	_add_values(animation, "Skeleton/pelvis/torso/wing_anchor/time_wing_r:scale", times, values)
+	var values := [Vector2(0.003, 0.001), Vector2(0.020, 0.034), Vector2.ONE * 0.045, Vector2(0.043, 0.046)]
+	_add_values(animation, "Skeleton/pelvis/torso/wing_anchor/time_wings:scale", times, values)
 	return animation
 
 func _set_grip_tracks(animation: Animation, times: Array, values: Array) -> void:
