@@ -1,8 +1,9 @@
 {
   "reference_version": "gate-3a-pilot-0.6-turn6",
   "date": "2026-10-11",
-  "status": "PILOT_PENDING_OWNER_REVIEW",
-  "reason": "Tur 6 pilot revision: Compatibility-safe per-part silhouette backing, clean alpha>127 connectivity, measured proportions/contrast/contact, and symmetric upper-back Time Wings are ready for owner review. No owner lock is asserted.",
+  "status": "PILOT_LOCKED",
+  "accepted_by": "ana oturum 11.10.2026 21:35, kanıt 03-test/kontrol-20261011-0adea19/",
+  "reason": "Ana oturum pilot kabulü: regresyon 130/0/0, beyaz kutu 0, tek bileşen 300/300, boy 102-107, gövde 40, üç atmosferde kontrast >=97%, temas <=2 px ve iki kanat sırtta doğrulandı.",
   "source": "Codex built-in image_gen, 11.10.2026",
   "rig_contract": {
     "scene": "res://scenes/character_rig.tscn",
