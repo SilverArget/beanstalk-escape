@@ -21,11 +21,18 @@ func _initialize() -> void:
 	await _capture_game_frame(game, rig, skin, "stage-1", 1, false)
 	await _capture_game_frame(game, rig, skin, "stage-3", 3, false)
 	await _capture_game_frame(game, rig, skin, "storm-flat-313c68", 3, true)
+	game.app_state = GameManager.AppState.PLAYING
+	game._update_hud()
+	# Freeze gameplay so physics cannot overwrite a sampled rig pose or end the
+	# run while the deterministic 30 FPS evidence sequence is being rendered.
+	game.process_mode = Node.PROCESS_MODE_DISABLED
 	var frame_number := 0
 	for animation_name in PILOT_ANIMATIONS:
-		rig.play_animation(animation_name, true)
 		var frame_count := 30 if animation_name in ["idle", "climb_loop"] else 18
 		for local_frame in frame_count:
+			var duration := rig.animation_player.get_animation(animation_name).length
+			var sample_time := (float(local_frame) / float(maxi(frame_count - 1, 1))) * duration
+			rig.seek_animation(animation_name, sample_time)
 			await process_frame
 			await RenderingServer.frame_post_draw
 			var image := get_root().get_texture().get_image()

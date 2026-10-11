@@ -1,8 +1,8 @@
 {
-  "reference_version": "gate-3a-pilot-0.1",
+  "reference_version": "gate-3a-pilot-0.2",
   "date": "2026-10-11",
-  "status": "PARTIAL_NOT_LOCKED",
-  "reason": "M1/F1 rig contract tests pass; rendered-frame inspection, pixel contact measurements, 30 FPS sequences and MP4 evidence are NOT RUN.",
+  "status": "PILOT_VISUAL_PASS_REGRESSION_INCOMPLETE",
+  "reason": "M1/F1 rendered pilot findings 1-6 pass; full requested regression did not finish inside the correction-turn budget (test_tur3 6/8 before interruption; later files not rerun).",
   "source": "Codex image_gen, 11.10.2026, yönetici kararı 10.10.2026",
   "rig_contract": {
     "scene": "res://scenes/character_rig.tscn",
@@ -30,7 +30,7 @@
       "source": "Codex image_gen, 11.10.2026, yönetici kararı 10.10.2026",
       "dimensions": [1254, 1254],
       "alpha_result": "PASS: Format32bppArgb; 98,596 sampled pixels: 73.27% alpha=0, 26.56% partial alpha, 0.17% alpha=255; all outer corners alpha=0; no opaque background rectangle detected",
-      "control_result": "PASS automated atlas/part/pivot mount; HUMAN REVIEW REQUIRED for identity, seams and rendered anatomy"
+      "control_result": "PASS rendered: face clear, three-quarter climb pose, 0 px joint gap, 0-2 px support contact, 0-2 px wing seam; 101 px height, 43-47 px width"
     },
     {
       "skin": "F1",
@@ -40,7 +40,7 @@
       "source": "Codex image_gen, 11.10.2026, yönetici kararı 10.10.2026",
       "dimensions": [1254, 1254],
       "alpha_result": "PASS: Format32bppArgb; 98,596 sampled pixels: 70.51% alpha=0, 29.35% partial alpha, 0.14% alpha=255; all outer corners alpha=0; no opaque background rectangle detected",
-      "control_result": "PASS automated atlas/part/pivot mount and approved red-ponytail/turquoise-tunic source usage; HUMAN REVIEW REQUIRED for identity, seams and rendered anatomy"
+      "control_result": "PASS rendered: approved red-ponytail/turquoise identity, no detached red clusters, same pose keys; 101 px height, 43-47 px width"
     }
   ],
   "prompt_summary": [

@@ -1,6 +1,21 @@
 # Quality Report
 
-## Checkpoint: GATE 3A step 1 — §12.1 M1/F1 rig pilot (partial, 2026-10-11)
+## Checkpoint: GATE 3A step 1 correction — §12.1 M1/F1 rig pilot (2026-10-11)
+
+| Item ID | Status | Evidence / open work |
+|---|---|---|
+| Findings 1–5 / §11 / §12.1-3 | PASS rendered | Clear faces; rear harness/wing layering; coherent side/three-quarter climb; four grip/contact poses; no detached red clusters; visible purple wing opening. |
+| §5.1-character / VIS02 / VIS11 | PASS pilot | 960×540: 101 px high, 43–47 px wide, center y=396 (73.3%), contour 3 px, grip 12 px, surface overlap 0 px. |
+| Joint/contact/wing seam | PASS pilot | Joint gaps 0 px; hand/foot contact 0–2 px; wing-anchor seam 0–2 px. |
+| §12.1-5 evidence | PASS | 150 PNG frames/skin; 155-frame 960×540 H.264 MP4/skin at 30 FPS. |
+| GA08 windowed | PASS | 5/0 at t=62/64/66/68/70; `ASSERT CHANGE §12.1-2` samples 6 px below the 108 px art bound. |
+| Targeted/current regression | PASS | rig 8/0, stage DB 5/0, runtime 5/0, fairness 8/0, gate1 7/0, tur4 7/0, tur3b 5/0; `test_tur3` reached 6/8 with no FAIL before budget interruption. |
+| Full Godot regression | NOT RUN complete | `test_tur3` final 2 assertions and subsequent short files were not completed in this correction turn. Do not claim 0 FAIL for the full suite. |
+| Web export | PASS | Release PCK SHA-256 `7B95EBEE4BCCD12AF7DA181F0D696BD9F82007CA800D4AEBE689C9463DCB680D`, 15,546,776 bytes. |
+
+Pilot visual findings are closed, but reference status remains gated by the incomplete full regression.
+
+### Superseded initial pilot checkpoint
 
 | Item ID | Status | Evidence / open work |
 |---|---|---|

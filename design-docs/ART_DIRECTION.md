@@ -1,6 +1,15 @@
 # Art Direction
 
-## GATE 3A §12.1 pilot checkpoint — 2026-10-11
+## GATE 3A §12.1 pilot correction checkpoint — 2026-10-11
+
+- `§12.1-2/§11` PASS rendered: M1/F1 share one 22-part rig and the approved F1 red-ponytail/turquoise identity.
+- `§12.1-3` PASS rendered: harness/wing anchor is behind the torso, face is unobstructed, detached atlas-border fragments are clipped, joint gaps are 0 px, contact is 0–2 px, and wing seam is 0–2 px.
+- `§12/§12.1-3` PASS motion: four contact poses alternate reach/pull with gripped hands; root travel is 1 px rather than a body bounce.
+- `§5.1/VIS02/VIS11` PASS pilot: 43–47×101 px, center y=396/73.3%, 3 px contour and 12 px grip detail in 960×540 evidence.
+- `§12.1-5` PASS evidence: 150 PNG frames and one 155-frame 30 FPS H.264 MP4 per skin. Flat storm fallback remains `#313C68`.
+- Full regression is incomplete in this checkpoint; remaining-skin/bulk production must not begin until the requested complete rerun is green.
+
+### Superseded initial pilot record
 
 - `§12.1-2` PARTIAL PASS: M1 and owner-approved F1 identities were produced only with built-in `image_gen` as transparent rigid-part sheets. No CLI/API-key/paid fallback was used.
 - `§11-F1` PASS (source/contract): F1 uses the approved red ponytail and turquoise tunic identity. The generic green-cream F1 clothing line remains overridden by D-002.
