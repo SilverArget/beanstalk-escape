@@ -1,5 +1,22 @@
 # Quality Report
 
+## Checkpoint: GATE 3A step 1 — §12.1 M1/F1 rig pilot (partial, 2026-10-11)
+
+| Item ID | Status | Evidence / open work |
+|---|---|---|
+| §12.1-2 / §11 shared rig | PASS automated | `CharacterRig` has 22 named parts/states, one hierarchy/pivot grid, shared 44×108 contract, unchanged 30×86 collider and seven pilot animations. `test_gate3a_rig.gd` 8/0. |
+| F1 owner identity | PASS source / HUMAN REVIEW REQUIRED render | F1 sheet was generated from both approved source images; red ponytail + turquoise tunic are present in the generated sheet. Rendered gameplay identity inspection is open. |
+| RGBA / no opaque rectangle | PASS automated | Both 1254×1254 sheets are ARGB, >70% sampled alpha=0, all outer corners alpha=0; active main scene no longer executes the `#152238` greybox rectangle. |
+| §5.1-character | NOT RUN rendered | Numeric contract remains 15/15; Stage 1/3/storm pilot-art screenshots were not captured or inspected. |
+| VIS02 / VIS11 | NOT RUN | No rendered 960×540 pilot measurement. |
+| §12.1-3 joint/contact/wing seams | NOT RUN | Requires 30 FPS rendered key/intermediate frames and pixel measurements. |
+| T18 partial | PASS automated / NOT RUN visual | Same animation signature mounts on M1/F1; visual skin equivalence is not claimed. |
+| GA08 | NOT RUN windowed | Headless trace is 0/0 by design. Windowed run was not launched under the repository's media auto-open rule. |
+| Full Godot regression | PASS headless | 17 files: 125 PASS / 0 FAIL; GA08 visual script is 0/0 headless by design. `test_gate_b_fix.gd` initially failed its obsolete `player_visual.gd` path assertion; expectation was migrated with `ASSERT CHANGE §12.1-2` and reran 7/0. |
+| Web export | PASS | Fresh debug Web PCK: SHA-256 `C4F8A9AB51ADAC50989041C17C3E232ECC847396EFC5E41539DD58B3CED6E821`, 15,544,072 bytes. |
+
+Reference lock remains `PARTIAL_NOT_LOCKED`; do not start remaining skins or bulk animation states.
+
 ## Checkpoint: GATE 2 runtime encounters, spider, and Time Wings — 2026-10-10
 
 | Item | Result | Evidence |

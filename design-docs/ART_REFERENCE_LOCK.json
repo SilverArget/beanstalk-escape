@@ -1,0 +1,50 @@
+{
+  "reference_version": "gate-3a-pilot-0.1",
+  "date": "2026-10-11",
+  "status": "PARTIAL_NOT_LOCKED",
+  "reason": "M1/F1 rig contract tests pass; rendered-frame inspection, pixel contact measurements, 30 FPS sequences and MP4 evidence are NOT RUN.",
+  "source": "Codex image_gen, 11.10.2026, yönetici kararı 10.10.2026",
+  "rig_contract": {
+    "scene": "res://scenes/character_rig.tscn",
+    "script": "res://scripts/character_rig.gd",
+    "visible_size": [44, 108],
+    "collider_size": [30, 86],
+    "atlas_size": [1254, 1254],
+    "grid": [6, 4],
+    "cell_size": [209, 313.5],
+    "part_local_pivot": [0, 0],
+    "parts": [
+      "head_neutral", "head_hurt", "hair_back", "hair_front", "torso", "pelvis",
+      "upper_arm_l", "upper_arm_r", "forearm_l", "forearm_r", "hand_l_open", "hand_r_open",
+      "hand_l_grip", "hand_r_grip", "thigh_l", "thigh_r", "shin_l", "shin_r",
+      "foot_l", "foot_r", "accessory", "wing_anchor"
+    ],
+    "animations": ["idle", "climb_loop", "branch_takeoff", "branch_midair", "branch_landing", "hurt", "skill_time"]
+  },
+  "files": [
+    {
+      "skin": "M1",
+      "path": "res://assets/art/character_rig/skins/m1/parts_sheet.png",
+      "evidence_path": "../03-test/qa/art-reference/pilot/m1-parts-sheet.png",
+      "sha256": "07e12f91f1f77579799313b462c9a123edff8989d0cfd27b56fd41ee92d2ebb5",
+      "source": "Codex image_gen, 11.10.2026, yönetici kararı 10.10.2026",
+      "dimensions": [1254, 1254],
+      "alpha_result": "PASS: Format32bppArgb; 98,596 sampled pixels: 73.27% alpha=0, 26.56% partial alpha, 0.17% alpha=255; all outer corners alpha=0; no opaque background rectangle detected",
+      "control_result": "PASS automated atlas/part/pivot mount; HUMAN REVIEW REQUIRED for identity, seams and rendered anatomy"
+    },
+    {
+      "skin": "F1",
+      "path": "res://assets/art/character_rig/skins/f1/parts_sheet.png",
+      "evidence_path": "../03-test/qa/art-reference/pilot/f1-parts-sheet.png",
+      "sha256": "26f3cf9861613ef929f450fbd126671663236f874595c8c395d70507d64088d4",
+      "source": "Codex image_gen, 11.10.2026, yönetici kararı 10.10.2026",
+      "dimensions": [1254, 1254],
+      "alpha_result": "PASS: Format32bppArgb; 98,596 sampled pixels: 70.51% alpha=0, 29.35% partial alpha, 0.14% alpha=255; all outer corners alpha=0; no opaque background rectangle detected",
+      "control_result": "PASS automated atlas/part/pivot mount and approved red-ponytail/turquoise-tunic source usage; HUMAN REVIEW REQUIRED for identity, seams and rendered anatomy"
+    }
+  ],
+  "prompt_summary": [
+    "M1: transparent 6x4 production puppet-rig parts sheet; 22 strict row-major parts; brown hair, green tunic, leather belt, cream boots, backpack; no pose/frame/background/text.",
+    "F1: same M1 layout and proportions using owner-approved references; copper-red ponytail, turquoise tunic; no pose/frame/background/text."
+  ]
+}

@@ -6,6 +6,7 @@ extends Node2D
 var branch_graph := BranchGraph.new()
 var redraw_count := 0
 var branch_point_count := 0
+var qa_storm_background := false
 
 func _ready() -> void:
 	queue_redraw()
@@ -28,7 +29,10 @@ func _draw() -> void:
 		_draw_transfer_connection(player.transition_from, player.transition_to, player.transition_base_y, Color("f5d26b"))
 
 func _draw_sky(top_y: float, bottom_y: float) -> void:
-	draw_rect(Rect2(-1000.0, top_y, 2000.0, bottom_y - top_y), Palette.SKY_TOP)
+	var sky_color := Color("313c68") if qa_storm_background else Palette.SKY_TOP
+	draw_rect(Rect2(-1000.0, top_y, 2000.0, bottom_y - top_y), sky_color)
+	if qa_storm_background:
+		return
 	for band in 12:
 		var y := bottom_y - float(band) * 2600.0
 		draw_circle(Vector2(-350.0 + float((band * 193) % 700), y), 90.0, Palette.CLOUD_TINT)
