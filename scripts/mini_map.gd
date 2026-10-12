@@ -1,8 +1,10 @@
 extends Control
 
 var game: GameManager
+var redraw_count := 0
 
 func _draw() -> void:
+	redraw_count += 1
 	draw_line(Vector2(24, 24), Vector2(24, size.y - 24), Palette.WORLD_STALK_EDGE, 4.0)
 	draw_string(ThemeDB.fallback_font, Vector2(4, size.y - 4), "GROUND", HORIZONTAL_ALIGNMENT_LEFT, -1, 10, Palette.WORLD_STALK_EDGE)
 	var summit_color := Palette.ACCENT_PROGRESS

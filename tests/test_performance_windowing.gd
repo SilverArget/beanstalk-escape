@@ -52,6 +52,7 @@ func _prepare_stage(game: GameManager, stage_number: int) -> void:
 func _measure_case(game: GameManager, label: String, stage_number: int, frame_count: int) -> void:
 	for warmup in 5:
 		await process_frame
+	var before := _redraw_counts(game)
 	var started := Time.get_ticks_usec()
 	for frame in frame_count:
 		await process_frame
@@ -62,3 +63,20 @@ func _measure_case(game: GameManager, label: String, stage_number: int, frame_co
 	var bounded := active_rocks <= 30 and active_storm <= 30
 	var timing_ok := average_ms <= FRAME_BUDGET_MS
 	_check(timing_ok and bounded, label, "avg=%.3fms frames=%d rocks=%d storm=%d" % [average_ms, frame_count, active_rocks, active_storm])
+	var after := _redraw_counts(game)
+	var deltas := {}
+	for kind in after:
+		deltas[kind] = int(after[kind]) - int(before.get(kind, 0))
+	print("REDRAWS %s frames=%d %s" % [label, frame_count, JSON.stringify(deltas)])
+
+func _redraw_counts(game: GameManager) -> Dictionary:
+	var result := {"RockHazard": 0, "StormMechanics": 0, "BeanVisual": 0, "GoldCollectible": 0, "DangerOverlay": 0, "SpiderDistanceGauge": 0, "MiniMap": 0, "WorldVisual": 0, "WorldSkyVisual": 0}
+	for node in game.find_children("*", "", true, false):
+		var script := node.get_script() as Script
+		if script == null:
+			continue
+		var path := script.resource_path.get_file()
+		var kind := {"rock_hazard.gd": "RockHazard", "storm_mechanics.gd": "StormMechanics", "bean_visual.gd": "BeanVisual", "gold_collectible.gd": "GoldCollectible", "danger_overlay.gd": "DangerOverlay", "spider_distance_gauge.gd": "SpiderDistanceGauge", "mini_map.gd": "MiniMap", "world_visual.gd": "WorldVisual", "world_sky_visual.gd": "WorldSkyVisual"}.get(path, "") as String
+		if not kind.is_empty():
+			result[kind] += int(node.get("redraw_count"))
+	return result

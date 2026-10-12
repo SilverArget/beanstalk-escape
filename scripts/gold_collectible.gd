@@ -15,6 +15,7 @@ var player: PlayerController
 var taken := false
 var sparkle_remaining := 0.0
 var sprite := Sprite2D.new()
+var redraw_count := 0
 
 func setup(id: String, target: PlayerController) -> void:
 	placement_id = id
@@ -46,6 +47,7 @@ func _process(_delta: float) -> void:
 		sprite.modulate.a = 0.92 + sin(Time.get_ticks_msec() * 0.008) * 0.08
 
 func _draw() -> void:
+	redraw_count += 1
 	if sparkle_remaining <= 0.0:
 		return
 	var progress := 1.0 - sparkle_remaining / FEEDBACK_DURATION

@@ -111,6 +111,7 @@ func _physics_process(delta: float) -> void:
 	refresh_active_window()
 	invulnerability_remaining = maxf(invulnerability_remaining - delta, 0.0)
 	for hazard in hazards:
+		hazard.visible = absf(hazard.global_position.y - player.global_position.y) <= 700.0
 		if player.global_position.y <= hazard.anchor_y + 360.0 and not warning_ids.has(hazard.hazard_id):
 			warning_ids[hazard.hazard_id] = true
 			var audio := get_parent().get_node_or_null("Audio") as BeanstalkAudio

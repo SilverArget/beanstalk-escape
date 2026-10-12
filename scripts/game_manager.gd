@@ -1185,7 +1185,8 @@ func _update_hud() -> void:
 	else:
 		$HUD/Stats.text = ""
 		$HUD/Replay.text = ""
-	$HUD/MiniMap.queue_redraw()
+	if Engine.get_physics_frames() % 6 == 0:
+		$HUD/MiniMap.queue_redraw()
 
 func _on_level_up(new_level: int, gold_reward: int) -> void:
 	level_up_remaining = 2.4

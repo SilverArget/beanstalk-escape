@@ -27,6 +27,9 @@ var web_audio_announced := false
 var campaign_slots: Array = []
 var campaign_slots_by_stage: Dictionary = {}
 var active_center_stage := -1
+var redraw_count := 0
+var redraw_elapsed := 0.0
+var visual_was_active := false
 
 func _ready() -> void:
 	process_physics_priority = -5
@@ -88,15 +91,30 @@ func _physics_process(delta: float) -> void:
 	if not sandbox_active:
 		refresh_active_window()
 		_update_campaign(delta)
-		if not campaign_slots.is_empty():
-			queue_redraw()
+		_update_visual_redraw(delta, _campaign_visual_active())
 		return
 	var climbed := stage_bottom_y - player.global_position.y
 	_update_wind_audio(climbed)
 	_update_breakable(delta, climbed)
 	_update_web(delta, climbed)
 	_update_rain(climbed)
-	queue_redraw()
+	_update_visual_redraw(delta, true)
+
+func _update_visual_redraw(delta: float, visual_active: bool) -> void:
+	redraw_elapsed += delta
+	if visual_active != visual_was_active:
+		visual_was_active = visual_active
+		queue_redraw()
+	if visual_active and redraw_elapsed >= 1.0 / 30.0:
+		redraw_elapsed = fmod(redraw_elapsed, 1.0 / 30.0)
+		queue_redraw()
+
+func _campaign_visual_active() -> bool:
+	for slot: Dictionary in campaign_slots:
+		var climbed := float(slot.stage_bottom_y) - player.global_position.y
+		if climbed >= float(slot.warning_height) and climbed <= float(slot.occupancy[1]) + 180.0:
+			return true
+	return false
 
 func refresh_active_window(force := false) -> void:
 	if sandbox_active or player == null or stages == null:
@@ -230,6 +248,7 @@ func snapshot() -> Dictionary:
 	}
 
 func _draw() -> void:
+	redraw_count += 1
 	if not sandbox_active:
 		_draw_campaign()
 		return

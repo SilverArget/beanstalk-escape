@@ -30,6 +30,7 @@ var cosmetic_data: Dictionary = {}
 var anchor_data: Dictionary = {}
 var outfit_masks: Dictionary = {}
 var hair_masks: Dictionary = {}
+var frame_metrics: Dictionary = {}
 var face_strap: Line2D
 var face_knot: Polygon2D
 
@@ -126,10 +127,15 @@ func _load_skin(requested_skin: String) -> void:
 	var normalized := requested_skin.to_upper()
 	skin_id = normalized if normalized in SKIN_IDS and _skin_exists(normalized) else "M1"
 	frame_textures.clear()
+	frame_metrics.clear()
 	outfit_masks.clear()
 	hair_masks.clear()
 	for requested_frame in ["climb_left", "climb_right", "climb_reach", "jump", "hurt", "fall", "cheer", "hang"]:
-		frame_textures[requested_frame] = load("%s/%s/%s.png" % [FRAME_ROOT, skin_id.to_lower(), requested_frame])
+		var frame_texture := load("%s/%s/%s.png" % [FRAME_ROOT, skin_id.to_lower(), requested_frame]) as Texture2D
+		frame_textures[requested_frame] = frame_texture
+		# Texture readback is allowed once while the skin loads, never in _process.
+		var image := frame_texture.get_image()
+		frame_metrics[requested_frame] = {"texture_size": frame_texture.get_size(), "used": image.get_used_rect()}
 		var mask_path := "%s/%s/%s_outfit_mask.png" % [FRAME_ROOT, skin_id.to_lower(), requested_frame]
 		if ResourceLoader.exists(mask_path):
 			outfit_masks[requested_frame] = load(mask_path)
@@ -187,13 +193,11 @@ func preview_cosmetic(item: Dictionary) -> void:
 func _update_cosmetic_anchors() -> void:
 	if sprite.texture == null:
 		return
-	var image := sprite.texture.get_image()
-	if image == null:
-		return
-	var used := image.get_used_rect()
+	var metrics: Dictionary = frame_metrics.get(frame_name, {})
+	var used: Rect2i = metrics.get("used", Rect2i())
 	if used.size == Vector2i.ZERO:
 		return
-	var texture_size := Vector2(image.get_width(), image.get_height())
+	var texture_size := Vector2(metrics.get("texture_size", sprite.texture.get_size()))
 	var frame_anchor: Dictionary = anchor_data.get(frame_name, {})
 	var center_data: Array = frame_anchor.get("head_center", [float(used.get_center().x), float(used.position.y) + float(used.size.y) * 0.25])
 	var head_center := Vector2(float(center_data[0]), float(center_data[1]))

@@ -7,6 +7,9 @@ const SKY_BOTTOM := Color("80d5f4")
 
 var player: PlayerController
 var stages: StageManager
+var redraw_count := 0
+var redraw_elapsed := 0.0
+var camera_top := -270.0
 
 func setup(target: PlayerController, stage_manager: StageManager) -> void:
 	player = target
@@ -17,19 +20,25 @@ func _ready() -> void:
 	set_process(true)
 	queue_redraw()
 
-func _process(_delta: float) -> void:
-	queue_redraw()
-
-func _draw() -> void:
+func _process(delta: float) -> void:
 	if player == null:
 		return
 	var camera := player.get_node_or_null("Camera2D") as Camera2D
-	var camera_top := player.global_position.y - ScaleLock.CHARACTER_REFERENCE_Y
-	var camera_center_x := player.global_position.x
+	var camera_center := player.global_position + Vector2(0.0, -120.0)
 	if camera != null:
-		camera_top = camera.get_screen_center_position().y - get_viewport_rect().size.y * 0.5
-		camera_center_x = camera.get_screen_center_position().x
-	var view_rect := Rect2(camera_center_x - 488.0, camera_top - 8.0, 976.0, 556.0)
+		camera_center = camera.get_screen_center_position()
+	camera_top = camera_center.y - get_viewport_rect().size.y * 0.5
+	global_position = camera_center
+	redraw_elapsed += delta
+	if redraw_elapsed >= 0.05:
+		redraw_elapsed = fmod(redraw_elapsed, 0.05)
+		queue_redraw()
+
+func _draw() -> void:
+	redraw_count += 1
+	if player == null:
+		return
+	var view_rect := Rect2(-488.0, -278.0, 976.0, 556.0)
 	var world := get_parent()
 	if bool(world.get("qa_support_mask")):
 		draw_rect(view_rect, Color.BLACK)
@@ -56,7 +65,7 @@ func _draw() -> void:
 		draw_rect(view_rect, Color(0.29, 0.16, 0.46, 0.30 * violet_mix))
 		for fog_index in 4:
 			var fog_y := view_rect.position.y + fposmod(float(fog_index) * 151.0 - camera_top * 0.08, view_rect.size.y)
-			draw_circle(Vector2(view_rect.get_center().x + sin(float(fog_index) * 2.1) * 260.0, fog_y), 150.0, Color(0.70, 0.56, 0.82, 0.035 * violet_mix))
+			draw_circle(Vector2(sin(float(fog_index) * 2.1) * 260.0, fog_y), 150.0, Color(0.70, 0.56, 0.82, 0.035 * violet_mix))
 	if storm_mix > 0.0:
 		draw_rect(view_rect, Color(0.10, 0.16, 0.25, 0.32 * storm_mix * (1.0 - summit_mix)))
 	if lightning_mix > 0.0:
@@ -65,7 +74,7 @@ func _draw() -> void:
 	if upper_cloud_mix > 0.0:
 		for fog_index in 5:
 			var fog_y := view_rect.position.y + fposmod(float(fog_index) * 127.0 - camera_top * 0.06, view_rect.size.y)
-			draw_circle(Vector2(view_rect.get_center().x + sin(float(fog_index) * 1.8) * 300.0, fog_y), 190.0, Color(0.74, 0.79, 0.84, 0.075 * upper_cloud_mix * (1.0 - summit_mix)))
+			draw_circle(Vector2(sin(float(fog_index) * 1.8) * 300.0, fog_y), 190.0, Color(0.74, 0.79, 0.84, 0.075 * upper_cloud_mix * (1.0 - summit_mix)))
 	if summit_mix > 0.0:
 		draw_rect(view_rect, Color(1.0, 0.78, 0.34, 0.24 * summit_mix))
 	_draw_far_vines(camera_top)
@@ -75,7 +84,7 @@ func _draw_far_vines(camera_top: float) -> void:
 	for index in 4:
 		var side := -1.0 if index % 2 == 0 else 1.0
 		var x := side * (300.0 + float(index / 2) * 92.0)
-		var start_y := camera_top - 180.0 + drift + float(index) * 105.0
+		var start_y := -450.0 + drift + float(index) * 105.0
 		var points := PackedVector2Array()
 		for step in 10:
 			var y := start_y + float(step) * 82.0

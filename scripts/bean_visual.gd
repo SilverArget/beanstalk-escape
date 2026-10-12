@@ -12,11 +12,17 @@ const WARNING_ARROW := preload("res://assets/art/gpt/items/warning_arrow.png")
 
 @export var warning := false
 var burst := false
+var redraw_count := 0
+var redraw_elapsed := 0.0
 
-func _process(_delta: float) -> void:
-	queue_redraw()
+func _process(delta: float) -> void:
+	redraw_elapsed += delta
+	if redraw_elapsed >= 1.0 / 30.0:
+		redraw_elapsed = fmod(redraw_elapsed, 1.0 / 30.0)
+		queue_redraw()
 
 func _draw() -> void:
+	redraw_count += 1
 	if warning:
 		var pulse := 1.0 + sin(Time.get_ticks_msec() * 0.018) * 0.14
 		_draw_centered(LANDING_SHADOW, Vector2(0, 8), Vector2(0.20, 0.20) * pulse)

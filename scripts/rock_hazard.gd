@@ -13,6 +13,7 @@ var threat_time := 0.0
 var previous_position := Vector2.ZERO
 var stages: StageManager
 var sprite := Sprite2D.new()
+var redraw_count := 0
 
 func setup(id: String, recipe_kind: String, lane_values: Array, at_y: float, stage_manager: StageManager) -> void:
 	hazard_id = id
@@ -45,12 +46,14 @@ func _reset_position() -> void:
 
 func advance_threat_clock(delta: float, time_active: bool, player_y: float) -> void:
 	previous_position = global_position
+	var was_released := released
 	if not released and player_y <= anchor_y:
 		released = true
 	if not released:
 		sprite.rotation = sin(Time.get_ticks_msec() * 0.022) * (0.045 if kind == "F" else 0.015)
-		queue_redraw()
 		return
+	if released != was_released:
+		queue_redraw()
 	var scale := Balance.TIME_WINGS_SLOW_SCALE if time_active else 1.0
 	threat_time += delta * scale
 	match kind:
@@ -66,8 +69,6 @@ func advance_threat_clock(delta: float, time_active: bool, player_y: float) -> v
 			var p := float(Balance.ROUTE_X[routes[0]])
 			var q := float(Balance.ROUTE_X[routes[1]])
 			position.x = lerpf(p, q, clampf(t, 0.0, 1.0))
-	if kind in ["R", "F", "M"]:
-		queue_redraw()
 
 func collision_centers() -> Array[Vector2]:
 	var result: Array[Vector2] = []
@@ -82,6 +83,7 @@ func collision_radius() -> float:
 	return 31.0 if kind == "M" else (24.0 if kind in ["R", "F"] else 42.0)
 
 func _draw() -> void:
+	redraw_count += 1
 	if not released:
 		draw_circle(Vector2(0.0, -46.0), 11.0, Color("ffd55c"))
 		draw_line(Vector2(0.0, -62.0), Vector2(0.0, -52.0), Color("142b39"), 3.0, true)

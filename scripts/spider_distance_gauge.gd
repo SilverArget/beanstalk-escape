@@ -4,12 +4,19 @@ extends Control
 var distance_px := 0.0
 var normalized_danger := 0.0
 var level := "GREEN"
+var redraw_count := 0
+var last_draw_height := -1
+var last_draw_level := ""
 
 func update_from_positions(player_y: float, spider_y: float) -> void:
 	distance_px = maxf(spider_y - player_y, 0.0)
 	normalized_danger = clampf(1.0 - distance_px / Balance.GAUGE_MAX_DISTANCE, 0.0, 1.0)
 	level = level_for_gap(distance_px)
-	queue_redraw()
+	var draw_height := roundi(normalized_danger * 212.0)
+	if draw_height != last_draw_height or level != last_draw_level:
+		last_draw_height = draw_height
+		last_draw_level = level
+		queue_redraw()
 
 func level_for(value: float) -> String:
 	for name: String in Balance.GAUGE_THRESHOLDS:
@@ -25,6 +32,7 @@ static func level_for_gap(gap: float) -> String:
 	return "DANGER"
 
 func _draw() -> void:
+	redraw_count += 1
 	var colors := {"GREEN": Palette.GAUGE_GREEN, "YELLOW": Palette.GAUGE_YELLOW, "ORANGE": Palette.GAUGE_ORANGE, "RED": Palette.GAUGE_RED, "DANGER": Palette.DANGER_SPIDER}
 	draw_rect(Rect2(0, 0, 28, 220), Palette.UI_PANEL, true)
 	var height := normalized_danger * 212.0

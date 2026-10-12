@@ -2,11 +2,17 @@ extends Control
 
 var game: GameManager
 const GRADIENT_BANDS := 16
+var redraw_count := 0
+var redraw_elapsed := 0.0
 
-func _process(_delta: float) -> void:
-	queue_redraw()
+func _process(delta: float) -> void:
+	redraw_elapsed += delta
+	if redraw_elapsed >= 0.05:
+		redraw_elapsed = fmod(redraw_elapsed, 0.05)
+		queue_redraw()
 
 func _draw() -> void:
+	redraw_count += 1
 	if game == null or game.app_state != GameManager.AppState.PLAYING:
 		return
 	var amount := clampf((game.gauge.normalized_danger - 0.45) / 0.55, 0.0, 1.0)
