@@ -1,5 +1,21 @@
 # Quality Report
 
+## Checkpoint: GATE 3A step 2 world-art correction round 4 (2026-10-12)
+
+| Item ID | Status | Evidence / measurement |
+|---|---|---|
+| §5 viewport paint | PASS rendered | Stage 3/4/5 960×540 frames paint atmosphere through x=0; left edge has 445 distinct sampled colors and no flat clear-color column. Before: `../03-test/kontrol-20261011-859b667/zoom-dunya-tur3.png`; after: `../03-test/qa/world/stage-{3,4,5}-960x540.png`. |
+| §5.1 texture / VIS12 | PASS rendered | Wide trunk/fork uses two low-opacity, non-mirrored, independently phased samples; the repeated centered V/arrow is no longer readable in Stage 1/2. Largest texture element is conservatively capped at 54 px. |
+| §12 fork texture | PASS rendered | UV distance follows ribbon tangent and is scale-clamped, so the fork base flows continuously into all three arms without the former parallel stretched arcs. Evidence: `stage-3-split-960x540.png`. |
+| VIS12 airborne art | PASS rendered | Transfer and branch-tip atlas decorations removed; `airborne_transfer_foliage_count=0`, `gameplay_branch_tip_foliage_count=0`; no detached spiral in Stage 3 split or Stage 3–5 frames. |
+| VIS12 seam | PASS measured | 26 consecutive trunk/branch scroll frames, 0 support-mask sky pixels in every frame; six stage frames also total 0 support-mask sky pixels. |
+| §5.1 scale | PASS | Trunk 180; branches 42–51 measured (44 nominal); texture ≤54; grip detail 12; leaf 140; outline 3–4; all within v1.3 ranges. |
+| Windowed tests | PASS | `capture_gate3a_world.gd`: 6 stage frames + 26 seam frames; `test_gate_a_visual.gd` GA08: 5 PASS / 0 FAIL. |
+| Targeted headless regression | PASS | `test_gate3a_rig.gd` 8/0; `test_scale_lock.gd` 15/0 plus 2 expected headless-frame NOT RUN; `test_gate_a.gd` 9/0 earlier in the same correction turn before the final render-only blend adjustment. |
+| Full 16-file regression | NOT RUN | Main session owns the requested full parallel regression. No assertion changed in this round. |
+
+No production PNG asset was created or modified; only rendering code and regenerated QA screenshots changed. `ART_REFERENCE_LOCK.json`, the M1/F1 pilot, `master`, and `02-kod/docs` were untouched.
+
 ## Checkpoint: GATE 3A step 1 correction — §12.1 M1/F1 rig pilot (2026-10-11)
 
 | Item ID | Status | Evidence / open work |

@@ -34,3 +34,10 @@
 - `BranchGraph` owns adjacent support connectivity and the 0.40-second transfer curve. `SupportState` explicitly records `SUPPORTED`, `TRANSFERRING`, and `FALLING_RECOVERY`; legacy movement names remain only as a compatibility surface for older QA scripts.
 - Camera zoom remains 1.0 and smoothing is disabled while it is parented directly to the player; this removes the measured 12-pixel steady-state lag and locks the grip reference to rendered y=390. A later camera refactor may add independent soft x follow without changing this scale lock.
 - No later-gate values were changed: vertical speed, stage count/length, spider, bean, wings, and hazard balance remain owned by their scheduled gates.
+
+## D-007 — GATE 3A world ribbon UV and decoration correction (2026-10-12)
+
+- Preserve the accepted `vine_surface_tile.png`, `foliage_atlas.png`, atmosphere plate, and M1/F1 reference lock; this correction generates no replacement art.
+- Bind the atmosphere plate to the actual Camera2D screen center so branch-follow x movement cannot expose the project clear color.
+- Map vine texture distance along each ribbon tangent, clamp the scale so a 52 px source element never exceeds the §5.1 54 px ceiling, and use two low-opacity non-mirrored phases on wide trunk/fork surfaces to suppress the source tile's centered chevron repetition.
+- Do not place foliage-atlas cells at transfer midpoints or ordinary branch tips: their transparent padding makes the painted spiral appear unsupported. Split/branch silhouettes remain the gameplay support indicator; later decoration may return only with an explicit attachment anchor and rendered evidence.
