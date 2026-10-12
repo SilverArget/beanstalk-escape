@@ -1,11 +1,11 @@
 extends Node2D
 
 const ATMOSPHERE_TEXTURE := preload("res://assets/art/world/sunny_atmosphere.png")
-const VINE_SURFACE_TEXTURE := preload("res://assets/art/world/vine_surface_tile_v2.png")
+const VINE_SURFACE_TEXTURE := preload("res://assets/art/world/vine_surface_tile_v3.png")
 const FOLIAGE_TEXTURE := preload("res://assets/art/world/foliage_atlas.png")
 const SKY_TOP := Color("366bb4")
 const SKY_BOTTOM := Color("80d5f4")
-const OUTLINE_COLOR := Color("173d2f")
+const OUTLINE_COLOR := Color8(50, 105, 84)
 const VINE_BASE_COLOR := Color("4c9a4d")
 const MODULE_HEIGHT := 256.0
 const TEXTURE_REPEAT := 52.0
@@ -446,7 +446,7 @@ func qa_visual_contract() -> Dictionary:
 		"grip_detail_px": GRIP_DETAIL_SIZE,
 		"max_leaf_px": MAX_LEAF_SIZE,
 		"outline_px": VISUAL_OUTLINE_WIDTH,
-		"surface_texture": "res://assets/art/world/vine_surface_tile_v2.png",
+		"surface_texture": "res://assets/art/world/vine_surface_tile_v3.png",
 		"foliage_atlas": "res://assets/art/world/foliage_atlas.png",
 		"procedural_circle_cloud_count": 0,
 		"flat_polygon_leaf_count": 0,
