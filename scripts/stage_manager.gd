@@ -13,6 +13,8 @@ var patterns: Array = []
 var summit_flash_count := 0
 var stage_banner := ""
 var stage_banner_remaining := 0.0
+var runtime_breaks: Array = []
+var runtime_webs: Array = []
 
 func _ready() -> void: patterns = generate_patterns(run_seed)
 func _physics_process(delta: float) -> void:
@@ -41,6 +43,38 @@ func reset_run() -> void:
 	stage_banner = ""
 	stage_banner_remaining = 0.0
 	patterns = generate_patterns(run_seed)
+	clear_runtime_hazards()
+
+func clear_runtime_hazards() -> void:
+	runtime_breaks.clear()
+	runtime_webs.clear()
+
+func set_runtime_break(stage_number: int, route: int, start_height: float, end_height: float, enabled: bool) -> void:
+	_set_runtime_hazard(runtime_breaks, stage_number, route, start_height, end_height, enabled)
+
+func set_runtime_web(stage_number: int, route: int, start_height: float, end_height: float, enabled: bool) -> void:
+	_set_runtime_hazard(runtime_webs, stage_number, route, start_height, end_height, enabled)
+
+func _set_runtime_hazard(target: Array, stage_number: int, route: int, start_height: float, end_height: float, enabled: bool) -> void:
+	for index in range(target.size() - 1, -1, -1):
+		var item: Dictionary = target[index]
+		if int(item.stage) == stage_number and int(item.route) == route and is_equal_approx(float(item.start), start_height):
+			target.remove_at(index)
+	if enabled:
+		target.append({"stage": stage_number, "route": route, "start": start_height, "end": end_height})
+
+func _runtime_hazard_at(target: Array, stage_number: int, route: int, progress: float) -> bool:
+	var height := progress * Balance.STAGE_HEIGHT
+	for item: Dictionary in target:
+		if int(item.stage) == stage_number and int(item.route) == route and height >= float(item.start) and height <= float(item.end):
+			return true
+	return false
+
+func has_route_support_at(stage_number: int, route: int, progress: float) -> bool:
+	return is_route_open_at(stage_number, route, progress) and not _runtime_hazard_at(runtime_breaks, stage_number, route, progress)
+
+func can_enter_route_at(stage_number: int, route: int, progress: float) -> bool:
+	return has_route_support_at(stage_number, route, progress) and not _runtime_hazard_at(runtime_webs, stage_number, route, progress)
 func generate_patterns(seed_value: int) -> Array:
 	var result: Array = []
 	for stage: Dictionary in StageDatabase.stages_for_variant(run_variant):

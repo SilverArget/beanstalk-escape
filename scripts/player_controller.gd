@@ -22,6 +22,9 @@ var branch_transition_count := 0
 var on_support := true
 var support_state := SupportState.SUPPORTED
 var support_offset := 0.0
+var support_offset_velocity := 0.0
+var transfer_wind_offset := 0.0
+var transfer_wind_velocity := 0.0
 var recovery_remaining := 0.0
 var recovery_velocity_y := 0.0
 var transition_base_y := 0.0
@@ -30,6 +33,7 @@ var _last_stage := 1
 var _pending_branch_direction := 0
 @onready var stages: StageManager = get_parent().get_node_or_null("StageManager") as StageManager
 @onready var body: Node2D = get_node_or_null("Body") as Node2D
+@onready var storm: StormMechanics = get_parent().get_node_or_null("StormMechanics") as StormMechanics
 
 func _ready() -> void:
 	spawn_position = global_position
@@ -102,11 +106,17 @@ func _update_trunk_movement(delta: float) -> void:
 func _update_branch_movement(delta: float) -> void:
 	velocity.x = 0.0
 	if movement_mode == MovementMode.TRANSITION:
+		if storm != null:
+			var wind_step := storm.step_transfer_wind(transfer_wind_offset, transfer_wind_velocity, transition_base_y, delta, time_wings_active)
+			transfer_wind_offset = wind_step.x
+			transfer_wind_velocity = wind_step.y
 		transition_progress = minf(transition_progress + delta / Balance.BRANCH_TRANSITION_SECONDS, 1.0)
 		if transition_progress >= 1.0 - 0.00001:
 			transition_progress = 1.0
 		transition_base_y -= climb_speed() * delta
-		global_position = branch_graph.transfer_point(stages, transition_from, transition_to, transition_base_y, transition_progress)
+		if transition_progress >= 0.75:
+			transfer_wind_offset = lerpf(transfer_wind_offset, support_offset, (transition_progress - 0.75) / 0.25)
+		global_position = branch_graph.transfer_point(stages, transition_from, transition_to, transition_base_y, transition_progress, transfer_wind_offset)
 		on_support = false
 		support_state = SupportState.TRANSFERRING
 		_update_transition_visual(transition_progress)
@@ -121,6 +131,10 @@ func _update_branch_movement(delta: float) -> void:
 			else:
 				_begin_falling_recovery()
 		return
+	if storm != null:
+		var wind_step := storm.step_support_wind(support_offset, support_offset_velocity, global_position.y, delta, time_wings_active)
+		support_offset = wind_step.x
+		support_offset_velocity = wind_step.y
 	global_position.x = stages.branch_x_at(active_branch, global_position.y) + support_offset
 	on_support = branch_graph.has_support(stages, active_branch, global_position.y)
 	if not on_support:
@@ -157,6 +171,8 @@ func _begin_branch_transition(direction: int) -> bool:
 	transition_to = target
 	transition_progress = 0.0
 	transition_base_y = global_position.y
+	transfer_wind_offset = 0.0
+	transfer_wind_velocity = 0.0
 	movement_mode = MovementMode.TRANSITION
 	support_state = SupportState.TRANSFERRING
 	branch_transition_count += 1
@@ -245,6 +261,9 @@ func reset_run(at_position: Vector2) -> void:
 	on_support = true
 	support_state = SupportState.SUPPORTED
 	support_offset = 0.0
+	support_offset_velocity = 0.0
+	transfer_wind_offset = 0.0
+	transfer_wind_velocity = 0.0
 	recovery_remaining = 0.0
 	recovery_velocity_y = 0.0
 	transition_base_y = at_position.y

@@ -16,6 +16,7 @@ var death_cause := DeathCause.NONE
 @onready var beans: BeanSpawner = $BeanSpawner
 @onready var rocks: RockManager = $RockManager
 @onready var audio: BeanstalkAudio = $Audio
+@onready var storm: StormMechanics = $StormMechanics
 @onready var platform_services: Node = get_node("/root/PlatformServices")
 var total_time := 0.0
 var close_calls := 0
@@ -225,6 +226,7 @@ func restart() -> void:
 	for child in get_tree().get_nodes_in_group("run_transient"): child.free()
 	beans.reset_run()
 	rocks.reset_run()
+	storm.reset_run()
 	player.reset_run(Vector2(0, 0))
 	spider.reset_run(Vector2(0, Balance.START_DISTANCE))
 	player.set_physics_process(true)
@@ -357,11 +359,15 @@ func _finish_intro() -> void:
 	spider.reset_run(Vector2(0.0, Balance.START_DISTANCE))
 	beans.reset_run()
 	rocks.reset_run()
+	storm.reset_run()
 	if debug_start_stage > 1:
 		_start_debug_stage(debug_start_stage)
 	if debug_sandbox == "rocks":
 		_start_debug_stage(3)
 		rocks.start_sandbox()
+	elif debug_sandbox == "storm":
+		_start_debug_stage(3)
+		storm.configure_sandbox(3)
 	player.set_physics_process(true)
 	spider.set_physics_process(true)
 	beans.set_physics_process(true)
@@ -398,6 +404,7 @@ func restart_stage() -> void:
 	for child in get_tree().get_nodes_in_group("run_transient"): child.free()
 	beans.reset_run()
 	rocks.reset_run()
+	storm.reset_run()
 	shake_remaining = 0.0
 	close_text_remaining = 0.0
 	danger_pulse_remaining = 0.0
@@ -1177,6 +1184,7 @@ func _readonly_state_snapshot() -> Dictionary:
 		"tempo": {"stage_seconds": Balance.STAGE_DURATION_SECONDS, "events_in_stage": stages.pattern_for_stage(stage_number).encounters.size()},
 		"fx": {"shake": shake_remaining, "close_text": close_text_remaining},
 		"beans": state_beans,
+		"storm": storm.snapshot(),
 		"next_dead_end": {"route": dead_end_route, "distance_px": null if is_inf(dead_end_distance) else dead_end_distance},
 		"open_routes_at_player": stages.open_routes_at(player.global_position.y),
 		"active_branch": player.active_branch,
@@ -1202,7 +1210,10 @@ func _apply_debug_meta_overrides() -> void:
 		if parts.size() != 2:
 			continue
 		if parts[0] == "sandbox":
-			debug_sandbox = parts[1] if parts[1] == "rocks" else ""
+			var requested_sandbox := parts[1].to_lower()
+			debug_sandbox = requested_sandbox if requested_sandbox in ["rocks", "storm"] else ""
+			if not debug_sandbox.is_empty():
+				debug_start_stage = 3
 			continue
 		if not parts[1].is_valid_int():
 			continue
