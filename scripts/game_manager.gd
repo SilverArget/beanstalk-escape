@@ -1338,6 +1338,7 @@ func _start_debug_stage(stage_number: int) -> void:
 	var start_y := stages.stage_bottom_y(stage_number)
 	player.reset_run(Vector2(0.0, start_y))
 	spider.reset_run(Vector2(0.0, start_y + Balance.START_DISTANCE))
+	rocks.sync_after_player_teleport()
 	stages.update_progress(start_y)
 	gauge.update_from_positions(player.global_position.y, spider.global_position.y)
 

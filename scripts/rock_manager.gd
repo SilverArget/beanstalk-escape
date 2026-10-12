@@ -41,6 +41,12 @@ func reset_run() -> void:
 	_build_campaign_catalog()
 	refresh_active_window(true)
 
+func sync_after_player_teleport() -> void:
+	if player == null:
+		return
+	previous_player_position = player.global_position
+	refresh_active_window(true)
+
 func _clear_active_hazards() -> void:
 	for hazard in hazards:
 		if is_instance_valid(hazard): hazard.queue_free()
