@@ -37,6 +37,7 @@ var qa_support_mask_include_outline := false
 var qa_sky_only := false
 var cached_camera_top := INF
 var sky_visual: Node2D
+var draw_mesh_cache: Array[ArrayMesh] = []
 
 func _ready() -> void:
 	texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
@@ -66,6 +67,9 @@ func _camera_top() -> float:
 
 func _draw() -> void:
 	redraw_count += 1
+	# Canvas draw commands retain mesh RIDs, not the local Resource references.
+	# Keep each rebuilt mesh alive until the next surface-cache redraw.
+	draw_mesh_cache.clear()
 	branch_point_count = 0
 	var camera_top := cached_camera_top if not is_inf(cached_camera_top) else _camera_top()
 	if qa_sky_only:
@@ -322,6 +326,9 @@ func _draw_textured_ribbon(points: PackedVector2Array, widths: PackedFloat32Arra
 	# Never stretch a 52 px source feature beyond the §5.1 54 px ceiling.
 	var flow_scale := maxf(TEXTURE_REPEAT / MAX_TEXTURE_ELEMENT, endpoint_flow_scale)
 	var start_v := -points[0].y / MODULE_HEIGHT if vertical_span > 1.0 else texture_phase
+	var mesh_vertices := PackedVector2Array()
+	var mesh_uvs := PackedVector2Array()
+	var mesh_indices := PackedInt32Array()
 	for index in range(points.size() - 1):
 		var first := points[index]
 		var second := points[index + 1]
@@ -347,9 +354,9 @@ func _draw_textured_ribbon(points: PackedVector2Array, widths: PackedFloat32Arra
 					extended_second + normal * (second_half + VISUAL_OUTLINE_WIDTH),
 					extended_second - normal * (second_half + VISUAL_OUTLINE_WIDTH),
 				])
-				draw_colored_polygon(mask_outline_quad, Color.WHITE)
+				_append_quad(mesh_vertices, mesh_uvs, mesh_indices, mask_outline_quad, PackedVector2Array())
 			else:
-				draw_colored_polygon(quad, Color.WHITE)
+				_append_quad(mesh_vertices, mesh_uvs, mesh_indices, quad, PackedVector2Array())
 			continue
 		var first_v := -extended_first.y / MODULE_HEIGHT if world_locked_v else start_v + (distances[index] - 1.25 * flow_scale) / MODULE_HEIGHT
 		var second_v := -extended_second.y / MODULE_HEIGHT if world_locked_v else start_v + (distances[index + 1] + 1.25 * flow_scale) / MODULE_HEIGHT
@@ -383,25 +390,49 @@ func _draw_textured_ribbon(points: PackedVector2Array, widths: PackedFloat32Arra
 				Vector2(_surface_u(first_left.x, first_v), first_v), Vector2(_surface_u(first_right.x, first_v), first_v),
 				Vector2(_surface_u(second_right.x, second_v), second_v), Vector2(_surface_u(second_left.x, second_v), second_v),
 			])
-		var texture_modulate := Color.WHITE
-		# One world-locked paint source crosses trunk, fork and supports. Changing
-		# textures at either join produced a horizontal tone/phase step.
-		var surface_texture: Texture2D = VINE_SURFACE_TEXTURE
-		draw_polygon(quad, PackedColorArray([texture_modulate, texture_modulate, texture_modulate, texture_modulate]), uvs, surface_texture)
-		# This glaze is a uniform material treatment for every narrow support. It
-		# never depends on the player position or follows the camera/player.
-		var glaze_alpha := 0.14
-		if glaze_alpha > 0.001:
-			draw_colored_polygon(quad, Color(0.78, 0.90, 0.42, glaze_alpha))
+		_append_quad(mesh_vertices, mesh_uvs, mesh_indices, quad, uvs)
+	if not mesh_vertices.is_empty():
+		var ribbon_mesh := _build_ribbon_mesh(mesh_vertices, mesh_uvs, mesh_indices)
+		if qa_support_mask:
+			draw_mesh(ribbon_mesh, null, Transform2D.IDENTITY, Color.WHITE)
+		else:
+			# One indexed mesh replaces hundreds of identical per-segment canvas
+			# commands. UVs and overlap geometry are unchanged.
+			draw_mesh(ribbon_mesh, VINE_SURFACE_TEXTURE)
+			# Preserve the former uniform translucent glaze as one mesh command.
+			draw_mesh(ribbon_mesh, null, Transform2D.IDENTITY, Color(0.78, 0.90, 0.42, 0.14))
 	if not qa_support_mask and draw_outline:
 		var edge_geometry := _ribbon_geometry(points, widths, VISUAL_OUTLINE_WIDTH, texture_phase)
 		_draw_trimmed_edge_pair(edge_geometry.left, edge_geometry.right, VISUAL_OUTLINE_WIDTH, outline_start_trim, outline_end_trim)
 
 func _draw_trimmed_edge_pair(left: PackedVector2Array, right: PackedVector2Array, width: float, start_trim: int, end_trim: int) -> void:
 	var finish := left.size() - end_trim
-	for index in range(start_trim, finish - 1):
-		draw_line(left[index], left[index + 1], OUTLINE_COLOR, width, true)
-		draw_line(right[index], right[index + 1], OUTLINE_COLOR, width, true)
+	if finish - start_trim < 2:
+		return
+	# A polyline is one canvas command; the old loop emitted two commands for
+	# every 12 px branch segment with identical geometry and antialiasing.
+	draw_polyline(left.slice(start_trim, finish), OUTLINE_COLOR, width, true)
+	draw_polyline(right.slice(start_trim, finish), OUTLINE_COLOR, width, true)
+
+func _append_quad(vertices: PackedVector2Array, uvs: PackedVector2Array, indices: PackedInt32Array, quad: PackedVector2Array, quad_uvs: PackedVector2Array) -> void:
+	var base := vertices.size()
+	vertices.append_array(quad)
+	if quad_uvs.size() == 4:
+		uvs.append_array(quad_uvs)
+	else:
+		uvs.append_array(PackedVector2Array([Vector2.ZERO, Vector2.RIGHT, Vector2.ONE, Vector2.DOWN]))
+	indices.append_array(PackedInt32Array([base, base + 1, base + 2, base, base + 2, base + 3]))
+
+func _build_ribbon_mesh(vertices: PackedVector2Array, uvs: PackedVector2Array, indices: PackedInt32Array) -> ArrayMesh:
+	var arrays := []
+	arrays.resize(Mesh.ARRAY_MAX)
+	arrays[Mesh.ARRAY_VERTEX] = vertices
+	arrays[Mesh.ARRAY_TEX_UV] = uvs
+	arrays[Mesh.ARRAY_INDEX] = indices
+	var mesh := ArrayMesh.new()
+	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+	draw_mesh_cache.append(mesh)
+	return mesh
 
 func _surface_u(world_x: float, flow_v: float) -> float:
 	# The v2 source has no centered motif. World-X phase makes overlapping
