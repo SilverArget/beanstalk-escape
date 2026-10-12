@@ -41,3 +41,10 @@
 - Bind the atmosphere plate to the actual Camera2D screen center so branch-follow x movement cannot expose the project clear color.
 - Map vine texture distance along each ribbon tangent, clamp the scale so a 52 px source element never exceeds the §5.1 54 px ceiling, and use two low-opacity non-mirrored phases on wide trunk/fork surfaces to suppress the source tile's centered chevron repetition.
 - Do not place foliage-atlas cells at transfer midpoints or ordinary branch tips: their transparent padding makes the painted spiral appear unsupported. Split/branch silhouettes remain the gameplay support indicator; later decoration may return only with an explicit attachment anchor and rendered evidence.
+
+## D-008 — GATE 3A world texture and fork union (2026-10-12)
+
+- Preserve `vine_surface_tile.png` as historical input, but replace its low-opacity runtime use with separate imagegen asset `vine_surface_tile_v2.png` (`D4A73983…51B4`, 1254×1254, opaque RGB). The accepted source is asymmetric, knot-free, long-fiber paint without the old centered chevron.
+- Render the new tile at full opacity. Use true per-corner world-space UVs on trunk/fork overlap so every world pixel samples the same paint regardless of ribbon ownership; this removes rectangular overlap boundaries and horizontal texture jumps.
+- Draw the Stage 3 fork as three fill ribbons plus one union-aware exterior outline. Interior overlap edges and filled outline end-caps are forbidden.
+- Close real branch ends with collider-independent attached tapers. A taper never changes support geometry and is omitted at a segment start that already joins the fork.

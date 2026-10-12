@@ -1,7 +1,7 @@
 extends Node2D
 
 const ATMOSPHERE_TEXTURE := preload("res://assets/art/world/sunny_atmosphere.png")
-const VINE_SURFACE_TEXTURE := preload("res://assets/art/world/vine_surface_tile.png")
+const VINE_SURFACE_TEXTURE := preload("res://assets/art/world/vine_surface_tile_v2.png")
 const FOLIAGE_TEXTURE := preload("res://assets/art/world/foliage_atlas.png")
 const SKY_TOP := Color("366bb4")
 const SKY_BOTTOM := Color("80d5f4")
@@ -107,7 +107,7 @@ func _draw_trunk(camera_top: float) -> void:
 		y = maxf(y - 32.0, visible_top)
 	if centers.is_empty() or centers[centers.size() - 1].y != visible_top:
 		centers.append(Vector2(_trunk_center_x(visible_top), visible_top))
-	_draw_textured_ribbon(centers, _trunk_widths(centers), -visible_bottom / MODULE_HEIGHT)
+	_draw_textured_ribbon(centers, _trunk_widths(centers), -visible_bottom / MODULE_HEIGHT, true, true)
 
 func _trunk_widths(points: PackedVector2Array) -> PackedFloat32Array:
 	var widths := PackedFloat32Array()
@@ -130,6 +130,7 @@ func _draw_stage_branches(stage_number: int, camera_top: float) -> void:
 	if stage_number == 3:
 		for route in 3:
 			_draw_split_ribbon(route, stage_bottom)
+		_draw_split_outline(stage_bottom)
 	for route in 3:
 		for segment: Array in stages.support_segments(stage_number, route):
 			_draw_branch_segment(stage_number, route, float(segment[0]), float(segment[1]))
@@ -143,6 +144,7 @@ func _draw_stage_branches(stage_number: int, camera_top: float) -> void:
 
 func _draw_branch_segment(stage_number: int, route: int, start_progress: float, end_progress: float) -> void:
 	var stage_bottom := -float(stage_number - 1) * Balance.STAGE_HEIGHT
+	var cap_start := start_progress > 0.0
 	if stage_number == 3 and start_progress <= 0.0:
 		start_progress = maxf(start_progress, 350.0 / Balance.STAGE_HEIGHT)
 	var start_y := stage_bottom - start_progress * Balance.STAGE_HEIGHT
@@ -155,7 +157,7 @@ func _draw_branch_segment(stage_number: int, route: int, start_progress: float, 
 	if points.size() < 2:
 		return
 	branch_point_count += points.size()
-	_draw_branch_ribbon(points, route, true)
+	_draw_branch_ribbon(points, route, cap_start, true)
 
 func _branch_visual_x(route: int, world_y: float) -> float:
 	# Gameplay remains on Balance.ROUTE_X. This visual-only S wave stays within
@@ -174,18 +176,65 @@ func _draw_split_ribbon(route: int, stage_bottom: float) -> void:
 		var organic_x := lerpf(split_start.x, branch_end_x, smooth) + sin(t * PI) * float(route - 1) * 6.0
 		points.append(Vector2(organic_x, lerpf(split_start.y, split_end_y, t)))
 		widths.append(lerpf(ScaleLock.TRUNK_WIDTH, ScaleLock.BRANCH_WIDTH, smooth))
-	_draw_textured_ribbon(points, widths, -split_start.y / MODULE_HEIGHT)
+	_draw_textured_ribbon(points, widths, -split_start.y / MODULE_HEIGHT, false, true)
 
-func _draw_branch_ribbon(points: PackedVector2Array, route: int, _draw_tips: bool) -> void:
+func _draw_branch_ribbon(points: PackedVector2Array, route: int, cap_start: bool, cap_end: bool) -> void:
 	var widths := PackedFloat32Array()
 	for _point in points:
 		widths.append(ScaleLock.BRANCH_WIDTH)
 	_draw_textured_ribbon(points, widths, float(route) * 0.27)
-	# Atlas tip cells contain generous transparent padding, which made their
-	# painted spirals appear detached between routes. Gameplay segment and
-	# split tips therefore stay clean until an anchored decoration is available.
+	if cap_start and not qa_support_mask:
+		_draw_branch_tip(points[0], (points[0] - points[1]).normalized(), route)
+	if cap_end and not qa_support_mask:
+		_draw_branch_tip(points[points.size() - 1], (points[points.size() - 1] - points[points.size() - 2]).normalized(), route)
 
-func _draw_textured_ribbon(points: PackedVector2Array, widths: PackedFloat32Array, texture_phase: float) -> void:
+func _draw_branch_tip(base: Vector2, direction: Vector2, route: int) -> void:
+	# A short taper is visual-only: it closes the painted support without
+	# extending or changing the gameplay collider/segment endpoint.
+	var normal := Vector2(-direction.y, direction.x)
+	var points := PackedVector2Array([
+		base - direction * 2.0,
+		base + direction * 6.0 + normal * 0.8,
+		base + direction * 13.0 - normal * 0.6,
+		base + direction * 18.0,
+	])
+	var widths := PackedFloat32Array([ScaleLock.BRANCH_WIDTH, 38.0, 20.0, 2.0])
+	_draw_textured_ribbon(points, widths, float(route) * 0.27, true, true)
+
+func _draw_split_outline(stage_bottom: float) -> void:
+	if qa_support_mask:
+		return
+	var outer_left := PackedVector2Array()
+	var outer_right := PackedVector2Array()
+	var gap_left_edges := [PackedVector2Array(), PackedVector2Array()]
+	var gap_right_edges := [PackedVector2Array(), PackedVector2Array()]
+	var gap_started := [false, false]
+	for step in range(29):
+		var t := float(step) / 28.0
+		var smooth := t * t * (3.0 - 2.0 * t)
+		var world_y := lerpf(stage_bottom - 140.0, stage_bottom - 350.0, t)
+		var half_width := lerpf(ScaleLock.TRUNK_WIDTH, ScaleLock.BRANCH_WIDTH, smooth) * 0.5
+		var intervals := []
+		for route in 3:
+			var center_x := lerpf(_trunk_center_x(stage_bottom - 140.0), _branch_visual_x(route, stage_bottom - 350.0), smooth) + sin(t * PI) * float(route - 1) * 6.0
+			intervals.append(Vector2(center_x - half_width, center_x + half_width))
+		outer_left.append(Vector2(float(intervals[0].x), world_y))
+		outer_right.append(Vector2(float(intervals[2].y), world_y))
+		for gap in 2:
+			var gap_open := float(intervals[gap].y) < float(intervals[gap + 1].x)
+			if gap_open:
+				gap_started[gap] = true
+			if bool(gap_started[gap]):
+				gap_left_edges[gap].append(Vector2(float(intervals[gap].y), world_y))
+				gap_right_edges[gap].append(Vector2(float(intervals[gap + 1].x), world_y))
+	draw_polyline(outer_left, OUTLINE_COLOR, VISUAL_OUTLINE_WIDTH, true)
+	draw_polyline(outer_right, OUTLINE_COLOR, VISUAL_OUTLINE_WIDTH, true)
+	for gap in 2:
+		if gap_left_edges[gap].size() > 1:
+			draw_polyline(gap_left_edges[gap], OUTLINE_COLOR, VISUAL_OUTLINE_WIDTH, true)
+			draw_polyline(gap_right_edges[gap], OUTLINE_COLOR, VISUAL_OUTLINE_WIDTH, true)
+
+func _draw_textured_ribbon(points: PackedVector2Array, widths: PackedFloat32Array, texture_phase: float, draw_outline := true, world_locked_v := false) -> void:
 	if points.size() < 2:
 		return
 	var distances := PackedFloat32Array([0.0])
@@ -200,6 +249,12 @@ func _draw_textured_ribbon(points: PackedVector2Array, widths: PackedFloat32Arra
 	# Never stretch a 52 px source feature beyond the §5.1 54 px ceiling.
 	var flow_scale := maxf(TEXTURE_REPEAT / MAX_TEXTURE_ELEMENT, endpoint_flow_scale)
 	var start_v := -points[0].y / MODULE_HEIGHT if vertical_span > 1.0 else texture_phase
+	if not qa_support_mask and draw_outline:
+		var outline_geometry := _ribbon_geometry(points, widths, VISUAL_OUTLINE_WIDTH, texture_phase)
+		# Side strokes provide the 3 px rim without a polygon end-cap. A filled
+		# outline polygon exposed a dark horizontal bar wherever two ribbons met.
+		draw_polyline(outline_geometry.left, OUTLINE_COLOR, VISUAL_OUTLINE_WIDTH * 2.0 + 1.0, true)
+		draw_polyline(outline_geometry.right, OUTLINE_COLOR, VISUAL_OUTLINE_WIDTH * 2.0 + 1.0, true)
 	for index in range(points.size() - 1):
 		var first := points[index]
 		var second := points[index + 1]
@@ -229,49 +284,44 @@ func _draw_textured_ribbon(points: PackedVector2Array, widths: PackedFloat32Arra
 			else:
 				draw_colored_polygon(quad, Color.WHITE)
 			continue
-		var outline_quad := PackedVector2Array([
-			extended_first - normal * (first_half + VISUAL_OUTLINE_WIDTH),
-			extended_first + normal * (first_half + VISUAL_OUTLINE_WIDTH),
-			extended_second + normal * (second_half + VISUAL_OUTLINE_WIDTH),
-			extended_second - normal * (second_half + VISUAL_OUTLINE_WIDTH),
-		])
-		draw_colored_polygon(outline_quad, OUTLINE_COLOR)
-		var first_v := start_v + (distances[index] - 1.25 * flow_scale) / MODULE_HEIGHT
-		var second_v := start_v + (distances[index + 1] + 1.25 * flow_scale) / MODULE_HEIGHT
-		var first_u := _surface_uv_edges(first_v)
-		var second_u := _surface_uv_edges(second_v)
-		var uvs := PackedVector2Array([
-			Vector2(first_u.x, first_v), Vector2(first_u.y, first_v),
-			Vector2(second_u.y, second_v), Vector2(second_u.x, second_v),
-		])
+		var first_v := -extended_first.y / MODULE_HEIGHT if world_locked_v else start_v + (distances[index] - 1.25 * flow_scale) / MODULE_HEIGHT
+		var second_v := -extended_second.y / MODULE_HEIGHT if world_locked_v else start_v + (distances[index + 1] + 1.25 * flow_scale) / MODULE_HEIGHT
+		var first_left := extended_first - normal * first_half
+		var first_right := extended_first + normal * first_half
+		var second_left := extended_second - normal * second_half
+		var second_right := extended_second + normal * second_half
+		var uvs: PackedVector2Array
+		if world_locked_v:
+			var first_left_v := -first_left.y / MODULE_HEIGHT
+			var first_right_v := -first_right.y / MODULE_HEIGHT
+			var second_right_v := -second_right.y / MODULE_HEIGHT
+			var second_left_v := -second_left.y / MODULE_HEIGHT
+			uvs = PackedVector2Array([
+				Vector2(_surface_u(first_left.x, first_left_v), first_left_v), Vector2(_surface_u(first_right.x, first_right_v), first_right_v),
+				Vector2(_surface_u(second_right.x, second_right_v), second_right_v), Vector2(_surface_u(second_left.x, second_left_v), second_left_v),
+			])
+		else:
+			uvs = PackedVector2Array([
+				Vector2(_surface_u(first_left.x, first_v), first_v), Vector2(_surface_u(first_right.x, first_v), first_v),
+				Vector2(_surface_u(second_right.x, second_v), second_v), Vector2(_surface_u(second_left.x, second_v), second_v),
+			])
 		var surface_width := maxf(first_half * 2.0, second_half * 2.0)
-		var width_mix := clampf((surface_width - ScaleLock.BRANCH_WIDTH) / (ScaleLock.TRUNK_WIDTH - ScaleLock.BRANCH_WIDTH), 0.0, 1.0)
-		var texture_alpha := lerpf(0.42, 0.08, width_mix)
-		draw_colored_polygon(quad, VINE_BASE_COLOR)
-		var texture_modulate := Color(1.0, 1.0, 1.0, texture_alpha)
+		var texture_modulate := Color.WHITE
 		draw_polygon(quad, PackedColorArray([texture_modulate, texture_modulate, texture_modulate, texture_modulate]), uvs, VINE_SURFACE_TEXTURE)
-		if width_mix > 0.0:
-			var secondary_uvs := PackedVector2Array()
-			for uv in uvs:
-				secondary_uvs.append(uv + Vector2(0.43, 0.37))
-			var secondary_modulate := Color(1.0, 1.0, 1.0, 0.10 * width_mix)
-			draw_polygon(quad, PackedColorArray([secondary_modulate, secondary_modulate, secondary_modulate, secondary_modulate]), secondary_uvs, VINE_SURFACE_TEXTURE)
 		if surface_width <= 60.0:
 			# A translucent lime glaze keeps the painted volume while preventing
 			# dark texture pockets from swallowing the character's 3 px rim.
-			draw_colored_polygon(quad, Color(0.78, 0.90, 0.42, 0.30))
-	if not qa_support_mask:
+			draw_colored_polygon(quad, Color(0.78, 0.90, 0.42, 0.14))
+	if not qa_support_mask and draw_outline:
 		var edge_geometry := _ribbon_geometry(points, widths, VISUAL_OUTLINE_WIDTH, texture_phase)
 		draw_polyline(edge_geometry.left, OUTLINE_COLOR, 1.25, true)
 		draw_polyline(edge_geometry.right, OUTLINE_COLOR, 1.25, true)
 
-func _surface_uv_edges(flow_v: float) -> Vector2:
-	# Both edges deliberately use different, smoothly changing offsets. The
-	# source tile is never mirrored; this asymmetric shear turns its repeated
-	# centered chevrons into non-repeating directional fibres.
-	var offset := sin(flow_v * TAU / 5.0) * 0.19 + sin(flow_v * TAU / 3.7) * 0.07
-	var shear := 0.21 + sin(flow_v * TAU / 7.3) * 0.11 + sin(flow_v * TAU / 11.0) * 0.04
-	return Vector2(offset - shear * 0.35, 1.0 + offset + shear * 0.65)
+func _surface_u(world_x: float, flow_v: float) -> float:
+	# The v2 source has no centered motif. World-X phase makes overlapping
+	# split ribbons sample identical paint, while the slow drift avoids a
+	# ruler-straight vertical repeat without mirroring the source.
+	return 0.5 + world_x / 512.0 + sin(flow_v * TAU / 7.3) * 0.035
 
 func _ribbon_geometry(points: PackedVector2Array, widths: PackedFloat32Array, extra_width: float, texture_phase: float) -> Dictionary:
 	var left := PackedVector2Array()
@@ -294,9 +344,8 @@ func _ribbon_geometry(points: PackedVector2Array, widths: PackedFloat32Array, ex
 		# World-locked vertical UVs join trunk/split/branch without mirrored
 		# modules. A long-period lateral offset breaks the former V repetition.
 		var v := -points[index].y / MODULE_HEIGHT + texture_phase * 0.0
-		var u_edges := _surface_uv_edges(v)
-		left_uv.append(Vector2(u_edges.x, v))
-		right_uv.append(Vector2(u_edges.y, v))
+		left_uv.append(Vector2(_surface_u(left[left.size() - 1].x, v), v))
+		right_uv.append(Vector2(_surface_u(right[right.size() - 1].x, v), v))
 	var polygon := PackedVector2Array()
 	var uvs := PackedVector2Array()
 	polygon.append_array(left)
@@ -381,7 +430,7 @@ func qa_visual_contract() -> Dictionary:
 		"grip_detail_px": GRIP_DETAIL_SIZE,
 		"max_leaf_px": MAX_LEAF_SIZE,
 		"outline_px": VISUAL_OUTLINE_WIDTH,
-		"surface_texture": "res://assets/art/world/vine_surface_tile.png",
+		"surface_texture": "res://assets/art/world/vine_surface_tile_v2.png",
 		"foliage_atlas": "res://assets/art/world/foliage_atlas.png",
 		"procedural_circle_cloud_count": 0,
 		"flat_polygon_leaf_count": 0,

@@ -207,3 +207,17 @@ Active migrated behavior remains asserted: GA03 samples an actual open FORK inte
 | T10 pause | PASS | 240 explicit paused physics ticks left Time Wings remaining time unchanged. |
 
 Targeted Godot results: `tests/test_gate2_fairness.gd` 8 PASS / 0 FAIL; `tests/test_gate2_runtime.gd` 5/0; `tests/test_gate2_stage_database.gd` 5/0; `tests/test_gate1.gd` 7/0. The first red run failed because the new classes/API did not exist; the first replay run then exposed a witness command attempted while its target support was still closed, and the validator was corrected to wait for a real connected support window.
+
+## Checkpoint: GATE 3A Sıra 2 world-art correction 5 — 2026-10-12
+
+| Item ID | Status | Evidence / measurement |
+|---|---|---|
+| §5.1 / FAIL A | CODEX PASS; owner verification pending | New opaque imagegen tile `assets/art/world/vine_surface_tile_v2.png`, SHA-256 `D4A73983…51B4`, 1254×1254 RGB. Full-opacity render luminance std: Stage 1 `66.048`, Stage 3 split `59.326` (target ≥50). Old tile remains untouched. |
+| VIS12 / FAIL B | CODEX PASS; owner verification pending | Split uses per-corner world UVs and one external union outline; no ribbon end-cap bars or internal outlines. In `stage-3-split-world-only.png`, support-mask adjacent-row mean absolute RGB difference: median `6.752`, max `10.504` at y=324, ratio `1.556×` (target ≤2×). Sky leak `0`. |
+| §5.1 / FAIL C | CODEX PASS; owner verification pending | Collider/support segments unchanged. The former blunt right tip is an attached taper: successive painted widths `2, 5, 7, 11, 28, 31, 34, 37, 39, 42, 45, 47` px; no detached atlas cell. |
+| §5.1 scale | PASS (targeted) | Texture element `54`, grip detail `12`, max leaf `140`, outline `3`; `test_scale_lock.gd` 15 PASS / 0 FAIL / 2 headless frame NOT RUN. |
+| VIS12 capture | PASS (render) | Windowed 960×540 capture emitted 6/6 stage frames and 26/26 seam frames; every recorded support mask has sky leak `0`. |
+| GA08 | PASS (render) | Windowed isolated run 5 PASS / 0 FAIL; unmodified green/lime and live-support assertions. |
+| Targeted regression | PASS | `test_gate3a_rig.gd` 8/0; `test_scale_lock.gd` 15/0 plus 2 frame NOT RUN; `test_gate_a.gd` 9/0. Complete 16-file regression NOT RUN this checkpoint. |
+
+No assertion changed. Evidence: `../03-test/qa/world/stage-1-960x540.png` and `stage-3-split-960x540.png`. Image source: Codex built-in imagegen, 2026-10-12, owner decision 2026-10-10.
