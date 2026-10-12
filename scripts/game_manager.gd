@@ -201,7 +201,7 @@ func _debug_evidence_stage(stage_number: int) -> void:
 	if not _debug_state_enabled() or stage_number < 1 or stage_number > Balance.STAGE_COUNT:
 		return
 	player.global_position = Vector2(0, -(stages.stage_start_height(stage_number) + stages.stage_length(stage_number) * 0.35))
-	spider.global_position = player.global_position + Vector2(0, Balance.START_DISTANCE)
+	spider.global_position = player.global_position + Vector2(0, SpiderController.stage_start_gap(stage_number))
 	player._sync_stage_mode()
 	stages.update_progress(player.global_position.y)
 
@@ -966,7 +966,9 @@ func layout_hud_for_viewport(viewport_size: Vector2) -> void:
 	$HUD/Shop.position = Vector2((width - menu_width) * 0.5, height - 72.0)
 	$HUD/Shop.size = Vector2(menu_width, 48.0)
 	_layout_centered_label($HUD/RewardToast, width, 154.0, 30.0, 190.0)
-	_layout_centered_label($HUD/LevelUpCard, width, 198.0, 42.0, 190.0)
+	# Stage completion can show this together with the 188..240 double-reward
+	# button. Keep the level reward in its own readable row below that action.
+	_layout_centered_label($HUD/LevelUpCard, width, 248.0, 42.0, 190.0)
 	_layout_centered_label($HUD/StageBanner, width, 124.0 if portrait else 86.0, 30.0, 82.0 if portrait else 300.0)
 	$HUD/StageCounter.position = Vector2(8.0 if portrait else 14.0, 172.0 if portrait else 58.0)
 	$HUD/StageCounter.size = Vector2(112.0, 22.0)
@@ -1305,7 +1307,7 @@ func _readonly_state_snapshot() -> Dictionary:
 		"branch_target": player.transition_to,
 		"branch_transition_count": player.branch_transition_count,
 		"on_support": player.on_support,
-		"stats": {"time": total_time, "bean_hits": beans.hit_count, "close_calls": close_calls, "skills_used": skills_used, "best_distance": best_spider_distance},
+		"stats": {"time": total_time, "bean_hits": beans.hit_count, "rock_hits": rocks.hit_count, "close_calls": close_calls, "skills_used": skills_used, "best_distance": best_spider_distance},
 		"restart": {"count": stage_restart_count, "start_distance": stage_restart_start_distance},
 		"shop": economy.shop_snapshot(),
 	}
@@ -1338,7 +1340,7 @@ func _start_debug_stage(stage_number: int) -> void:
 		return
 	var start_y := stages.stage_bottom_y(stage_number)
 	player.reset_run(Vector2(0.0, start_y))
-	spider.reset_run(Vector2(0.0, start_y + Balance.START_DISTANCE))
+	spider.reset_run(Vector2(0.0, start_y + SpiderController.stage_start_gap(stage_number)))
 	rocks.sync_after_player_teleport()
 	golds.refresh_active_window(true)
 	stages.update_progress(start_y)

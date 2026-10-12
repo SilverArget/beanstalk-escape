@@ -203,7 +203,9 @@ static func _paced_encounters(stage: Dictionary) -> Array:
 	var result: Array = []
 	for index in 10:
 		var template: Dictionary = (source[index % source.size()] as Dictionary).duplicate(true)
-		var use_bean := int(stage.number) >= 4
+		# Stage 1 starts targeting the idle center lane at the third encounter;
+		# Stages 2-3 alternate beans with their authored teaching encounters.
+		var use_bean := int(stage.number) >= 4 or (int(stage.number) == 1 and index >= 2 and index % 2 == 0) or (int(stage.number) in [2, 3] and index % 2 == 1)
 		template["id"] = "S%02d-E%02d" % [int(stage.number), index + 1]
 		# 230 px is 1.84 s at the 125 px/s tempo. Ten occupancies remain inside
 		# the 2800 px early-stage boundary while keeping the established rhythm.

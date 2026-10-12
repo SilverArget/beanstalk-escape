@@ -75,6 +75,7 @@ func reset_run() -> void:
 				slot["touched"] = false
 				slot["active"] = false
 				slot["finished"] = false
+				slot["warning_visible_seconds"] = 0.0
 				stage_slots.append(slot)
 			campaign_slots_by_stage[int(pattern.stage)] = stage_slots
 	refresh_active_window(true)
@@ -238,14 +239,39 @@ func _update_rain(climbed: float) -> void:
 				bean.request_release()
 
 func snapshot() -> Dictionary:
+	var campaign: Array = []
+	for slot: Dictionary in campaign_slots:
+		campaign.append({
+			"kind": {"V": "wind", "K": "break", "WEB": "web", "RAIN": "rain"}.get(String(slot.kind), String(slot.kind).to_lower()),
+			"lane": int(slot.lane),
+			"start_y": float(slot.stage_bottom_y) - float(slot.anchor),
+			"end_y": float(slot.stage_bottom_y) - float(slot.occupancy[1]),
+			"phase": _campaign_phase(slot),
+			"warning_visible_seconds": float(slot.warning_visible_seconds),
+		})
 	return {
 		"sandbox": sandbox_active,
 		"campaign_active": campaign_slots.filter(func(slot: Dictionary) -> bool: return bool(slot.active)).size(),
+		"campaign": campaign,
 		"wind": {"strength": wind_envelope(stage_bottom_y - player.global_position.y) if player != null else 0.0, "direction": wind.direction},
 		"breakable": breakable.duplicate(true),
 		"web": web.duplicate(true),
 		"rain": {"warned": rain.warned, "released": rain.released.duplicate(), "count": rain.beans.size()},
 	}
+
+func _campaign_phase(slot: Dictionary) -> String:
+	if bool(slot.finished):
+		return "broken" if String(slot.kind) == "K" else "cleared"
+	var climbed := float(slot.stage_bottom_y) - player.global_position.y if player != null else -INF
+	if climbed < float(slot.warning_height):
+		return "idle"
+	if String(slot.kind) == "K" and bool(slot.touched):
+		return "cracking"
+	if bool(slot.active):
+		return "active"
+	if climbed > float(slot.occupancy[1]):
+		return "cleared"
+	return "warning"
 
 func _draw() -> void:
 	redraw_count += 1
@@ -326,6 +352,8 @@ func _update_campaign(delta: float) -> void:
 		var anchor := float(slot.anchor)
 		var end_height := float(slot.occupancy[1])
 		var kind := String(slot.kind)
+		if climbed >= float(slot.warning_height) and not bool(slot.finished):
+			slot.warning_visible_seconds = float(slot.warning_visible_seconds) + delta
 		if kind == "V":
 			slot.active = climbed >= anchor and climbed <= end_height
 			continue

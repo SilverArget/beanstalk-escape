@@ -53,7 +53,19 @@ static func pressure_profile(stage_number: int) -> Dictionary:
 	return {"g_lo": 156.0, "pressure": 12.0}
 
 static func retry_gap_for_stage(stage_number: int) -> float:
-	return 240.0 if stage_number <= 24 else 180.0
+	return stage_start_gap(stage_number)
+
+static func stage_start_gap(stage_number: int) -> float:
+	if stage_number <= 1:
+		return Balance.START_DISTANCE
+	var profile := pressure_profile(stage_number)
+	var equilibrium_c := clampf(
+		(1.0 - Balance.SPIDER_SPEED_RATIO) * Balance.PLAYER_VERTICAL_SPEED
+		/ (Balance.PLAYER_VERTICAL_SPEED * 0.12 + float(profile.pressure)),
+		0.0,
+		1.0
+	)
+	return float(profile.g_lo) + Balance.SPIDER_RAMP_SPAN * equilibrium_c
 
 static func pressure_equilibrium_table() -> Array:
 	var result: Array = []
@@ -79,6 +91,32 @@ static func simulate_bean_penalty_safety(stage_number: int) -> Dictionary:
 		if tick == penalty_ticks - 1:
 			post_penalty_gap = gap
 	return {"minimum_gap": minimum_gap, "post_penalty_gap": post_penalty_gap, "final_gap": gap}
+
+static func simulate_rock_penalty_safety(stage_number: int, profile_override := {}) -> Dictionary:
+	var profile := profile_override if not profile_override.is_empty() else pressure_profile(stage_number)
+	var pressure := float(profile.pressure)
+	# Solve the actual runtime speed equation for the undamaged equilibrium.
+	var equilibrium_c := clampf(
+		(1.0 - Balance.SPIDER_SPEED_RATIO) * Balance.PLAYER_VERTICAL_SPEED
+		/ (Balance.PLAYER_VERTICAL_SPEED * 0.12 + pressure),
+		0.0,
+		1.0
+	)
+	var gap := float(profile.g_lo) + Balance.SPIDER_RAMP_SPAN * equilibrium_c
+	var start_gap := gap
+	var minimum_gap := gap
+	var penalty_ticks := int(round(Balance.ROCK_KNOCKBACK_SECONDS * 120.0))
+	var total_ticks := penalty_ticks + 5 * 120
+	var post_penalty_gap := gap
+	for tick in total_ticks:
+		var player_speed := -Balance.ROCK_KNOCKBACK_SPEED if tick < penalty_ticks else Balance.PLAYER_VERTICAL_SPEED
+		var spider_speed := speed_for_state(gap, stage_number, 0.0, false, false)
+		# Positive player_speed climbs; rock knockback is negative climb speed.
+		gap += (player_speed - spider_speed) / 120.0
+		minimum_gap = minf(minimum_gap, gap)
+		if tick == penalty_ticks - 1:
+			post_penalty_gap = gap
+	return {"start_gap": start_gap, "minimum_gap": minimum_gap, "post_penalty_gap": post_penalty_gap, "final_gap": gap}
 
 static func catchup_state(gap: float, active: bool, blend: float, delta: float) -> Dictionary:
 	if not active and gap >= Balance.SPIDER_CATCHUP_ON_GAP:
