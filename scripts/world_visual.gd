@@ -19,7 +19,8 @@ const FOLIAGE_CELL := Vector2(512.0, 512.0)
 const BRANCH_DETAIL_GRID := Vector2(4.0, 2.0)
 const BRANCH_NODE_SPACING := [173.0, 211.0, 187.0]
 const STAGE_3_ENTRY_HEIGHT := 350.0
-const SIDE_VINE_ENTRY_DEPTH := 240.0
+const SIDE_VINE_MIN_ENTRY_DEPTH := 360.0
+const SIDE_VINE_ENTRY_DEPTH_PER_X := 1.9
 const SIDE_VINE_OFFSCREEN_X := 560.0
 const SURFACE_CACHE_SCROLL_PX := 192.0
 const SURFACE_CACHE_MARGIN_PX := 384.0
@@ -256,29 +257,30 @@ func _restart_vine_entry_points(route: int, start_y: float) -> PackedVector2Arra
 	# A returning support is a separate vine: outer routes curl in from beyond
 	# the screen edge, while the middle route emerges from behind the right vine.
 	# This is decorative lead-in only and never changes support/collision data.
-	var points := PackedVector2Array()
 	var target_x := _branch_visual_x(route, start_y)
 	var source_x := SIDE_VINE_OFFSCREEN_X
 	if route == 0:
 		source_x = -SIDE_VINE_OFFSCREEN_X
 	elif route == 1:
-		source_x = _branch_visual_x(2, start_y + 74.0)
-	for step in 9:
-		var t := float(step) / 8.0
-		var smooth := t * t * (3.0 - 2.0 * t)
-		var curl := sin(t * PI) * (28.0 if route != 0 else -28.0)
-		points.append(Vector2(lerpf(source_x, target_x, smooth) + curl, lerpf(start_y + 86.0, start_y, t)))
-	return points
+		source_x = _branch_visual_x(2, start_y)
+	return _smooth_vertical_entry_points(source_x, target_x, start_y)
 
 func _side_vine_entry_points(route: int, stage_bottom: float) -> PackedVector2Array:
-	var points := PackedVector2Array()
 	var side := -1.0 if route == 0 else 1.0
-	for step in 17:
-		var t := float(step) / 16.0
+	return _smooth_vertical_entry_points(side * SIDE_VINE_OFFSCREEN_X, _branch_visual_x(route, stage_bottom), stage_bottom)
+
+func _smooth_vertical_entry_points(source_x: float, target_x: float, target_y: float) -> PackedVector2Array:
+	# Cubic Hermite path with vertical tangents at both ends. Scaling the rise
+	# with horizontal travel keeps the steepest tangent under 40 degrees and
+	# the tightest radius above roughly 120 px, without a horizontal shelf.
+	var points := PackedVector2Array()
+	var travel_x := absf(target_x - source_x)
+	var depth := maxf(SIDE_VINE_MIN_ENTRY_DEPTH, travel_x * SIDE_VINE_ENTRY_DEPTH_PER_X)
+	var steps := maxi(30, int(ceil(depth / 12.0)))
+	for step in range(steps + 1):
+		var t := float(step) / float(steps)
 		var smooth := t * t * (3.0 - 2.0 * t)
-		var y := lerpf(stage_bottom + SIDE_VINE_ENTRY_DEPTH, stage_bottom, t)
-		var x := lerpf(side * SIDE_VINE_OFFSCREEN_X, _branch_visual_x(route, stage_bottom), smooth)
-		points.append(Vector2(x, y))
+		points.append(Vector2(lerpf(source_x, target_x, smooth), lerpf(target_y + depth, target_y, t)))
 	return points
 
 func _branch_visual_x(route: int, world_y: float) -> float:
@@ -601,7 +603,7 @@ func qa_visual_contract() -> Dictionary:
 		"stage_3_layout": "continuous_middle_with_separate_side_vines",
 		"split_union_count": 0,
 		"transfer_bridge_count": 0,
-		"side_vine_entry_world_y": -Balance.STAGE_HEIGHT * 2.0 + SIDE_VINE_ENTRY_DEPTH,
+		"side_vine_entry_world_y": -Balance.STAGE_HEIGHT * 2.0 + maxf(SIDE_VINE_MIN_ENTRY_DEPTH, absf(SIDE_VINE_OFFSCREEN_X - float(Balance.ROUTE_X[2])) * SIDE_VINE_ENTRY_DEPTH_PER_X),
 		"side_vine_entry_world_x": [-SIDE_VINE_OFFSCREEN_X, SIDE_VINE_OFFSCREEN_X],
 		"foliage_atlas": "res://assets/art/world/foliage_atlas.png",
 		"procedural_circle_cloud_count": 0,

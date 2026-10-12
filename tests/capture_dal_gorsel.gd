@@ -1,7 +1,7 @@
 extends SceneTree
 
-const OUTPUT_ROOT := "res://../03-test/qa/dal-gorsel/v2"
-const STAGES := [1, 3, 8, 16, 30]
+const OUTPUT_ROOT := "res://../03-test/qa/dal-gorsel/v3"
+const STAGES := [8, 16]
 const SAMPLE_FRAMES := 30
 
 var game: GameManager
@@ -18,10 +18,10 @@ func _initialize() -> void:
 	await process_frame
 	game.start_game()
 	await process_frame
+	await _capture_stage_at(3, 0.18, "etap-03-giris-alt-960x540.png", true)
+	await _capture_stage_at(3, 0.52, "etap-03-giris-ust-960x540.png", true)
 	for stage_number in STAGES:
 		await _capture_stage(stage_number)
-	await _capture_stage_at(3, 0.18, "etap-03-uc-alt-960x540.png")
-	await _capture_stage_at(3, 0.52, "etap-03-uc-ust-960x540.png")
 	var output := FileAccess.open(OUTPUT_ROOT.path_join("measurements.json"), FileAccess.WRITE)
 	output.store_string(JSON.stringify(report, "\t") + "\n")
 	print("DAL-GORSEL-CAPTURE: PASS stages=%d output=%s" % [report.stages.size(), ProjectSettings.globalize_path(OUTPUT_ROOT)])
