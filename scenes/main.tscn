@@ -1,4 +1,4 @@
-[gd_scene load_steps=13 format=3]
+[gd_scene load_steps=14 format=3]
 
 [ext_resource path="res://scripts/game_manager.gd" type="Script" id="1"]
 [ext_resource path="res://scripts/world_visual.gd" type="Script" id="2"]
@@ -10,6 +10,7 @@
 [ext_resource path="res://scenes/player_visual.tscn" type="PackedScene" id="8"]
 [ext_resource path="res://scripts/spider_visual.gd" type="Script" id="9"]
 [ext_resource path="res://scripts/audio_manager.gd" type="Script" id="10"]
+[ext_resource path="res://assets/art/intro/beanstalk_summit_intro.png" type="Texture2D" id="11_intro"]
 
 [sub_resource type="CapsuleShape2D" id="Capsule"]
 radius = 15.0
@@ -57,6 +58,29 @@ script = ExtResource("9")
 shape = SubResource("SpiderShape")
 
 [node name="HUD" type="CanvasLayer" parent="."]
+[node name="IntroSummit" type="TextureRect" parent="HUD"]
+visible = false
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+texture = ExtResource("11_intro")
+expand_mode = 1
+stretch_mode = 6
+
+[node name="IntroText" type="Label" parent="HUD"]
+visible = false
+offset_left = 160.0
+offset_top = 190.0
+offset_right = 800.0
+offset_bottom = 300.0
+mouse_filter = 2
+horizontal_alignment = 1
+vertical_alignment = 1
+autowrap_mode = 2
+
 [node name="Title" type="Label" parent="HUD"]
 offset_left = 20.0
 offset_top = 18.0

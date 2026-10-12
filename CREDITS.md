@@ -18,6 +18,7 @@
 | `assets/art/character_frames/f2/*.png`, `assets/art/character_frames/source/f2_pose_sheet_imagegen_2026-10-12.png` | Codex built-in `image_gen`, 2026-10-12 | M1/F1 style/pose reference; SHA-256 `f2b6ab938a6ad55cab0a438cf94b649bbcef447ede1562d4fefcbe602756cbee`; deterministic crop/alignment |
 | `assets/art/character_frames/f3/*.png`, `assets/art/character_frames/source/f3_pose_sheet_imagegen_2026-10-12.png` | Codex built-in `image_gen`, 2026-10-12 | M1/F1 style/pose reference; SHA-256 `7f8f035fc0f4ff16bd4a232c971af6dc7c2061f343730815b9248eb98b9e64e6`; deterministic crop/alignment |
 
-Harici CDN veya brief dışı varlık kullanılmadı.
-
 | `assets/art/cosmetics/*.png` | OpenAI Codex `image_gen`, 2026-10-12 | Proje için üretildi; boyalı mobil oyun kozmetik ikonları, şeffaf arka plan istemi; 1024 px kaynaklardan 192×192 oyun varlığına küçültüldü. |
+| `assets/art/intro/beanstalk_summit_intro.png` | OpenAI Codex `image_gen`, 2026-10-12 | Proje için üretilen 960×540 boyalı intro karesi; SHA-256 `1D60FA586D73C84CBF874C42F3F47D78D52688200004B65F954E17AFA905DA5F` |
+
+Harici CDN veya brief dışı varlık kullanılmadı.

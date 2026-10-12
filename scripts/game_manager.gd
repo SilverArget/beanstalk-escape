@@ -51,8 +51,10 @@ var completed_since_interstitial := 0
 var platform_pause_active := false
 var paused_by_platform := false
 const INTRO_BEAT_SECONDS := [2.3, 3.0, 2.3]
-const INTRO_SUMMIT_Y := -Balance.STAGE_HEIGHT * Balance.STAGE_COUNT + 270.0
 const CAMERA_PLAY_POSITION := Vector2(0.0, -120.0)
+const INTRO_LOOK_UP_POSITION := Vector2(0.0, -210.0)
+const INTRO_GUARDIAN_SCALE := Vector2.ONE * 1.35
+const INTRO_VISUAL_MODES := ["climb", "summit", "guardian"]
 var intro_active := false
 var intro_beat := 0
 var intro_t := 0.0
@@ -259,9 +261,12 @@ func _begin_intro() -> void:
 	var camera := player.get_node_or_null("Camera2D") as Camera2D
 	if camera != null:
 		camera.position = CAMERA_PLAY_POSITION
+		camera.offset = Vector2.ZERO
 	var spider_body := spider.get_node_or_null("Body") as CanvasItem
 	if spider_body != null:
 		spider_body.visible = false
+		spider_body.scale = Vector2.ONE
+	$HUD/IntroSummit.visible = false
 	_update_intro_presentation()
 	_update_hud()
 
@@ -271,15 +276,22 @@ func _update_intro(delta: float) -> void:
 	var progress := clampf(intro_t / duration, 0.0, 1.0)
 	var camera := player.get_node_or_null("Camera2D") as Camera2D
 	if camera != null:
-		if intro_beat == 1:
-			camera.position.y = lerpf(CAMERA_PLAY_POSITION.y, INTRO_SUMMIT_Y, progress * progress * (3.0 - 2.0 * progress))
+		if intro_beat == 0:
+			camera.position = CAMERA_PLAY_POSITION.lerp(INTRO_LOOK_UP_POSITION, progress * progress * (3.0 - 2.0 * progress))
 		elif intro_beat == 2:
-			camera.position.y = lerpf(INTRO_SUMMIT_Y, CAMERA_PLAY_POSITION.y, progress * progress * (3.0 - 2.0 * progress))
+			camera.position = CAMERA_PLAY_POSITION
+			if not reduced_motion and intro_t < 0.34:
+				var shake_strength := 9.0 * (1.0 - intro_t / 0.34)
+				camera.offset = Vector2.from_angle(intro_t * TAU * 18.0) * shake_strength
+			else:
+				camera.offset = Vector2.ZERO
+	$HUD/IntroSummit.modulate.a = clampf(progress * 4.0, 0.0, 1.0) if intro_beat == 1 else 1.0
 	var spider_body := spider.get_node_or_null("Body") as CanvasItem
 	if spider_body != null and intro_beat == 2:
-		var reveal := clampf((progress - 0.52) / 0.48, 0.0, 1.0)
-		spider_body.visible = reveal > 0.0
-		spider_body.position.y = lerpf(120.0, 0.0, reveal)
+		spider_body.visible = true
+		spider_body.scale = INTRO_GUARDIAN_SCALE
+		spider_body.position = Vector2.ZERO
+		spider.global_position = player.global_position + CAMERA_PLAY_POSITION + Vector2(0.0, 18.0)
 	if intro_t < duration:
 		return
 	intro_t = 0.0
@@ -296,10 +308,18 @@ func _update_intro_presentation() -> void:
 		"BUT THE GUARDIAN\nWILL TRY TO STOP US.",
 	]
 	$HUD/IntroText.text = messages[intro_beat]
+	_layout_intro_text(get_viewport_rect().size)
+	$HUD/IntroSummit.visible = intro_beat == 1
+	$HUD/IntroSummit.modulate = Color.WHITE
 	var spider_body := spider.get_node_or_null("Body") as CanvasItem
 	if spider_body != null:
-		spider_body.visible = false
+		spider_body.visible = intro_beat == 2
+		spider_body.scale = INTRO_GUARDIAN_SCALE if intro_beat == 2 else Vector2.ONE
 	if intro_beat == 2:
+		spider.global_position = player.global_position + CAMERA_PLAY_POSITION + Vector2(0.0, 18.0)
+		var camera := player.get_node_or_null("Camera2D") as Camera2D
+		if camera != null:
+			camera.position = CAMERA_PLAY_POSITION
 		audio.play_sfx("spider_scream")
 
 func _finish_intro() -> void:
@@ -319,10 +339,13 @@ func _finish_intro() -> void:
 	var camera := player.get_node_or_null("Camera2D") as Camera2D
 	if camera != null:
 		camera.position = CAMERA_PLAY_POSITION
+		camera.offset = Vector2.ZERO
 	var spider_body := spider.get_node_or_null("Body") as CanvasItem
 	if spider_body != null:
 		spider_body.visible = true
 		spider_body.position = Vector2.ZERO
+		spider_body.scale = Vector2.ONE
+	$HUD/IntroSummit.visible = false
 	app_state = AppState.PLAYING
 	gauge.update_from_positions(player.global_position.y, spider.global_position.y)
 	audio.play_music("music_game")
@@ -647,11 +670,24 @@ func _setup_hud() -> void:
 	_add_label("Menu", Vector2(320, 300), "CHOOSE AN OPTION", 22)
 	_add_action_button("NewRun", "NEW RUN", _show_character_select)
 	_add_action_button("Shop", "SHOP", _show_shop)
-	var intro_label := _add_label("IntroText", Vector2(160, 190), "", 34)
+	var intro_label := $HUD/IntroText as Label
+	intro_label.theme = ui_theme
+	intro_label.add_theme_font_size_override("font_size", 34)
 	intro_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	intro_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	intro_label.add_theme_color_override("font_outline_color", Color("142b39"))
 	intro_label.add_theme_constant_override("outline_size", 7)
+	var intro_panel := StyleBoxFlat.new()
+	intro_panel.bg_color = Color(0.025, 0.055, 0.075, 0.78)
+	intro_panel.corner_radius_top_left = 16
+	intro_panel.corner_radius_top_right = 16
+	intro_panel.corner_radius_bottom_left = 16
+	intro_panel.corner_radius_bottom_right = 16
+	intro_panel.content_margin_left = 22.0
+	intro_panel.content_margin_right = 22.0
+	intro_panel.content_margin_top = 12.0
+	intro_panel.content_margin_bottom = 12.0
+	intro_label.add_theme_stylebox_override("normal", intro_panel)
 	_add_label("Pause", Vector2(315, 235), "PAUSED - ESC TO RESUME", 22)
 	_add_label("StageBanner", Vector2(360, 90), "", 20)
 	_add_label("Tutorial", Vector2(360, 130), "", 22)
@@ -778,7 +814,7 @@ func layout_hud_for_viewport(viewport_size: Vector2) -> void:
 	_layout_centered_label($HUD/Pause, width, height * 0.38, 42.0, 40.0)
 	_layout_centered_label($HUD/Dead, width, height * 0.36, 80.0, 36.0)
 	_layout_centered_label($HUD/Complete, width, height * 0.25, 48.0, 36.0)
-	_layout_centered_label($HUD/IntroText, width, height * 0.34, 110.0, 72.0)
+	_layout_intro_text(Vector2(width, height))
 	_layout_centered_label($HUD/Stats, width, height * 0.38, 140.0, 44.0)
 	_layout_centered_label($HUD/Replay, width, height * 0.76, 44.0, 36.0)
 	var touch_y := height - 148.0
@@ -795,6 +831,12 @@ func _layout_centered_label(label: Label, width: float, y: float, height: float,
 	label.position = Vector2(side_margin, y)
 	label.size = Vector2(maxf(width - side_margin * 2.0, 1.0), height)
 	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+
+func _layout_intro_text(viewport_size: Vector2) -> void:
+	var guardian_beat := intro_active and intro_beat == 2
+	var panel_y := 12.0 if guardian_beat else viewport_size.y * 0.34
+	var panel_height := 96.0 if guardian_beat else 110.0
+	_layout_centered_label($HUD/IntroText, viewport_size.x, panel_y, panel_height, 72.0)
 
 func _add_label(name: String, pos: Vector2, text: String, font_size: int) -> Label:
 	var label := Label.new()
@@ -1042,7 +1084,7 @@ func _readonly_state_snapshot() -> Dictionary:
 			})
 	return {
 		"app_state": AppState.keys()[app_state],
-		"intro": {"active": intro_active, "beat": intro_beat, "t": intro_t},
+		"intro": {"active": intro_active, "beat": intro_beat, "t": intro_t, "visual_mode": INTRO_VISUAL_MODES[intro_beat] if intro_active else "none"},
 		"death_cause": DeathCause.keys()[death_cause],
 		"stage": stages.stage_for_y(player.global_position.y),
 		"player": {"x": player.global_position.x, "y": player.global_position.y, "vy": player.velocity.y},
