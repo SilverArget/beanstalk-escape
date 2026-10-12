@@ -22,6 +22,7 @@ func make_game(variant: String) -> GameManager:
 
 func _initialize() -> void:
 	test_deterministic_anti_cheese()
+	await test_live_no_input_stage_1()
 	test_random_experiment()
 	test_pressure_safety()
 	await test_reachability_and_replay()
@@ -39,6 +40,26 @@ func test_deterministic_anti_cheese() -> void:
 	var no_input := AntiCheeseHarness.run_deterministic("no_input", StageDatabase.CANONICAL_VARIANT, 1)
 	var stopped_in_stage_1: bool = not bool(no_input.completed) and int(no_input.failed_stage) == 1 and float(no_input.hit_seconds) > 3.0
 	check(stopped_in_stage_1, "T14-no-input-stage1", "encounter=%s hit_seconds=%.3f completed=%s" % [no_input.encounter, no_input.hit_seconds, str(no_input.completed)])
+
+func test_live_no_input_stage_1() -> void:
+	var game := await make_game(StageDatabase.CANONICAL_VARIANT)
+	var first_hit_seconds := -1.0
+	for _tick in int(30.0 * ReachabilityValidator.PHYSICS_HZ):
+		game.player._physics_process(1.0 / ReachabilityValidator.PHYSICS_HZ)
+		game.beans._physics_process(1.0 / ReachabilityValidator.PHYSICS_HZ)
+		for bean in game.get_tree().get_nodes_in_group("beans"):
+			if bean.active:
+				bean.advance_threat_clock(1.0 / ReachabilityValidator.PHYSICS_HZ, false)
+		game.spider._physics_process(1.0 / ReachabilityValidator.PHYSICS_HZ)
+		game._physics_process(1.0 / ReachabilityValidator.PHYSICS_HZ)
+		if first_hit_seconds < 0.0 and game.beans.hit_count > 0:
+			first_hit_seconds = game.total_time
+		if game.app_state == GameManager.AppState.PLAYER_DEAD or game.stages.stage_for_y(game.player.global_position.y) > 1:
+			break
+	var caught_in_stage_1 := game.app_state == GameManager.AppState.PLAYER_DEAD and game.death_cause == GameManager.DeathCause.CAUGHT and game.stages.stage_for_y(game.player.global_position.y) == 1
+	check(caught_in_stage_1 and first_hit_seconds > 3.0, "T14-live-no-input-stage1", "first_hit_seconds=%.3f hits=%d death=%s stage=%d" % [first_hit_seconds, game.beans.hit_count, GameManager.DeathCause.keys()[game.death_cause], game.stages.stage_for_y(game.player.global_position.y)])
+	game.queue_free()
+	await physics_frame
 
 func test_random_experiment() -> void:
 	var experiment := AntiCheeseHarness.run_random_experiment(1500, 5)

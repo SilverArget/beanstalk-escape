@@ -17,7 +17,9 @@ static func solve_stages_1_to_5(variant: String) -> Dictionary:
 		for encounter: Dictionary in stage.encounters:
 			if int(stage.number) < 3 and String(encounter.recipe.kind) != "BEAN":
 				continue
-			var target := int(encounter.witness)
+			# Stage 1-2 beans lock to the player's lane when their warning starts,
+			# so the solver must choose a different reachable trunk lane after it.
+			var target := (route + 1) % 3 if int(stage.number) < 3 else int(encounter.witness)
 			var warning_world_height := float(int(stage.number) - 1) * Balance.STAGE_HEIGHT + float(encounter.warning_height)
 			var reaction_tick := int(round((warning_world_height / Balance.PLAYER_VERTICAL_SPEED + REACTION_SECONDS) * PHYSICS_HZ))
 			var issue_ticks: Array[int] = []

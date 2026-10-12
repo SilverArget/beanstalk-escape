@@ -21,7 +21,8 @@ func _physics_process(_delta: float) -> void:
 				if not spawned_keys.has(key) and player.global_position.y <= warning_y:
 					if game != null:
 						game.show_bean_tutorial()
-					spawn_bean(slot.blocked_route, target_y, key)
+					var blocked_route := stages.route_for_x(player.global_position.x) if int(stage_pattern.stage) <= 2 else int(slot.blocked_route)
+					spawn_bean(blocked_route, target_y, key)
 				if spawned_keys.has(key) and player.global_position.y <= target_y:
 					var spawned := get_node_or_null(NodePath(str(spawned_keys[key]))) as BeanProjectile
 					if spawned != null:
