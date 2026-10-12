@@ -400,13 +400,17 @@ func layout_hud_for_viewport(viewport_size: Vector2) -> void:
 	skill.position = Vector2(70.0, 82.0) if portrait else Vector2(width - 380.0, 24.0)
 	skill.size = Vector2(width - 88.0, 30.0) if portrait else Vector2(220.0, 30.0)
 	skill.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
-	var meta_x := maxf(width - 270.0, 260.0)
+	# Keep the meta readout in the gap between the centered banners and the
+	# right-side sound/gauge column. Explicit gaps matter because the HUD
+	# contract treats touching Control edges as overlap.
+	var meta_width := 140.0
+	var meta_x := width - 290.0
 	$HUD/GoldStatus.position = Vector2(meta_x, 62.0)
-	$HUD/GoldStatus.size = Vector2(200.0, 24.0)
-	$HUD/XPStatus.position = Vector2(meta_x, 86.0)
-	$HUD/XPStatus.size = Vector2(200.0, 20.0)
-	$HUD/XPBar.position = Vector2(meta_x, 108.0)
-	$HUD/XPBar.size = Vector2(200.0, 10.0)
+	$HUD/GoldStatus.size = Vector2(meta_width, 20.0)
+	$HUD/XPStatus.position = Vector2(meta_x, 85.0)
+	$HUD/XPStatus.size = Vector2(meta_width, 18.0)
+	$HUD/XPBar.position = Vector2(meta_x, 106.0)
+	$HUD/XPBar.size = Vector2(meta_width, 9.0)
 	_layout_centered_label($HUD/RewardToast, width, 154.0, 30.0, 190.0)
 	_layout_centered_label($HUD/LevelUpCard, width, 198.0, 42.0, 190.0)
 	_layout_centered_label($HUD/StageBanner, width, 124.0 if portrait else 86.0, 30.0, 82.0 if portrait else 300.0)
