@@ -12,7 +12,12 @@ var sandbox_mode := false
 const BEAN_SCENE := preload("res://scenes/bean_projectile.tscn")
 
 func _physics_process(_delta: float) -> void:
-	for stage_pattern: Dictionary in ([] if sandbox_mode else stages.patterns):
+	var nearby_patterns: Array = []
+	if not sandbox_mode:
+		var center_stage := stages.stage_for_y(player.global_position.y)
+		for stage_number in range(maxi(1, center_stage - 1), mini(Balance.STAGE_COUNT, center_stage + 1) + 1):
+			nearby_patterns.append(stages.pattern_for_stage(stage_number))
+	for stage_pattern: Dictionary in nearby_patterns:
 		for slot_index in stage_pattern.bean_slots.size():
 			var slot: Dictionary = stage_pattern.bean_slots[slot_index]
 			var stage_bottom_y := stages.stage_bottom_y(int(stage_pattern.stage))

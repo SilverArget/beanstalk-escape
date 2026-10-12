@@ -181,14 +181,22 @@ func _draw_stage_branches(stage_number: int, camera_top: float) -> void:
 	var camera_bottom := camera_top + 556.0
 	if stage_bottom < camera_top - 120.0 or stage_top > camera_bottom + 120.0:
 		return
+	var visible_start := clampf((stage_bottom - (camera_bottom + 160.0)) / stage_length, 0.0, 1.0)
+	var visible_end := clampf((stage_bottom - (camera_top - 160.0)) / stage_length, 0.0, 1.0)
 	for route in 3:
 		for segment: Array in stages.support_segments(stage_number, route):
-			_draw_branch_segment(stage_number, route, float(segment[0]), float(segment[1]))
+			var authored_start := float(segment[0])
+			var authored_end := float(segment[1])
+			var clipped_start := maxf(authored_start, visible_start)
+			var clipped_end := minf(authored_end, visible_end)
+			if clipped_end <= clipped_start:
+				continue
+			_draw_branch_segment(stage_number, route, clipped_start, clipped_end, is_equal_approx(clipped_start, authored_start), is_equal_approx(clipped_end, authored_end))
 
-func _draw_branch_segment(stage_number: int, route: int, start_progress: float, end_progress: float) -> void:
+func _draw_branch_segment(stage_number: int, route: int, start_progress: float, end_progress: float, show_start_tip := true, show_end_tip := true) -> void:
 	var stage_bottom := stages.stage_bottom_y(stage_number)
 	var stage_length := stages.stage_length(stage_number)
-	var cap_start := start_progress > 0.0
+	var cap_start := start_progress > 0.0 and show_start_tip
 	if stage_number == 3 and route == 1 and start_progress <= 0.0:
 		start_progress = STAGE_3_ENTRY_HEIGHT / Balance.STAGE_HEIGHT
 	var start_y := stage_bottom - start_progress * stage_length
@@ -206,7 +214,7 @@ func _draw_branch_segment(stage_number: int, route: int, start_progress: float, 
 	if points.size() < 2:
 		return
 	branch_point_count += points.size()
-	_draw_branch_ribbon(points, route, cap_start, true)
+	_draw_branch_ribbon(points, route, cap_start, show_end_tip)
 	_draw_branch_details(route, start_y, end_y)
 
 func _side_vine_entry_points(route: int, stage_bottom: float) -> PackedVector2Array:

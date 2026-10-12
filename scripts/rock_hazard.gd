@@ -66,7 +66,8 @@ func advance_threat_clock(delta: float, time_active: bool, player_y: float) -> v
 			var p := float(Balance.ROUTE_X[routes[0]])
 			var q := float(Balance.ROUTE_X[routes[1]])
 			position.x = lerpf(p, q, clampf(t, 0.0, 1.0))
-	queue_redraw()
+	if kind in ["R", "F", "M"]:
+		queue_redraw()
 
 func collision_centers() -> Array[Vector2]:
 	var result: Array[Vector2] = []

@@ -70,6 +70,8 @@ const FINAL_CINEMATIC_SECONDS := 8.0
 var final_t := 0.0
 var final_character: Sprite2D
 var final_wings: Polygon2D
+var last_web_state_publish_msec := -1000
+const WEB_STATE_INTERVAL_MSEC := 50
 
 func _ready() -> void:
 	process_physics_priority = 10
@@ -1243,6 +1245,10 @@ func _stats_text() -> String:
 func _publish_readonly_web_state() -> void:
 	if not OS.has_feature("web") or not _debug_state_enabled():
 		return
+	var now := Time.get_ticks_msec()
+	if now - last_web_state_publish_msec < WEB_STATE_INTERVAL_MSEC:
+		return
+	last_web_state_publish_msec = now
 	JavaScriptBridge.eval("window.beanstalkState = %s;" % JSON.stringify(_readonly_state_snapshot()), true)
 
 func _debug_state_enabled() -> bool:

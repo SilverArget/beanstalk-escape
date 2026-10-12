@@ -15,8 +15,17 @@ var stage_banner := ""
 var stage_banner_remaining := 0.0
 var runtime_breaks: Array = []
 var runtime_webs: Array = []
+var stage_records: Array = []
+var stage_targets := PackedFloat32Array()
+var stage_starts := PackedFloat32Array()
+var stage_lengths := PackedFloat32Array()
+var pattern_by_stage: Dictionary = {}
+var cached_variant := ""
 
-func _ready() -> void: patterns = generate_patterns(run_seed)
+func _ready() -> void:
+	_rebuild_stage_cache()
+	patterns = generate_patterns(run_seed)
+	_rebuild_pattern_cache()
 func _physics_process(delta: float) -> void:
 	if stage_banner_remaining > 0.0:
 		stage_banner_remaining = maxf(stage_banner_remaining - delta, 0.0)
@@ -45,8 +54,27 @@ func reset_run() -> void:
 	summit_flash_count = 0
 	stage_banner = ""
 	stage_banner_remaining = 0.0
-	patterns = generate_patterns(run_seed)
+	if patterns.is_empty() or cached_variant != run_variant:
+		_rebuild_stage_cache()
+		patterns = generate_patterns(run_seed)
+		_rebuild_pattern_cache()
 	clear_runtime_hazards()
+
+func _rebuild_stage_cache() -> void:
+	stage_records = StageDatabase.stages_for_variant(run_variant)
+	cached_variant = run_variant
+	stage_targets.clear()
+	stage_starts.clear()
+	stage_lengths.clear()
+	for stage: Dictionary in stage_records:
+		stage_targets.append(float(stage.target_height))
+		stage_starts.append(float(stage.start_height))
+		stage_lengths.append(float(stage.length))
+
+func _rebuild_pattern_cache() -> void:
+	pattern_by_stage.clear()
+	for pattern: Dictionary in patterns:
+		pattern_by_stage[int(pattern.stage)] = pattern
 
 func clear_runtime_hazards() -> void:
 	runtime_breaks.clear()
@@ -92,7 +120,8 @@ func transfer_window_open(stage_number: int, progress: float) -> bool:
 	return false
 func generate_patterns(seed_value: int) -> Array:
 	var result: Array = []
-	for stage: Dictionary in StageDatabase.stages_for_variant(run_variant):
+	var source_stages: Array = stage_records if not stage_records.is_empty() and cached_variant == run_variant else StageDatabase.stages_for_variant(run_variant)
+	for stage: Dictionary in source_stages:
 		var stage_number := int(stage.number)
 		var route_end_progress := [1.0, 1.0, 1.0]
 		var open_routes := [0, 1, 2]
@@ -189,9 +218,11 @@ func _reachable_targets(from_routes: Array[int], allowed_routes: Array, availabl
 	return result
 
 func stage_for_y(player_y: float) -> int:
+	if stage_targets.is_empty():
+		return 1
 	var climbed := maxf(-player_y, 0.0)
-	for stage_number in range(1, Balance.STAGE_COUNT + 1):
-		if climbed < stage_target_height(stage_number): return stage_number
+	for index in stage_targets.size():
+		if climbed < stage_targets[index]: return index + 1
 	return Balance.STAGE_COUNT
 
 func progress_in_stage(player_y: float) -> float:
@@ -199,22 +230,30 @@ func progress_in_stage(player_y: float) -> float:
 	return clampf((-player_y - stage_start_height(stage_number)) / stage_length(stage_number), 0.0, 1.0)
 
 func stage_start_height(stage_number: int) -> float:
-	return float(StageDatabase.stage(stage_number, run_variant).get("start_height", 0.0))
+	if stage_starts.is_empty():
+		return 0.0
+	var index := clampi(stage_number - 1, 0, stage_starts.size() - 1)
+	return stage_starts[index]
 
 func stage_target_height(stage_number: int) -> float:
-	return float(StageDatabase.stage(stage_number, run_variant).get("target_height", 0.0))
+	if stage_targets.is_empty():
+		return 0.0
+	var index := clampi(stage_number - 1, 0, stage_targets.size() - 1)
+	return stage_targets[index]
 
 func stage_length(stage_number: int) -> float:
-	return float(StageDatabase.stage(stage_number, run_variant).get("length", Balance.STAGE_HEIGHT))
+	if stage_lengths.is_empty():
+		return Balance.STAGE_HEIGHT
+	var index := clampi(stage_number - 1, 0, stage_lengths.size() - 1)
+	return stage_lengths[index]
 
 func stage_bottom_y(stage_number: int) -> float:
 	return -stage_start_height(stage_number)
 
 func pattern_for_stage(stage_number: int) -> Dictionary:
-	for pattern: Dictionary in patterns:
-		if pattern.stage == stage_number:
-			return pattern
-	return patterns[0]
+	if pattern_by_stage.has(stage_number):
+		return pattern_by_stage[stage_number]
+	return patterns[0] if not patterns.is_empty() else {}
 
 func route_for_x(x: float) -> int:
 	var best := 0

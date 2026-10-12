@@ -25,16 +25,19 @@ var wind_audio_announced := false
 var break_audio_announced := false
 var web_audio_announced := false
 var campaign_slots: Array = []
+var campaign_slots_by_stage: Dictionary = {}
+var active_center_stage := -1
 
 func _ready() -> void:
 	process_physics_priority = -5
 	queue_redraw()
 
 func configure_sandbox(for_stage := 3) -> void:
-	sandbox_active = true
 	stage_number = for_stage
 	stage_bottom_y = stages.stage_bottom_y(stage_number)
 	reset_run()
+	sandbox_active = true
+	campaign_slots.clear()
 	if beans != null:
 		beans.sandbox_mode = true
 	queue_redraw()
@@ -55,9 +58,12 @@ func reset_run() -> void:
 	break_audio_announced = false
 	web_audio_announced = false
 	campaign_slots.clear()
+	campaign_slots_by_stage.clear()
+	active_center_stage = -1
 	if stages != null:
 		stages.clear_runtime_hazards()
 		for pattern: Dictionary in stages.patterns:
+			var stage_slots: Array = []
 			for source: Dictionary in pattern.get("storm_slots", []):
 				var slot := source.duplicate(true)
 				slot["stage"] = int(pattern.stage)
@@ -66,7 +72,9 @@ func reset_run() -> void:
 				slot["touched"] = false
 				slot["active"] = false
 				slot["finished"] = false
-				campaign_slots.append(slot)
+				stage_slots.append(slot)
+			campaign_slots_by_stage[int(pattern.stage)] = stage_slots
+	refresh_active_window(true)
 	if beans != null:
 		beans.sandbox_mode = sandbox_active
 	queue_redraw()
@@ -74,9 +82,14 @@ func reset_run() -> void:
 func _physics_process(delta: float) -> void:
 	if player == null:
 		return
+	var game := get_parent() as GameManager
+	if game == null or game.app_state != GameManager.AppState.PLAYING:
+		return
 	if not sandbox_active:
+		refresh_active_window()
 		_update_campaign(delta)
-		queue_redraw()
+		if not campaign_slots.is_empty():
+			queue_redraw()
 		return
 	var climbed := stage_bottom_y - player.global_position.y
 	_update_wind_audio(climbed)
@@ -84,6 +97,18 @@ func _physics_process(delta: float) -> void:
 	_update_web(delta, climbed)
 	_update_rain(climbed)
 	queue_redraw()
+
+func refresh_active_window(force := false) -> void:
+	if sandbox_active or player == null or stages == null:
+		return
+	var center_stage := stages.stage_for_y(player.global_position.y)
+	if not force and center_stage == active_center_stage:
+		return
+	active_center_stage = center_stage
+	campaign_slots.clear()
+	for stage_number in range(maxi(1, center_stage - 1), mini(Balance.STAGE_COUNT, center_stage + 1) + 1):
+		for source: Dictionary in campaign_slots_by_stage.get(stage_number, []):
+			campaign_slots.append(source)
 
 func threat_scale(time_active: bool) -> float:
 	return Balance.TIME_WINGS_SLOW_SCALE if time_active else 1.0

@@ -10,6 +10,9 @@ var invulnerability_remaining := 0.0
 var hit_ids: Dictionary = {}
 var warning_ids: Dictionary = {}
 var previous_player_position := Vector2.ZERO
+var campaign_slots_by_stage: Dictionary = {}
+var loaded_stages: Dictionary = {}
+var active_center_stage := -1
 
 func setup(target: PlayerController, stage_manager: StageManager) -> void:
 	player = target
@@ -18,9 +21,7 @@ func setup(target: PlayerController, stage_manager: StageManager) -> void:
 
 func start_sandbox() -> void:
 	reset_run()
-	for hazard in hazards:
-		if is_instance_valid(hazard): hazard.queue_free()
-	hazards.clear()
+	_clear_active_hazards()
 	sandbox_active = true
 	var base_y := stages.stage_bottom_y(3)
 	_spawn("rocks-s", "S", [0], base_y - 500.0)
@@ -30,24 +31,63 @@ func start_sandbox() -> void:
 	_spawn("rocks-m", "M", [1, 2], base_y - 2220.0)
 
 func reset_run() -> void:
-	for hazard in hazards:
-		if is_instance_valid(hazard): hazard.queue_free()
-	hazards.clear()
+	_clear_active_hazards()
 	sandbox_active = false
 	hit_count = 0
 	hit_ids.clear()
 	warning_ids.clear()
 	invulnerability_remaining = 0.0
 	if player != null: previous_player_position = player.global_position
-	_spawn_campaign()
+	_build_campaign_catalog()
+	refresh_active_window(true)
 
-func _spawn_campaign() -> void:
+func _clear_active_hazards() -> void:
+	for hazard in hazards:
+		if is_instance_valid(hazard): hazard.queue_free()
+	hazards.clear()
+	loaded_stages.clear()
+	active_center_stage = -1
+
+func _build_campaign_catalog() -> void:
+	campaign_slots_by_stage.clear()
 	if stages == null:
 		return
 	for pattern: Dictionary in stages.patterns:
+		var stage_slots: Array = []
 		for slot: Dictionary in pattern.get("rock_slots", []):
-			var anchor_y := stages.stage_bottom_y(int(pattern.stage)) - float(slot.anchor)
-			_spawn(String(slot.id), String(slot.kind), slot.routes, anchor_y)
+			var descriptor := slot.duplicate(true)
+			descriptor["anchor_y"] = stages.stage_bottom_y(int(pattern.stage)) - float(slot.anchor)
+			stage_slots.append(descriptor)
+		campaign_slots_by_stage[int(pattern.stage)] = stage_slots
+
+func refresh_active_window(force := false) -> void:
+	if sandbox_active or player == null or stages == null:
+		return
+	var center_stage := stages.stage_for_y(player.global_position.y)
+	if not force and center_stage == active_center_stage:
+		return
+	active_center_stage = center_stage
+	var wanted: Dictionary = {}
+	for stage_number in range(maxi(1, center_stage - 1), mini(Balance.STAGE_COUNT, center_stage + 1) + 1):
+		wanted[stage_number] = true
+	for stage_value in loaded_stages.keys():
+		var loaded_stage := int(stage_value)
+		if wanted.has(loaded_stage):
+			continue
+		for index in range(hazards.size() - 1, -1, -1):
+			var hazard := hazards[index]
+			if int(hazard.get_meta("campaign_stage", -1)) == loaded_stage:
+				hazards.remove_at(index)
+				if is_instance_valid(hazard): hazard.queue_free()
+		loaded_stages.erase(loaded_stage)
+	for stage_value in wanted.keys():
+		var stage_number := int(stage_value)
+		if loaded_stages.has(stage_number):
+			continue
+		for descriptor: Dictionary in campaign_slots_by_stage.get(stage_number, []):
+			var hazard := _spawn(String(descriptor.id), String(descriptor.kind), descriptor.routes, float(descriptor.anchor_y))
+			hazard.set_meta("campaign_stage", stage_number)
+		loaded_stages[stage_number] = true
 
 func _spawn(id: String, kind: String, routes: Array, anchor_y: float) -> RockHazard:
 	var hazard := RockHazard.new()
@@ -62,6 +102,7 @@ func _physics_process(delta: float) -> void:
 	var game := get_parent() as GameManager
 	if player == null or game == null or game.app_state != GameManager.AppState.PLAYING:
 		return
+	refresh_active_window()
 	invulnerability_remaining = maxf(invulnerability_remaining - delta, 0.0)
 	for hazard in hazards:
 		if player.global_position.y <= hazard.anchor_y + 360.0 and not warning_ids.has(hazard.hazard_id):
