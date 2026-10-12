@@ -31,14 +31,25 @@ func _run() -> void:
 	root.add_child(game)
 	await process_frame
 	game.start_game()
-	var death_position := game.player.global_position
-	game._die(GameManager.DeathCause.CAUGHT)
+	var safe_position := Vector2(0.0, -Balance.STAGE_HEIGHT * 2.25)
+	game.player.reset_run(safe_position)
+	game._remember_continue_checkpoint()
+	game.player.global_position += Vector2(24.0, 96.0)
+	game.player.on_support = false
+	game.player.support_state = PlayerController.SupportState.FALLING_RECOVERY
+	game._die(GameManager.DeathCause.FALL)
 	await process_frame
 	var buttons := [game.get_node("HUD/ContinueAd"), game.get_node("HUD/RetryStage"), game.get_node("HUD/RestartRun"), game.get_node("HUD/DeathMenu")]
 	_check(buttons.all(func(button): return button.visible and button.size.y >= 48.0), "death screen has four touch-sized actions")
-	game._continue_with_ad()
-	_check(game.app_state == GameManager.AppState.PLAYING and game.player.global_position == death_position and game.continue_used_this_run, "rewarded continue resumes at the same point once")
-	_check(game.spider.global_position.y - game.player.global_position.y >= SpiderController.retry_gap_for_stage(game.stages.current_stage), "continue restores safe spider gap")
+	var continue_button := game.get_node("HUD/ContinueAd") as Button
+	continue_button.grab_focus()
+	game._request_confirm()
+	_check(game.app_state == GameManager.AppState.PLAYING, "Enter activates the focused death action instead of retry stage")
+	_check(game.player.global_position == safe_position and game.continue_used_this_run, "rewarded continue resumes at the last safe support once")
+	_check(game.spider.global_position.y - game.player.global_position.y >= SpiderController.retry_gap_for_stage(game.stages.stage_for_y(safe_position.y)), "continue restores safe spider gap")
+	game._die(GameManager.DeathCause.CAUGHT)
+	game._update_hud()
+	_check(not continue_button.visible, "used continue is hidden on later deaths in the run")
 
 	game.queue_free()
 	await process_frame

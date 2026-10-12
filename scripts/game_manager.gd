@@ -43,6 +43,7 @@ var double_reward_remaining := 0.0
 var last_stage_gold_reward := 0
 var death_count_by_stage := {}
 var continue_used_this_run := false
+var continue_checkpoint := {}
 var completed_since_interstitial := 0
 var platform_pause_active := false
 var paused_by_platform := false
@@ -93,6 +94,7 @@ func _physics_process(delta: float) -> void:
 		tutorial_remaining = maxf(tutorial_remaining - delta, 0.0)
 	gauge.update_from_positions(player.global_position.y, spider.global_position.y)
 	stages.update_progress(player.global_position.y)
+	_remember_continue_checkpoint()
 	best_spider_distance = maxf(best_spider_distance, gauge.distance_px)
 	if gauge.level == "DANGER" and not danger_was_active:
 		danger_was_active = true
@@ -198,11 +200,13 @@ func restart() -> void:
 	time_wings_used_stage.clear()
 	death_count_by_stage.clear()
 	continue_used_this_run = false
+	continue_checkpoint = {}
 	completed_since_interstitial = 0
 	player.time_wings_active = false
 	player.remove_from_group("time_wings_active")
 	_show_tutorial_for_stage(1)
 	gauge.update_from_positions(player.global_position.y, spider.global_position.y)
+	_remember_continue_checkpoint()
 	_update_hud()
 
 func start_game() -> void:
@@ -285,6 +289,7 @@ func _die(cause: DeathCause = DeathCause.CAUGHT) -> void:
 	state = State.PLAYER_DEAD
 	app_state = AppState.PLAYER_DEAD
 	death_cause = cause
+	_remember_continue_checkpoint()
 	var dead_stage := stages.stage_for_y(player.global_position.y)
 	death_count_by_stage[dead_stage] = int(death_count_by_stage.get(dead_stage, 0)) + 1
 	dead_restart_delay = 0.25
@@ -304,10 +309,11 @@ func _request_confirm() -> void:
 	if app_state == AppState.MENU:
 		start_game()
 	elif app_state == AppState.PLAYER_DEAD:
-		if dead_restart_delay <= 0.0:
-			restart_stage()
+		var focused := get_viewport().gui_get_focus_owner() as Button
+		if focused != null and focused.visible and not focused.disabled:
+			focused.pressed.emit()
 		else:
-			confirm_pending = true
+			_focus_default_death_action()
 	elif app_state == AppState.GAME_COMPLETE:
 		restart()
 
@@ -355,8 +361,19 @@ func _continue_after_reward() -> void:
 	if app_state != AppState.PLAYER_DEAD:
 		return
 	continue_used_this_run = true
-	spider.global_position = player.global_position + Vector2(0, SpiderController.retry_gap_for_stage(stages.current_stage))
+	var safe_position: Vector2 = continue_checkpoint.get("position", player.global_position)
+	player.reset_run(safe_position)
+	var safe_stage := stages.stage_for_y(safe_position.y)
+	spider.reset_run(safe_position + Vector2(0, SpiderController.retry_gap_for_stage(safe_stage)))
 	_resume_after_death()
+
+func _remember_continue_checkpoint() -> void:
+	if app_state != AppState.PLAYING or not player.on_support or player.support_state != PlayerController.SupportState.SUPPORTED:
+		return
+	continue_checkpoint = {
+		"position": player.global_position,
+		"stage": stages.stage_for_y(player.global_position.y),
+	}
 
 func _resume_after_death() -> void:
 	state = State.PLAYING
@@ -500,10 +517,13 @@ func layout_hud_for_viewport(viewport_size: Vector2) -> void:
 	var width := maxf(viewport_size.x, 320.0)
 	var height := maxf(viewport_size.y, 320.0)
 	var portrait := width < height
-	var logo_width := minf(width * 0.68, 620.0)
+	var menu_action_y := height - 60.0
+	var logo_y := 84.0 if portrait else 20.0
+	var logo_max_height := maxf(menu_action_y - logo_y - 62.0, 80.0)
+	var logo_width := minf(minf(width * 0.68, 620.0), logo_max_height * 1.5)
 	var logo_height := logo_width / 1.5
 	var logo := $HUD/MenuLogo as TextureRect
-	logo.position = Vector2((width - logo_width) * 0.5, 84.0 if portrait else 20.0)
+	logo.position = Vector2((width - logo_width) * 0.5, logo_y)
 	logo.size = Vector2(logo_width, logo_height)
 	var prompt := $HUD/Menu as Label
 	prompt.position = Vector2(0.0, logo.position.y + logo.size.y + 10.0)
@@ -541,9 +561,9 @@ func layout_hud_for_viewport(viewport_size: Vector2) -> void:
 	$HUD/SkipStageAd.size = Vector2(death_width, 52.0)
 	$HUD/DoubleStageReward.position = Vector2((width - 230.0) * 0.5, 188.0)
 	$HUD/DoubleStageReward.size = Vector2(230.0, 52.0)
-	$HUD/GetMoreGold.position = Vector2((width - 270.0) * 0.5, height - 126.0)
+	$HUD/GetMoreGold.position = Vector2(18.0, menu_action_y)
 	$HUD/GetMoreGold.size = Vector2(270.0, 52.0)
-	$HUD/RemoveAds.position = Vector2((width - 270.0) * 0.5, height - 66.0)
+	$HUD/RemoveAds.position = Vector2(width - 288.0, menu_action_y)
 	$HUD/RemoveAds.size = Vector2(270.0, 52.0)
 	_layout_centered_label($HUD/RewardToast, width, 154.0, 30.0, 190.0)
 	_layout_centered_label($HUD/LevelUpCard, width, 198.0, 42.0, 190.0)
