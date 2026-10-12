@@ -20,6 +20,7 @@ var save_manager: SaveManager
 var gold := 0
 var xp := 0
 var level := 1
+var shop: Dictionary = {}
 
 func initialize(manager: SaveManager) -> bool:
 	save_manager = manager
@@ -31,6 +32,7 @@ func initialize(manager: SaveManager) -> bool:
 	gold = int(meta.gold)
 	xp = int(meta.xp)
 	level = int(meta.level)
+	shop = save_manager.shop_snapshot()
 	return true
 
 func apply_remote_config(overrides: Dictionary) -> void:
@@ -69,6 +71,100 @@ func reload_profile(profile: Dictionary) -> void:
 	gold = maxi(int(meta.get("gold", gold)), 0)
 	xp = maxi(int(meta.get("xp", xp)), 0)
 	level = maxi(int(meta.get("level", level)), 1)
+	shop = save_manager.shop_snapshot()
+	changed.emit(snapshot())
+
+func character_catalog() -> Dictionary:
+	return config.get("characters", {}).duplicate(true)
+
+func cosmetic_catalog(slot := "") -> Array:
+	var result: Array = []
+	for raw_item in config.get("cosmetics", []):
+		var item: Dictionary = raw_item.duplicate(true)
+		if not slot.is_empty() and str(item.get("slot", "")) != slot:
+			continue
+		var rarity := str(item.get("rarity", "COMMON"))
+		item["price"] = int(config.get("cosmetic_prices", {}).get(rarity, 0))
+		item["level"] = int(config.get("cosmetic_levels", {}).get(rarity, 1))
+		result.append(item)
+	return result
+
+func character_available(character_id: String) -> bool:
+	var normalized := character_id.to_upper()
+	return config.get("characters", {}).has(normalized) and DirAccess.dir_exists_absolute(ProjectSettings.globalize_path("res://assets/art/character_frames/%s" % normalized.to_lower()))
+
+func locked_reason(item_id: String) -> String:
+	var item := _catalog_item(item_id)
+	if item.is_empty():
+		return "UNKNOWN"
+	if item.get("kind", "") == "character" and not character_available(item_id):
+		return "COMING"
+	if not str(item.get("source", "")).is_empty():
+		return str(item.source)
+	if level < int(item.get("level", 1)):
+		return "LV %d" % int(item.level)
+	if shop.get("owned", []).has(item_id):
+		return ""
+	var missing := int(item.get("price", 0)) - gold
+	return "NEED %d GOLD" % missing if missing > 0 else ""
+
+func buy(item_id: String) -> bool:
+	var item := _catalog_item(item_id)
+	if item.is_empty() or shop.get("owned", []).has(item_id):
+		return false
+	if not locked_reason(item_id).is_empty():
+		return false
+	gold -= int(item.get("price", 0))
+	shop.owned.append(item_id)
+	_persist_shop()
+	return true
+
+func select_character(character_id: String) -> bool:
+	var normalized := character_id.to_upper()
+	if not shop.get("owned", []).has(normalized) or not character_available(normalized):
+		return false
+	shop.selected_character = normalized
+	_persist_shop()
+	return true
+
+func equip(item_id: String) -> bool:
+	var item := _catalog_item(item_id)
+	if item.get("kind", "") != "cosmetic" or not shop.get("owned", []).has(item_id):
+		return false
+	var slot := str(item.get("slot", ""))
+	shop.equipped[slot] = "" if str(shop.equipped.get(slot, "")) == item_id else item_id
+	_persist_shop()
+	return true
+
+func shop_snapshot() -> Dictionary:
+	var locked := {}
+	for character_id in character_catalog():
+		var reason := locked_reason(character_id)
+		if not reason.is_empty(): locked[character_id] = reason
+	for item in cosmetic_catalog():
+		var reason := locked_reason(str(item.id))
+		if not reason.is_empty(): locked[item.id] = reason
+	return {"gold": gold, "level": level, "owned": shop.get("owned", []).duplicate(), "equipped": shop.get("equipped", {}).duplicate(true), "selected_character": shop.get("selected_character", "M1"), "locked_reasons": locked}
+
+func _catalog_item(item_id: String) -> Dictionary:
+	var normalized := item_id.to_upper()
+	var characters: Dictionary = config.get("characters", {})
+	if characters.has(normalized):
+		var result: Dictionary = characters[normalized].duplicate(true)
+		result["id"] = normalized
+		result["kind"] = "character"
+		return result
+	for item in cosmetic_catalog():
+		if str(item.get("id", "")) == item_id:
+			var result: Dictionary = item.duplicate(true)
+			result["kind"] = "cosmetic"
+			return result
+	return {}
+
+func _persist_shop() -> void:
+	if save_manager != null:
+		save_manager.write_meta(snapshot())
+		save_manager.write_shop(shop)
 	changed.emit(snapshot())
 
 func threshold_for(current_level := level) -> int:

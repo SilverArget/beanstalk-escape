@@ -20,6 +20,9 @@ var frame_textures: Dictionary = {}
 var sprite: Sprite2D
 var time_wings: Sprite2D
 var flash_material: ShaderMaterial
+var cosmetic_sprites: Dictionary = {}
+var equipped_cosmetics := {"HAT": "", "FACE": "", "TRAIL": "", "OUTFIT": ""}
+var cosmetic_data: Dictionary = {}
 
 func _ready() -> void:
 	_build_visual()
@@ -41,6 +44,7 @@ func _process(delta: float) -> void:
 		time_wings.scale = Vector2(0.045 + wing_pulse, 0.045 - wing_pulse * 0.5)
 	_update_mode(player, delta)
 	flash_material.set_shader_parameter("flash_amount", 0.78 if hurt_remaining > 0.18 else 0.0)
+	_update_cosmetic_anchors()
 
 func _unhandled_input(event: InputEvent) -> void:
 	if not (event is InputEventKey and event.pressed and not event.echo):
@@ -91,14 +95,14 @@ func _set_frame(requested_frame: String) -> void:
 
 func set_skin(requested_skin: String) -> bool:
 	var normalized := requested_skin.to_upper()
-	if normalized not in ["M1", "F1"]:
+	if normalized not in ["M1", "M2", "M3", "F1", "F2", "F3"] or not _skin_exists(normalized):
 		return false
 	_load_skin(normalized)
 	return true
 
 func _load_skin(requested_skin: String) -> void:
 	var normalized := requested_skin.to_upper()
-	skin_id = normalized if normalized in ["M1", "F1"] else "M1"
+	skin_id = normalized if normalized in ["M1", "M2", "M3", "F1", "F2", "F3"] and _skin_exists(normalized) else "M1"
 	frame_textures.clear()
 	for requested_frame in ["climb_left", "climb_right", "climb_reach", "jump", "hurt", "fall", "cheer", "hang"]:
 		frame_textures[requested_frame] = load("%s/%s/%s.png" % [FRAME_ROOT, skin_id.to_lower(), requested_frame])
@@ -106,8 +110,63 @@ func _load_skin(requested_skin: String) -> void:
 	frame_name = ""
 	_set_frame(current)
 
+func _skin_exists(requested_skin: String) -> bool:
+	return DirAccess.dir_exists_absolute(ProjectSettings.globalize_path("%s/%s" % [FRAME_ROOT, requested_skin.to_lower()]))
+
+func set_cosmetics(equipped: Dictionary, catalog: Array) -> void:
+	equipped_cosmetics = equipped.duplicate(true)
+	cosmetic_data.clear()
+	for item in catalog:
+		cosmetic_data[str(item.get("id", ""))] = item
+	for slot in ["HAT", "FACE", "TRAIL"]:
+		var item_id := str(equipped_cosmetics.get(slot, ""))
+		var layer := cosmetic_sprites.get(slot) as Sprite2D
+		if layer == null:
+			continue
+		layer.visible = not item_id.is_empty() and cosmetic_data.has(item_id)
+		if layer.visible:
+			layer.texture = load("res://assets/art/cosmetics/%s" % str(cosmetic_data[item_id].get("image", "")))
+	var outfit_id := str(equipped_cosmetics.get("OUTFIT", ""))
+	var outfit_enabled := not outfit_id.is_empty() and cosmetic_data.has(outfit_id)
+	flash_material.set_shader_parameter("outfit_enabled", 1.0 if outfit_enabled else 0.0)
+	if outfit_enabled:
+		flash_material.set_shader_parameter("outfit_color", Color(str(cosmetic_data[outfit_id].get("tint", "ffffff"))))
+
+func preview_cosmetic(item: Dictionary) -> void:
+	var preview := equipped_cosmetics.duplicate(true)
+	if not item.is_empty():
+		preview[str(item.get("slot", ""))] = str(item.get("id", ""))
+	set_cosmetics(preview, cosmetic_data.values())
+
+func _update_cosmetic_anchors() -> void:
+	if sprite.texture == null:
+		return
+	var image := sprite.texture.get_image()
+	if image == null:
+		return
+	var used := image.get_used_rect()
+	if used.size == Vector2i.ZERO:
+		return
+	var texture_size := Vector2(image.get_width(), image.get_height())
+	var center_x := float(used.position.x) + float(used.size.x) * 0.5
+	var top_y := float(used.position.y)
+	var source_to_local := func(source_point: Vector2) -> Vector2:
+		return sprite.position + (source_point - texture_size * 0.5) * ART_SCALE
+	var hat := cosmetic_sprites.get("HAT") as Sprite2D
+	var face := cosmetic_sprites.get("FACE") as Sprite2D
+	var trail := cosmetic_sprites.get("TRAIL") as Sprite2D
+	hat.position = source_to_local.call(Vector2(center_x, top_y - float(used.size.y) * 0.025))
+	face.position = source_to_local.call(Vector2(center_x, top_y + float(used.size.y) * 0.19))
+	trail.position = source_to_local.call(Vector2(center_x, float(used.end.y) - float(used.size.y) * 0.08))
+
 func play_celebration() -> void:
 	celebrate_remaining = 0.75
+
+func preview_tick(delta: float) -> void:
+	climb_time += delta * FRAME_RATE
+	_set_frame(FRAME_NAMES[int(floor(climb_time)) % FRAME_NAMES.size()])
+	sprite.position = Vector2(0.0, BASE_Y - 3.5 * absf(sin(climb_time * PI * 0.5)))
+	_update_cosmetic_anchors()
 
 func visual_snapshot() -> Dictionary:
 	return {"mode": mode, "frame": frame_name, "skin": skin_id}
@@ -132,6 +191,8 @@ func _build_visual() -> void:
 	shader.code = """
 shader_type canvas_item;
 uniform float flash_amount : hint_range(0.0, 1.0) = 0.0;
+uniform float outfit_enabled : hint_range(0.0, 1.0) = 0.0;
+uniform vec4 outfit_color : source_color = vec4(1.0);
 uniform vec4 outline_color : source_color = vec4(0.035, 0.043, 0.071, 1.0);
 uniform float outline_source_px = 4.1;
 uniform vec2 shadow_source_offset = vec2(0.0, 7.0);
@@ -159,10 +220,29 @@ void fragment() {
 	float border_alpha = max(outline_alpha - pixel.a, 0.0);
 	float backdrop_alpha = max(border_alpha, shadow_alpha * (1.0 - outline_alpha));
 	vec3 backdrop_color = mix(vec3(0.02, 0.025, 0.035), outline_color.rgb, step(shadow_alpha, border_alpha));
-	vec3 flashed_rgb = mix(pixel.rgb, vec3(1.0), flash_amount);
+	// Restrict dye to the clothed torso/leg zone. The head/hair/face and outer
+	// hand zone remain the source art; alpha and luminance preserve shading.
+	float body_y = smoothstep(0.34, 0.44, UV.y) * (1.0 - smoothstep(0.91, 0.98, UV.y));
+	float body_x = smoothstep(0.12, 0.27, UV.x) * (1.0 - smoothstep(0.73, 0.88, UV.x));
+	float cloth_mask = body_y * body_x * outfit_enabled * pixel.a;
+	float luminance = dot(pixel.rgb, vec3(0.299, 0.587, 0.114));
+	vec3 dyed = outfit_color.rgb * mix(0.42, 1.34, luminance);
+	vec3 outfitted_rgb = mix(pixel.rgb, dyed, cloth_mask * 0.72);
+	vec3 flashed_rgb = mix(outfitted_rgb, vec3(1.0), flash_amount);
 	COLOR = vec4(mix(backdrop_color, flashed_rgb, pixel.a), max(pixel.a, backdrop_alpha));
 }
 """
 	flash_material.shader = shader
 	sprite.material = flash_material
 	add_child(sprite)
+	for slot in ["TRAIL", "HAT", "FACE"]:
+		var layer := Sprite2D.new()
+		layer.name = "%sCosmetic" % slot.capitalize()
+		layer.centered = true
+		layer.scale = Vector2.ONE * (0.13 if slot == "FACE" else 0.17)
+		layer.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+		layer.z_index = -2 if slot == "TRAIL" else 2
+		layer.modulate.a = 0.68 if slot == "TRAIL" else 1.0
+		layer.visible = false
+		add_child(layer)
+		cosmetic_sprites[slot] = layer

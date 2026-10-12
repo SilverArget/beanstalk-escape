@@ -13,5 +13,29 @@
   "skip_stage_death_count": 3,
   "interstitial_min_stage": 3,
   "interstitial_completed_stage_interval": 2,
-  "interstitial_min_delay_seconds": 90
+  "interstitial_min_delay_seconds": 90,
+  "characters": {
+    "M1": {"gender": "MALE", "name": "CLASSIC ADVENTURER", "level": 1, "price": 0},
+    "M2": {"gender": "MALE", "name": "CLOUD SCOUT", "level": 3, "price": 300},
+    "M3": {"gender": "MALE", "name": "FOREST RUNNER", "level": 5, "price": 700},
+    "F1": {"gender": "FEMALE", "name": "CLASSIC CLIMBER", "level": 1, "price": 0},
+    "F2": {"gender": "FEMALE", "name": "SKY EXPLORER", "level": 3, "price": 300},
+    "F3": {"gender": "FEMALE", "name": "VINE GUARDIAN", "level": 5, "price": 700}
+  },
+  "cosmetic_prices": {"COMMON": 150, "RARE": 400, "EPIC": 900},
+  "cosmetic_levels": {"COMMON": 1, "RARE": 3, "EPIC": 5},
+  "cosmetics": [
+    {"id": "hat_leaf", "slot": "HAT", "name": "LEAF CAP", "rarity": "COMMON", "image": "leaf_cap.png"},
+    {"id": "hat_sky", "slot": "HAT", "name": "SKY CIRCLET", "rarity": "RARE", "image": "sky_circlet.png"},
+    {"id": "hat_crown", "slot": "HAT", "name": "VINE CROWN", "rarity": "EPIC", "image": "vine_crown.png", "source": "MAP TREASURE"},
+    {"id": "face_leaf", "slot": "FACE", "name": "LEAF MARKS", "rarity": "COMMON", "image": "leaf_marks.png"},
+    {"id": "face_goggles", "slot": "FACE", "name": "SCOUT GOGGLES", "rarity": "RARE", "image": "scout_goggles.png"},
+    {"id": "face_mask", "slot": "FACE", "name": "VINE MASK", "rarity": "EPIC", "image": "vine_mask.png"},
+    {"id": "trail_leaf", "slot": "TRAIL", "name": "LEAF WAKE", "rarity": "COMMON", "image": "leaf_trail.png"},
+    {"id": "trail_cloud", "slot": "TRAIL", "name": "CLOUD WAKE", "rarity": "RARE", "image": "cloud_trail.png"},
+    {"id": "trail_star", "slot": "TRAIL", "name": "STAR WAKE", "rarity": "EPIC", "image": "star_trail.png", "source": "MAP TREASURE"},
+    {"id": "outfit_moss", "slot": "OUTFIT", "name": "MOSS WEAVE", "rarity": "COMMON", "image": "moss_weave.png", "tint": "6fa84f"},
+    {"id": "outfit_sky", "slot": "OUTFIT", "name": "SKY WEAVE", "rarity": "RARE", "image": "sky_weave.png", "tint": "416b9c", "source": "DAY 7 BONUS"},
+    {"id": "outfit_ember", "slot": "OUTFIT", "name": "EMBER WEAVE", "rarity": "EPIC", "image": "ember_weave.png", "tint": "b85b35"}
+  ]
 }
