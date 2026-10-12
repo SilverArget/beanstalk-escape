@@ -128,9 +128,7 @@ func _draw_stage_branches(stage_number: int, camera_top: float) -> void:
 	if stage_bottom < camera_top - 120.0 or stage_top > camera_bottom + 120.0:
 		return
 	if stage_number == 3:
-		for route in 3:
-			_draw_split_ribbon(route, stage_bottom)
-		_draw_split_outline(stage_bottom)
+		_draw_split_union(stage_bottom)
 	var connection_y := stage_bottom - (430.0 if stage_number == 3 else 180.0)
 	while connection_y > stage_top + 120.0:
 		if branch_graph.can_transfer(stages, 0, 1, connection_y):
@@ -165,10 +163,6 @@ func _branch_visual_x(route: int, world_y: float) -> float:
 	# Gameplay remains on Balance.ROUTE_X. This visual-only S wave stays within
 	# the 44 px support, replacing the former ruler-straight tube.
 	return float(Balance.ROUTE_X[route]) + sin((world_y + float(route) * 83.0) * 0.0085) * 5.5
-
-func _draw_split_ribbon(route: int, stage_bottom: float) -> void:
-	var data := _split_ribbon_data(route, stage_bottom)
-	_draw_textured_ribbon(data.points, data.widths, -float(data.points[0].y) / MODULE_HEIGHT, false, true)
 
 func _split_ribbon_data(route: int, stage_bottom: float) -> Dictionary:
 	var split_start := Vector2(_trunk_center_x(stage_bottom - 140.0), stage_bottom - 140.0)
@@ -207,32 +201,95 @@ func _draw_branch_tip(base: Vector2, direction: Vector2, route: int) -> void:
 	var widths := PackedFloat32Array([ScaleLock.BRANCH_WIDTH, 38.0, 20.0, 2.0])
 	_draw_textured_ribbon(points, widths, float(route) * 0.27, true, true)
 
-func _draw_split_outline(stage_bottom: float) -> void:
-	if qa_support_mask:
+func _draw_split_union(stage_bottom: float) -> void:
+	var merged := _split_union_polygon(stage_bottom)
+	if merged.size() < 3:
 		return
+	var triangles := Geometry2D.triangulate_polygon(merged)
+	for triangle_start in range(0, triangles.size(), 3):
+		var triangle := PackedVector2Array()
+		var uvs := PackedVector2Array()
+		for corner in 3:
+			var point: Vector2 = merged[triangles[triangle_start + corner]]
+			var v := -point.y / MODULE_HEIGHT
+			triangle.append(point)
+			uvs.append(Vector2(_surface_u(point.x, v), v))
+		if qa_support_mask:
+			draw_colored_polygon(triangle, Color.WHITE)
+		else:
+			draw_polygon(triangle, PackedColorArray([Color.WHITE, Color.WHITE, Color.WHITE]), uvs, VINE_SURFACE_TEXTURE)
+	if qa_support_mask:
+		if qa_support_mask_include_outline:
+			_draw_closed_polygon_outline(merged, Color.WHITE, VISUAL_OUTLINE_WIDTH * 2.0 + 1.0, stage_bottom - 350.0)
+		return
+	_draw_closed_polygon_outline(merged, OUTLINE_COLOR, VISUAL_OUTLINE_WIDTH, stage_bottom - 350.0)
+
+func _split_union_polygon(stage_bottom: float) -> PackedVector2Array:
 	var geometries := []
+	var split_root := Vector2.ZERO
+	var split_root_width := 0.0
 	for route in 3:
 		var data := _split_ribbon_data(route, stage_bottom)
+		if route == 0:
+			split_root = data.points[0]
+			split_root_width = data.widths[0]
 		geometries.append(_ribbon_geometry(data.points, data.widths, 0.0, 0.0))
+	var polygon := PackedVector2Array()
+	polygon.append(Vector2(split_root.x - split_root_width * 0.5, split_root.y))
 	var outer_left: PackedVector2Array = geometries[0].left
-	var outer_right: PackedVector2Array = geometries[2].right
-	var gap_left_edges := [PackedVector2Array(), PackedVector2Array()]
-	var gap_right_edges := [PackedVector2Array(), PackedVector2Array()]
-	for step in range(29):
-		for gap in 2:
-			# Use the exact same tangent-normal geometry as the painted ribbons.
-			# An inner contour exists only where those fills expose an actual gap.
-			var left_gap_edge: Vector2 = geometries[gap].right[step]
-			var right_gap_edge: Vector2 = geometries[gap + 1].left[step]
-			if right_gap_edge.x - left_gap_edge.x > 1.0:
-				gap_left_edges[gap].append(left_gap_edge)
-				gap_right_edges[gap].append(right_gap_edge)
-	draw_polyline(outer_left, OUTLINE_COLOR, VISUAL_OUTLINE_WIDTH, true)
-	draw_polyline(outer_right, OUTLINE_COLOR, VISUAL_OUTLINE_WIDTH, true)
+	var left_root_index := _first_edge_point_above(outer_left, split_root.y)
+	for index in range(left_root_index, outer_left.size()):
+		polygon.append(outer_left[index])
 	for gap in 2:
-		if gap_left_edges[gap].size() > 1:
-			draw_polyline(gap_left_edges[gap], OUTLINE_COLOR, VISUAL_OUTLINE_WIDTH, true)
-			draw_polyline(gap_right_edges[gap], OUTLINE_COLOR, VISUAL_OUTLINE_WIDTH, true)
+		var left_edge: PackedVector2Array = geometries[gap].right
+		var right_edge: PackedVector2Array = geometries[gap + 1].left
+		var closure := _split_gap_closure(left_edge, right_edge)
+		var left_index: int = closure.left_index
+		var right_index: int = closure.right_index
+		for reverse_index in range(left_edge.size() - 1, left_index - 1, -1):
+			polygon.append(left_edge[reverse_index])
+		polygon.append(closure.point)
+		for forward_index in range(right_index, right_edge.size()):
+			polygon.append(right_edge[forward_index])
+	var outer_right: PackedVector2Array = geometries[2].right
+	var right_root_index := _first_edge_point_above(outer_right, split_root.y)
+	for reverse_index in range(outer_right.size() - 1, right_root_index - 1, -1):
+		polygon.append(outer_right[reverse_index])
+	polygon.append(Vector2(split_root.x + split_root_width * 0.5, split_root.y))
+	return polygon
+
+func _split_gap_closure(left_edge: PackedVector2Array, right_edge: PackedVector2Array) -> Dictionary:
+	for left_index in range(left_edge.size() - 1):
+		for right_index in range(right_edge.size() - 1):
+			var crossing = Geometry2D.segment_intersects_segment(
+				left_edge[left_index], left_edge[left_index + 1],
+				right_edge[right_index], right_edge[right_index + 1]
+			)
+			if crossing != null:
+				return {"left_index": left_index + 1, "right_index": right_index + 1, "point": crossing as Vector2}
+	return {
+		"left_index": left_edge.size() - 1,
+		"right_index": right_edge.size() - 1,
+		"point": (left_edge[-1] + right_edge[-1]) * 0.5,
+	}
+
+func _first_edge_point_above(edge: PackedVector2Array, root_y: float) -> int:
+	for index in edge.size():
+		if edge[index].y <= root_y:
+			return index
+	return edge.size() - 1
+
+func _draw_closed_polygon_outline(polygon: PackedVector2Array, color: Color, width: float, branch_join_y: float) -> void:
+	for index in polygon.size():
+		var start := polygon[index]
+		var finish := polygon[(index + 1) % polygon.size()]
+		var midpoint := (start + finish) * 0.5
+		var delta := finish - start
+		# The three branch ribbons continue beyond the split polygon. Their top
+		# cross-sections are interior joins, not part of the union silhouette.
+		if absf(midpoint.y - branch_join_y) < 8.0 and absf(delta.x) > absf(delta.y) * 2.0 and delta.length() < 60.0:
+			continue
+		draw_line(start, finish, color, width, true)
 
 func _draw_textured_ribbon(points: PackedVector2Array, widths: PackedFloat32Array, texture_phase: float, draw_outline := true, world_locked_v := false, tangent_uv := false, outline_start_trim := 0, outline_end_trim := 0) -> void:
 	if points.size() < 2:

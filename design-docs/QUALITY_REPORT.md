@@ -249,3 +249,18 @@ No assertion changed and no PNG asset changed. Evidence: `../03-test/qa/world/st
 | Targeted regression | PASS | `test_gate3a_rig.gd` 8/0; `test_scale_lock.gd` 15/0 plus 2 headless frame NOT RUN; `test_gate_a.gd` 9/0. Complete 17-file regression NOT RUN. |
 
 No assertion or PNG asset changed. Before evidence: `../03-test/kontrol-20261012-11200b8/world/zoom-karakter-kontrast.png` and `zoom-split-catal.png`. After evidence: `../03-test/qa/world/stage-{1,3-split,4,5}-960x540.png`, matching `world-only` frames, and `../03-test/qa/art-reference/pilot/contrast/`.
+
+## Checkpoint: GATE 3A Sıra 2 world-art correction 8 — 2026-10-12
+
+| Item ID | Status | Evidence / measurement |
+|---|---|---|
+| §21-4 / stable character outline | PASS (source/render) | Removed screen sampling and per-pixel dark/light switching. M1/F1 use one fixed dark 1–2 px silhouette rim; rig, poses, identity, collider, and pilot lock are unchanged. |
+| §21-4 / value hierarchy | PASS (render) | Deterministic v3 tile plus fixed teal world outline; no player-dependent world layer. Exact owner-method game contrast: Stage 1 `97.422%`, Stage 3 split `97.238%`, Stage 4 `97.422%`, Stage 5 `97.422%`. Tile minimum WCAG luminance `0.1248`; all source pixels at sRGB Y >= 0.50 remain bit-identical. |
+| §5.1 / mipmapped art | PASS (render) | `69/69` PNG imports have `mipmaps/generate=true`; world, parts, outline copies, and wing use `LINEAR_WITH_MIPMAPS`. Same-crop adjacent-pixel delta `9.20 -> 6.23`, edge RMS `62.92 -> 50.51`; 960x540 and 1920x1080 Compatibility captures passed. |
+| §5.1 / pilot after mipmaps | PASS (render) | M1 `102..109 x 40..46 px`, minimum flat-ground contrast `93.01%`; F1 `102..109 x 40..47 px`, minimum `91.50%`; 150/150 frames per skin, opaque rectangle `0`. |
+| VIS12 / single-shape fork | PASS (geometry/render); owner visual verification pending | One concave union polygon owns split fill and contour. Deep interior outline-colored pixels `0`; fork boundary outline coverage `533/533`; old band rows y=314/y=322 are `1.110x / 1.421x` local median; sky leak `0`; airborne foliage `0`. |
+| VIS12 capture | PASS (render) | Final windowed 960x540 capture emitted 6/6 main frames and 26/26 seam frames. |
+| GA08 | PASS (render) | Final isolated windowed Compatibility run 5 PASS / 0 FAIL. |
+| Targeted regression | PASS | Rig `8/0`; scale `15/0 + 2 headless frame NOT RUN`; Gate A `9/0`. Complete 17-file regression NOT RUN. |
+
+No assertion changed. New asset: `assets/art/world/vine_surface_tile_v3.png`, SHA-256 `A3756C59EE4D75A3D62B25E08DAC95585B3633404118DAB456B3AE8844C7C263`, 1254x1254 RGB/opaque. Evidence: `../03-test/qa/world/mipmap/` and `../03-test/qa/world/fork-union/fork-before-after-4x.png`.

@@ -26,3 +26,11 @@
 - `VIS12 / FAIL F`: CODEX geometry/render PASS, owner visual verification pending. Gap contours derive from exact painted ribbon edges; real branch exterior edges are untrimmed; the player-following per-quad fan source is removed.
 - Windowed capture `6/6 + 26/26`; isolated GA08 `5/0`; M1/F1 pilot `150/150` each; rig `8/0`; scale `15/0 + 2 headless frame NOT RUN`; Gate A `9/0`. No assertion changes. Full 17-file regression remains NOT RUN.
 - Next exact work: owner opens the final D/F frames and runs the complete 17-file regression; on acceptance, close GATE 3A Sıra 2 and continue to Sıra 3.
+
+## GATE 3A step 2 correction 8 — 2026-10-12
+
+- `§21-4`: stable single-dark character contour restored; deterministic v3 vine value hierarchy passes exact game-frame contrast at `97.238..97.422%` without a player-following world patch.
+- `§5.1 / image quality`: all 69 PNG imports now generate mipmaps; relevant CanvasItems use linear mipmapped filtering. 960x540 and 1920x1080 Compatibility captures passed; M1/F1 remain within `96..120 x 36..48 px`.
+- `VIS12 / FAIL F`: split is one concave painted polygon with one exterior contour. Interior contour pixels `0`, boundary coverage `533/533`, y=314/y=322 band ratios `1.110x / 1.421x`, sky leak `0`.
+- Windowed capture `6/6 + 26/26`; GA08 `5/0`; pilot M1/F1 `150/150` each; rig `8/0`; scale `15/0 + 2 headless frame NOT RUN`; Gate A `9/0`. No assertion changes. Full 17-file regression remains NOT RUN.
+- Next exact work: owner opens the mipmap and fork before/after evidence and runs the complete 17-file regression. On acceptance, close GATE 3A Sıra 2 and continue to Sıra 3.
