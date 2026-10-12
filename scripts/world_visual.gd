@@ -42,7 +42,11 @@ func _process(_delta: float) -> void:
 func _draw() -> void:
 	redraw_count += 1
 	branch_point_count = 0
-	var camera_top := (player.global_position.y - ScaleLock.CHARACTER_REFERENCE_Y) if player != null else -270.0
+	var camera_top := player.global_position.y - ScaleLock.CHARACTER_REFERENCE_Y if player != null else -270.0
+	if player != null:
+		var camera := player.get_node_or_null("Camera2D") as Camera2D
+		if camera != null:
+			camera_top = camera.get_screen_center_position().y - get_viewport_rect().size.y * 0.5
 	_draw_sky(camera_top)
 	if qa_sky_only:
 		return
@@ -99,7 +103,9 @@ func _draw_foreground_foliage(camera_top: float) -> void:
 		_draw_foliage_sprite(4, center, Vector2(MAX_LEAF_SIZE, MAX_LEAF_SIZE), side < 0.0, Color(1.0, 1.0, 1.0, 0.32))
 
 func _draw_trunk(camera_top: float) -> void:
-	var split_root_y := -Balance.STAGE_HEIGHT * 2.0 - 140.0
+	# Overlap the fork by 48 px. The fork silhouette replaces the trunk edge in
+	# this zone, so its tangent and paint meet without a notch or butt joint.
+	var split_root_y := -Balance.STAGE_HEIGHT * 2.0 - 188.0
 	var visible_top := maxf(split_root_y, camera_top - 64.0)
 	var visible_bottom := minf(740.0, camera_top + 620.0)
 	if visible_bottom <= visible_top:
@@ -170,14 +176,16 @@ func _branch_visual_x(route: int, world_y: float) -> float:
 	return float(Balance.ROUTE_X[route]) + sin((world_y + float(route) * 83.0) * 0.0085) * 5.5
 
 func _split_ribbon_data(route: int, stage_bottom: float) -> Dictionary:
-	var split_start := Vector2(_trunk_center_x(stage_bottom - 140.0), stage_bottom - 140.0)
+	var split_start := Vector2(_trunk_center_x(stage_bottom - 100.0), stage_bottom - 100.0)
 	var split_start_width := _trunk_half_width(split_start.y) * 2.0
 	var split_end_y := stage_bottom - 350.0
 	var points := PackedVector2Array()
 	var widths := PackedFloat32Array()
 	for step in range(29):
 		var t := float(step) / 28.0
-		var smooth := t * t * (3.0 - 2.0 * t)
+		# Quintic easing keeps both slope and curvature continuous at the trunk
+		# and branch joins over a 250 px opening arc.
+		var smooth := t * t * t * (t * (t * 6.0 - 15.0) + 10.0)
 		var branch_end_x := _branch_visual_x(route, split_end_y)
 		var organic_x := lerpf(split_start.x, branch_end_x, smooth) + sin(t * PI) * float(route - 1) * 6.0
 		points.append(Vector2(organic_x, lerpf(split_start.y, split_end_y, t)))
@@ -189,9 +197,11 @@ func _draw_branch_ribbon(points: PackedVector2Array, route: int, cap_start: bool
 	for point in points:
 		var node_phase := fposmod(-point.y + float(route) * 31.0, BRANCH_NODE_SPACING)
 		var node_distance := minf(node_phase, BRANCH_NODE_SPACING - node_phase)
-		var node_weight := pow(maxf(1.0 - node_distance / 13.0, 0.0), 2.0)
-		widths.append(ScaleLock.BRANCH_WIDTH + node_weight * 6.0)
-	_draw_textured_ribbon(points, widths, float(route) * 0.27, true, false, false, 0, 0, true)
+		var node_weight := 0.5 + 0.5 * cos(clampf(node_distance / 30.0, 0.0, 1.0) * PI)
+		widths.append(ScaleLock.BRANCH_WIDTH + node_weight * 3.0)
+	# All routes share one material phase; world position must not turn the
+	# center vine yellow while its neighbours remain green.
+	_draw_textured_ribbon(points, widths, 0.5, true, true, false, 0, 0, true)
 	if cap_start and not qa_support_mask:
 		_draw_branch_tip(points[0], (points[0] - points[1]).normalized(), route)
 	if cap_end and not qa_support_mask:
@@ -405,20 +415,14 @@ func _draw_textured_ribbon(points: PackedVector2Array, widths: PackedFloat32Arra
 				Vector2(_surface_u(first_left.x, first_v), first_v), Vector2(_surface_u(first_right.x, first_v), first_v),
 				Vector2(_surface_u(second_right.x, second_v), second_v), Vector2(_surface_u(second_left.x, second_v), second_v),
 			])
-		var surface_width := maxf(first_half * 2.0, second_half * 2.0)
 		var texture_modulate := Color.WHITE
-		var surface_texture: Texture2D = BRANCH_SURFACE_TEXTURE if branch_material else VINE_SURFACE_TEXTURE
+		# One world-locked paint source crosses trunk, fork and supports. Changing
+		# textures at either join produced a horizontal tone/phase step.
+		var surface_texture: Texture2D = VINE_SURFACE_TEXTURE
 		draw_polygon(quad, PackedColorArray([texture_modulate, texture_modulate, texture_modulate, texture_modulate]), uvs, surface_texture)
-		if branch_material:
-			# Stable asymmetric bands guarantee cylindrical volume even where the
-			# painted spiral fibers cross a narrow 44 px support.
-			var shadow_quad := PackedVector2Array([quad[0], quad[0].lerp(quad[1], 0.22), quad[3].lerp(quad[2], 0.22), quad[3]])
-			var highlight_quad := PackedVector2Array([quad[0].lerp(quad[1], 0.50), quad[0].lerp(quad[1], 0.66), quad[3].lerp(quad[2], 0.66), quad[3].lerp(quad[2], 0.50)])
-			draw_colored_polygon(shadow_quad, Color(0.06, 0.20, 0.16, 0.22))
-			draw_colored_polygon(highlight_quad, Color(0.88, 1.0, 0.55, 0.16))
 		# This glaze is a uniform material treatment for every narrow support. It
 		# never depends on the player position or follows the camera/player.
-		var glaze_alpha := 0.14 if surface_width <= 60.0 else 0.0
+		var glaze_alpha := 0.14
 		if glaze_alpha > 0.001:
 			draw_colored_polygon(quad, Color(0.78, 0.90, 0.42, glaze_alpha))
 	if not qa_support_mask and draw_outline:
@@ -545,7 +549,7 @@ func qa_visual_contract() -> Dictionary:
 		"max_leaf_px": MAX_LEAF_SIZE,
 		"outline_px": VISUAL_OUTLINE_WIDTH,
 		"surface_texture": "res://assets/art/world/vine_surface_tile_v3.png",
-		"branch_surface_texture": "res://assets/art/world/bean_branch_surface_v1.png",
+		"branch_surface_texture": "res://assets/art/world/vine_surface_tile_v3.png",
 		"branch_detail_atlas": "res://assets/art/world/bean_branch_details_v1.png",
 		"branch_node_spacing_px": BRANCH_NODE_SPACING,
 		"foliage_atlas": "res://assets/art/world/foliage_atlas.png",

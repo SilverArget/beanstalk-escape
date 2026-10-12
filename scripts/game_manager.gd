@@ -4,7 +4,7 @@ extends Node2D
 const TIME_WINGS_ORB := preload("res://assets/art/gpt/items/wing_orb.png")
 
 enum State { PLAYING, PLAYER_DEAD, PROTOTYPE_COMPLETE }
-enum AppState { MENU, PLAYING, PAUSED, PLAYER_DEAD, GAME_COMPLETE }
+enum AppState { MENU, INTRO, PLAYING, PAUSED, PLAYER_DEAD, GAME_COMPLETE }
 enum DeathCause { NONE, FALL, CAUGHT, OBSTACLE }
 var state := State.PLAYING
 var app_state := AppState.MENU
@@ -50,6 +50,12 @@ var continue_checkpoint := {}
 var completed_since_interstitial := 0
 var platform_pause_active := false
 var paused_by_platform := false
+const INTRO_BEAT_SECONDS := [2.3, 3.0, 2.3]
+const INTRO_SUMMIT_Y := -Balance.STAGE_HEIGHT * Balance.STAGE_COUNT + 270.0
+const CAMERA_PLAY_POSITION := Vector2(0.0, -120.0)
+var intro_active := false
+var intro_beat := 0
+var intro_t := 0.0
 
 func _ready() -> void:
 	process_physics_priority = 10
@@ -83,6 +89,11 @@ func _physics_process(delta: float) -> void:
 			confirm_pending = false
 			restart_stage()
 			return
+	if app_state == AppState.INTRO:
+		_update_intro(delta)
+		_update_hud()
+		_publish_readonly_web_state()
+		return
 	if app_state == AppState.PAUSED or app_state == AppState.MENU or app_state == AppState.PLAYER_DEAD or app_state == AppState.GAME_COMPLETE:
 		_apply_impact_fx(0.0)
 		_update_hud()
@@ -117,6 +128,9 @@ func _physics_process(delta: float) -> void:
 	_publish_readonly_web_state()
 
 func _unhandled_input(event: InputEvent) -> void:
+	if app_state == AppState.INTRO and _is_intro_skip_event(event):
+		_finish_intro()
+		return
 	if event is InputEventKey and event.pressed and not event.echo and _debug_state_enabled():
 		if event.physical_keycode == KEY_3:
 			_debug_evidence_stage(3)
@@ -160,6 +174,9 @@ func _debug_evidence_stage(stage_number: int) -> void:
 	stages.update_progress(player.global_position.y)
 
 func _handle_screen_touch(event: InputEventScreenTouch) -> void:
+	if event.pressed and app_state == AppState.INTRO:
+		_finish_intro()
+		return
 	if event.pressed and app_state != AppState.PLAYING:
 		_request_confirm()
 		return
@@ -226,6 +243,96 @@ func restart() -> void:
 func start_game() -> void:
 	audio.play_sfx("ui_click")
 	restart()
+	_begin_intro()
+
+func _begin_intro() -> void:
+	intro_active = true
+	intro_beat = 0
+	intro_t = 0.0
+	app_state = AppState.INTRO
+	player.set_physics_process(false)
+	spider.set_physics_process(false)
+	beans.set_physics_process(false)
+	golds.visible = false
+	var camera := player.get_node_or_null("Camera2D") as Camera2D
+	if camera != null:
+		camera.position = CAMERA_PLAY_POSITION
+	var spider_body := spider.get_node_or_null("Body") as CanvasItem
+	if spider_body != null:
+		spider_body.visible = false
+	_update_intro_presentation()
+	_update_hud()
+
+func _update_intro(delta: float) -> void:
+	intro_t += delta
+	var duration: float = INTRO_BEAT_SECONDS[intro_beat]
+	var progress := clampf(intro_t / duration, 0.0, 1.0)
+	var camera := player.get_node_or_null("Camera2D") as Camera2D
+	if camera != null:
+		if intro_beat == 1:
+			camera.position.y = lerpf(CAMERA_PLAY_POSITION.y, INTRO_SUMMIT_Y, progress * progress * (3.0 - 2.0 * progress))
+		elif intro_beat == 2:
+			camera.position.y = lerpf(INTRO_SUMMIT_Y, CAMERA_PLAY_POSITION.y, progress * progress * (3.0 - 2.0 * progress))
+	var spider_body := spider.get_node_or_null("Body") as CanvasItem
+	if spider_body != null and intro_beat == 2:
+		var reveal := clampf((progress - 0.52) / 0.48, 0.0, 1.0)
+		spider_body.visible = reveal > 0.0
+		spider_body.position.y = lerpf(120.0, 0.0, reveal)
+	if intro_t < duration:
+		return
+	intro_t = 0.0
+	intro_beat += 1
+	if intro_beat >= INTRO_BEAT_SECONDS.size():
+		_finish_intro()
+		return
+	_update_intro_presentation()
+
+func _update_intro_presentation() -> void:
+	var messages := [
+		"THE TOP OF THE BEANSTALK IS\nTHE TOP OF THE WORLD.",
+		"WE CLIMB IT TO JUMP FROM\nTHE HIGHEST POINT ON EARTH.",
+		"BUT THE GUARDIAN\nWILL TRY TO STOP US.",
+	]
+	$HUD/IntroText.text = messages[intro_beat]
+	var spider_body := spider.get_node_or_null("Body") as CanvasItem
+	if spider_body != null:
+		spider_body.visible = false
+	if intro_beat == 2:
+		audio.play_sfx("spider_scream")
+
+func _finish_intro() -> void:
+	if not intro_active:
+		return
+	intro_active = false
+	intro_beat = 0
+	intro_t = 0.0
+	# Rebuild the exact normal run start so watching and skipping are identical.
+	player.reset_run(Vector2.ZERO)
+	spider.reset_run(Vector2(0.0, Balance.START_DISTANCE))
+	beans.reset_run()
+	player.set_physics_process(true)
+	spider.set_physics_process(true)
+	beans.set_physics_process(true)
+	golds.visible = true
+	var camera := player.get_node_or_null("Camera2D") as Camera2D
+	if camera != null:
+		camera.position = CAMERA_PLAY_POSITION
+	var spider_body := spider.get_node_or_null("Body") as CanvasItem
+	if spider_body != null:
+		spider_body.visible = true
+		spider_body.position = Vector2.ZERO
+	app_state = AppState.PLAYING
+	gauge.update_from_positions(player.global_position.y, spider.global_position.y)
+	audio.play_music("music_game")
+	_update_hud()
+	_publish_readonly_web_state()
+
+func _is_intro_skip_event(event: InputEvent) -> bool:
+	if event is InputEventKey:
+		return event.pressed and not event.echo and (event.physical_keycode == KEY_ENTER or event.physical_keycode == KEY_KP_ENTER or event.physical_keycode == KEY_SPACE)
+	if event is InputEventMouseButton:
+		return event.pressed
+	return event is InputEventScreenTouch and event.pressed
 
 func restart_stage() -> void:
 	audio.play_sfx("ui_click")
@@ -329,6 +436,8 @@ func _die(cause: DeathCause = DeathCause.CAUGHT) -> void:
 func _request_confirm() -> void:
 	if app_state == AppState.MENU:
 		start_game()
+	elif app_state == AppState.INTRO:
+		_finish_intro()
 	elif app_state == AppState.PLAYER_DEAD:
 		var focused := get_viewport().gui_get_focus_owner() as Button
 		if focused != null and focused.visible and not focused.disabled:
@@ -337,6 +446,7 @@ func _request_confirm() -> void:
 			_focus_default_death_action()
 	elif app_state == AppState.GAME_COMPLETE:
 		restart()
+		_begin_intro()
 
 func _spider_can_catch() -> bool:
 	var claw_half_width := ScaleLock.BRANCH_CENTER_GAP + ScaleLock.BRANCH_WIDTH * 0.5
@@ -413,6 +523,7 @@ func _resume_after_death() -> void:
 func _restart_run_from_death() -> void:
 	if app_state == AppState.PLAYER_DEAD:
 		restart()
+		_begin_intro()
 
 func _menu_from_death() -> void:
 	if app_state == AppState.PLAYER_DEAD:
@@ -514,6 +625,11 @@ func _setup_hud() -> void:
 	$HUD/Complete.position = Vector2(300, 170)
 	_add_menu_logo()
 	_add_label("Menu", Vector2(320, 330), "PRESS ENTER / TAP TO START", 28)
+	var intro_label := _add_label("IntroText", Vector2(160, 190), "", 34)
+	intro_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	intro_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	intro_label.add_theme_color_override("font_outline_color", Color("142b39"))
+	intro_label.add_theme_constant_override("outline_size", 7)
 	_add_label("Pause", Vector2(315, 235), "PAUSED - ESC TO RESUME", 22)
 	_add_label("StageBanner", Vector2(360, 90), "", 20)
 	_add_label("Tutorial", Vector2(360, 130), "", 22)
@@ -628,6 +744,7 @@ func layout_hud_for_viewport(viewport_size: Vector2) -> void:
 	_layout_centered_label($HUD/Pause, width, height * 0.38, 42.0, 40.0)
 	_layout_centered_label($HUD/Dead, width, height * 0.36, 80.0, 36.0)
 	_layout_centered_label($HUD/Complete, width, height * 0.25, 48.0, 36.0)
+	_layout_centered_label($HUD/IntroText, width, height * 0.34, 110.0, 72.0)
 	_layout_centered_label($HUD/Stats, width, height * 0.38, 140.0, 44.0)
 	_layout_centered_label($HUD/Replay, width, height * 0.76, 44.0, 36.0)
 	var touch_y := height - 148.0
@@ -763,6 +880,7 @@ func _update_hud() -> void:
 	$HUD/Stats.visible = app_state == AppState.GAME_COMPLETE
 	$HUD/Replay.visible = app_state == AppState.GAME_COMPLETE
 	$HUD/MenuLogo.visible = app_state == AppState.MENU
+	$HUD/IntroText.visible = app_state == AppState.INTRO
 	$HUD/ReduceMotion.visible = app_state == AppState.PAUSED
 	$HUD/Gauge.visible = playing
 	$HUD/MiniMap.visible = playing
@@ -887,6 +1005,7 @@ func _readonly_state_snapshot() -> Dictionary:
 			})
 	return {
 		"app_state": AppState.keys()[app_state],
+		"intro": {"active": intro_active, "beat": intro_beat, "t": intro_t},
 		"death_cause": DeathCause.keys()[death_cause],
 		"stage": stages.stage_for_y(player.global_position.y),
 		"player": {"x": player.global_position.x, "y": player.global_position.y, "vy": player.velocity.y},
