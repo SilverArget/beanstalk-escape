@@ -38,12 +38,12 @@
             }
 
             #status {
-                background-color: #242424;
+                background: linear-gradient(180deg, #234d78 0%, #67bfdc 100%);
                 display: flex;
                 flex-direction: column;
                 justify-content: center;
                 align-items: center;
-                visibility: hidden;
+                visibility: visible;
             }
 
             #status-splash {
@@ -52,14 +52,18 @@
                 margin: auto;
             }
 
-            #status-progress, #status-notice {
-                display: none;
-            }
-
             #status-progress {
                 bottom: 10%;
                 width: 50%;
                 margin: 0 auto;
+                accent-color: #ffe36b;
+            }
+
+            #status-percent {
+                color: white;
+                font: 700 20px 'Noto Sans', 'Droid Sans', Arial, sans-serif;
+                margin-top: 1rem;
+                text-shadow: 0 2px 3px #142b39;
             }
 
             #status-notice {
@@ -91,6 +95,7 @@
         <div id="status">
             <img id="status-splash" src="$GODOT_SPLASH" alt="">
             <progress id="status-progress"></progress>
+            <div id="status-percent">LOADING 0%</div>
             <div id="status-notice"></div>
         </div>
 
@@ -99,6 +104,9 @@
             const GODOT_CONFIG = $GODOT_CONFIG
             const ENGINE = new Engine(GODOT_CONFIG)
             const CANVAS = document.getElementById('canvas')
+            const STATUS = document.getElementById('status')
+            const STATUS_PROGRESS = document.getElementById('status-progress')
+            const STATUS_PERCENT = document.getElementById('status-percent')
 
             let bridgeScript = null
             let bridgeTimeout = null
@@ -145,9 +153,14 @@
                     bridge.setGameLoadingProgress(0)
                     ENGINE.startGame({
                         onProgress: function (current, total) {
-                            bridge.setGameLoadingProgress((current / total) * 100);
+                            const percent = total > 0 ? Math.round((current / total) * 100) : 0
+                            STATUS_PROGRESS.max = total > 0 ? total : 1
+                            STATUS_PROGRESS.value = current
+                            STATUS_PERCENT.textContent = `LOADING ${percent}%`
+                            bridge.setGameLoadingProgress(percent)
                         },
                     }).then(() => {
+                        STATUS.style.display = 'none'
                         CANVAS.focus()
                     });
                 })
@@ -155,4 +168,4 @@
         </script>
 
     </body>
-</html>                                                                                                                                                  
+</html>

@@ -5,7 +5,7 @@ const FRAME_ROOT := "res://assets/art/character_frames"
 const WING_TEXTURE := preload("res://assets/art/character_rig/wing/time_wings.png")
 const FRAME_NAMES := ["climb_left", "climb_right", "climb_reach", "hang"]
 const FRAME_RATE := 8.0
-const ART_SCALE := 0.45
+const ART_SCALE := 0.49
 const BASE_Y := -7.2
 
 var skin_id := "M1"
@@ -132,10 +132,35 @@ func _build_visual() -> void:
 	shader.code = """
 shader_type canvas_item;
 uniform float flash_amount : hint_range(0.0, 1.0) = 0.0;
+uniform vec4 outline_color : source_color = vec4(0.035, 0.043, 0.071, 1.0);
+uniform float outline_source_px = 4.1;
+uniform vec2 shadow_source_offset = vec2(0.0, 7.0);
 void fragment() {
 	vec4 pixel = texture(TEXTURE, UV) * COLOR;
-	pixel.rgb = mix(pixel.rgb, vec3(1.0), flash_amount);
-	COLOR = pixel;
+	vec2 step_size = TEXTURE_PIXEL_SIZE * outline_source_px;
+	float outline_alpha = 0.0;
+	outline_alpha = max(outline_alpha, texture(TEXTURE, UV + vec2(step_size.x, 0.0)).a);
+	outline_alpha = max(outline_alpha, texture(TEXTURE, UV - vec2(step_size.x, 0.0)).a);
+	outline_alpha = max(outline_alpha, texture(TEXTURE, UV + vec2(0.0, step_size.y)).a);
+	outline_alpha = max(outline_alpha, texture(TEXTURE, UV - vec2(0.0, step_size.y)).a);
+	outline_alpha = max(outline_alpha, texture(TEXTURE, UV + step_size * 0.707).a);
+	outline_alpha = max(outline_alpha, texture(TEXTURE, UV - step_size * 0.707).a);
+	outline_alpha = max(outline_alpha, texture(TEXTURE, UV + vec2(step_size.x, -step_size.y) * 0.707).a);
+	outline_alpha = max(outline_alpha, texture(TEXTURE, UV + vec2(-step_size.x, step_size.y) * 0.707).a);
+	vec2 shadow_uv = UV - TEXTURE_PIXEL_SIZE * shadow_source_offset;
+	vec2 blur = TEXTURE_PIXEL_SIZE * 3.0;
+	float shadow_alpha = (
+		texture(TEXTURE, shadow_uv).a
+		+ texture(TEXTURE, shadow_uv + vec2(blur.x, 0.0)).a
+		+ texture(TEXTURE, shadow_uv - vec2(blur.x, 0.0)).a
+		+ texture(TEXTURE, shadow_uv + vec2(0.0, blur.y)).a
+		+ texture(TEXTURE, shadow_uv - vec2(0.0, blur.y)).a
+	) * 0.056;
+	float border_alpha = max(outline_alpha - pixel.a, 0.0);
+	float backdrop_alpha = max(border_alpha, shadow_alpha * (1.0 - outline_alpha));
+	vec3 backdrop_color = mix(vec3(0.02, 0.025, 0.035), outline_color.rgb, step(shadow_alpha, border_alpha));
+	vec3 flashed_rgb = mix(pixel.rgb, vec3(1.0), flash_amount);
+	COLOR = vec4(mix(backdrop_color, flashed_rgb, pixel.a), max(pixel.a, backdrop_alpha));
 }
 """
 	flash_material.shader = shader
