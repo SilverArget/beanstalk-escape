@@ -56,6 +56,34 @@
         "date": "2026-10-12",
         "sha256": "ace25d11f3aedeed2fec8ec15e48f3b3accbaa2002efaccab60c90ca42c67a86",
         "provenance": "Codex built-in image_gen; prior M1 pose sheet and M1 parts sheet used as pose, identity, style, and costume references; regenerated with dark full-length pants and longer tunic"
+      },
+      {
+        "skin": "M2",
+        "path": "res://assets/art/character_frames/source/m2_pose_sheet_imagegen_2026-10-12.png",
+        "date": "2026-10-12",
+        "sha256": "946d12a3d2e56def7bbc79b296854562d391b6a3f04c3076d4a35f0cdfe023dd",
+        "provenance": "Codex built-in image_gen; approved M1/F1 flipbook sheets used as pose, proportion, camera, and style references; Cloud Scout identity with dark blue tunic, light brown gloves, head-mounted flight goggles, and dark full-length pants"
+      },
+      {
+        "skin": "M3",
+        "path": "res://assets/art/character_frames/source/m3_pose_sheet_imagegen_2026-10-12.png",
+        "date": "2026-10-12",
+        "sha256": "9a47af35bf92bf2e5f9cee21dbe0332207935f5a74f5f606d4377f267cc7d906",
+        "provenance": "Codex built-in image_gen; approved M1/F1 flipbook sheets used as pose, proportion, camera, and style references; Forest Runner identity with olive outfit, red scarf, light boots, and dark full-length pants"
+      },
+      {
+        "skin": "F2",
+        "path": "res://assets/art/character_frames/source/f2_pose_sheet_imagegen_2026-10-12.png",
+        "date": "2026-10-12",
+        "sha256": "f2b6ab938a6ad55cab0a438cf94b649bbcef447ede1562d4fefcbe602756cbee",
+        "provenance": "Codex built-in image_gen; approved M1/F1 flipbook sheets used as pose, proportion, camera, and style references; Sky Explorer identity with light brown hair, navy-cream short jacket, belt bag, and dark full-length pants"
+      },
+      {
+        "skin": "F3",
+        "path": "res://assets/art/character_frames/source/f3_pose_sheet_imagegen_2026-10-12.png",
+        "date": "2026-10-12",
+        "sha256": "7f8f035fc0f4ff16bd4a232c971af6dc7c2061f343730815b9248eb98b9e64e6",
+        "provenance": "Codex built-in image_gen; approved M1/F1 flipbook sheets used as pose, proportion, camera, and style references; Vine Guardian identity with dark wavy hair, orange accents, olive tunic, and dark full-length pants"
       }
     ]
   },
@@ -112,6 +140,10 @@
   "prompt_summary": [
     "M1: transparent 6x4 production puppet-rig parts sheet; 22 strict row-major rear-view climbing parts; brown hair, green tunic, leather belt, cream boots, backpack; no pose/frame/background/text.",
     "F1: same rear-view M1 layout and proportions using owner-approved 01/02 references; copper-red ponytail, turquoise tunic; no pose/frame/background/text.",
+    "M2: eight-pose 4x2 single-piece Cloud Scout flipbook; dark blue tunic, light brown gloves, flight goggles on head, dark full-length pants; approved M1/F1 style and pose references.",
+    "M3: eight-pose 4x2 single-piece Forest Runner flipbook; olive outfit, red scarf, light boots, dark full-length pants; approved M1/F1 style and pose references.",
+    "F2: eight-pose 4x2 single-piece Sky Explorer flipbook; light brown hair, navy-cream short jacket, belt bag, dark full-length pants; approved M1/F1 style and pose references.",
+    "F3: eight-pose 4x2 single-piece Vine Guardian flipbook; dark wavy hair, orange accent, olive tunic, dark full-length pants; approved M1/F1 style and pose references.",
     "Time Wings: transparent rear-view purple wing pair with rounded feather lobes, cyan highlights, dark outline, and a central gem joining both wings into one connected accessory; no body/text/frame/shadow.",
     "Branch surface: seamless painted green beanstalk material with cylindrical light, central highlight and diagonal spiral fibers; logo palette reference; no text/characters/leaves.",
     "Branch details: transparent 4x2 atlas of small paired leaves, tendrils, tapered tips and fibrous tips; <=40 px display size; logo palette reference."

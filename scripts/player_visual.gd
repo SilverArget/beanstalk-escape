@@ -4,6 +4,7 @@ extends Node2D
 const FRAME_ROOT := "res://assets/art/character_frames"
 const WING_TEXTURE := preload("res://assets/art/character_rig/wing/time_wings.png")
 const FRAME_NAMES := ["climb_left", "climb_right", "climb_reach", "hang"]
+const SKIN_IDS := ["M1", "M2", "M3", "F1", "F2", "F3"]
 const FRAME_RATE := 8.0
 const ART_SCALE := 0.49
 const BASE_Y := -7.2
@@ -91,14 +92,14 @@ func _set_frame(requested_frame: String) -> void:
 
 func set_skin(requested_skin: String) -> bool:
 	var normalized := requested_skin.to_upper()
-	if normalized not in ["M1", "F1"]:
+	if normalized not in SKIN_IDS:
 		return false
 	_load_skin(normalized)
 	return true
 
 func _load_skin(requested_skin: String) -> void:
 	var normalized := requested_skin.to_upper()
-	skin_id = normalized if normalized in ["M1", "F1"] else "M1"
+	skin_id = normalized if normalized in SKIN_IDS else "M1"
 	frame_textures.clear()
 	for requested_frame in ["climb_left", "climb_right", "climb_reach", "jump", "hurt", "fall", "cheer", "hang"]:
 		frame_textures[requested_frame] = load("%s/%s/%s.png" % [FRAME_ROOT, skin_id.to_lower(), requested_frame])
