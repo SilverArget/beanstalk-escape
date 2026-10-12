@@ -72,14 +72,14 @@ func _update_mode(player: PlayerController, delta: float) -> void:
 		death_offset = minf(death_offset + delta * 76.0, 92.0)
 		_set_mode("death", "fall")
 		sprite.position = Vector2(0.0, BASE_Y + death_offset)
+	elif player.support_state == PlayerController.SupportState.TRANSFERRING:
+		_set_mode("jump", "jump")
 	elif app_state == GameManager.AppState.GAME_COMPLETE or celebrate_remaining > 0.0:
 		_set_mode("celebrate", "cheer")
 	elif hurt_remaining > 0.0:
 		_set_mode("hurt", "hurt")
 	elif player.support_state == PlayerController.SupportState.FALLING_RECOVERY:
 		_set_mode("fall", "fall")
-	elif player.support_state == PlayerController.SupportState.TRANSFERRING:
-		_set_mode("jump", "jump")
 	else:
 		mode = "climb"
 		climb_time += delta * FRAME_RATE

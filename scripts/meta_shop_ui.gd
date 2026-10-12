@@ -40,6 +40,7 @@ func open_character_select() -> void:
 	active_gender = "MALE" if str(economy.shop.selected_character).begins_with("M") else "FEMALE"
 	visible = true
 	refresh()
+	call_deferred("_focus_start_button")
 
 func close() -> void:
 	visible = false
@@ -48,6 +49,16 @@ func close() -> void:
 func _process(delta: float) -> void:
 	if visible and preview != null:
 		preview.preview_tick(delta)
+
+func _input(event: InputEvent) -> void:
+	if not visible or mode != "SELECT" or not event.is_pressed() or event.is_echo():
+		return
+	if event.is_action_pressed("move_left"):
+		_cycle_character(-1)
+		get_viewport().set_input_as_handled()
+	elif event.is_action_pressed("move_right"):
+		_cycle_character(1)
+		get_viewport().set_input_as_handled()
 
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_RESIZED and is_instance_valid(panel):
@@ -130,6 +141,25 @@ func refresh() -> void:
 	_rebuild_tabs()
 	_rebuild_cards()
 	_apply_preview()
+
+func _focus_start_button() -> void:
+	if visible and mode == "SELECT" and start_button.visible and not start_button.disabled:
+		start_button.grab_focus()
+
+func _cycle_character(direction: int) -> void:
+	var candidates: Array[String] = []
+	for character_id_value in economy.character_catalog():
+		var character_id := str(character_id_value)
+		var data: Dictionary = economy.character_catalog()[character_id]
+		if str(data.gender) == active_gender and economy.character_available(character_id):
+			candidates.append(character_id)
+	if candidates.is_empty():
+		return
+	var current := candidates.find(str(economy.shop.selected_character))
+	var next_index := posmod((0 if current < 0 else current) + direction, candidates.size())
+	economy.select_character(candidates[next_index])
+	refresh()
+	call_deferred("_focus_start_button")
 
 func _rebuild_tabs() -> void:
 	for child in tabs.get_children(): child.queue_free()
