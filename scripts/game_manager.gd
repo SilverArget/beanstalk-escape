@@ -33,9 +33,20 @@ var ui_theme: Theme
 var stage_restart_count := 0
 var stage_restart_start_distance := 0.0
 var last_time_command_source := ""
+var save_manager := SaveManager.new()
+var economy := EconomyManager.new()
+var golds := GoldManager.new()
+var reward_toast_remaining := 0.0
+var level_up_remaining := 0.0
 
 func _ready() -> void:
 	process_physics_priority = 10
+	if not economy.initialize(save_manager):
+		push_error("Economy config could not be loaded")
+	economy.level_up.connect(_on_level_up)
+	golds.name = "GoldManager"
+	add_child(golds)
+	golds.setup(player, stages, economy, audio)
 	stages.prototype_completed.connect(_on_prototype_completed)
 	stages.stage_completed.connect(_on_stage_completed)
 	_ensure_actions()
@@ -45,6 +56,8 @@ func _ready() -> void:
 	_show_menu()
 
 func _physics_process(delta: float) -> void:
+	reward_toast_remaining = maxf(reward_toast_remaining - delta, 0.0)
+	level_up_remaining = maxf(level_up_remaining - delta, 0.0)
 	if dead_restart_delay > 0.0:
 		dead_restart_delay = maxf(dead_restart_delay - delta, 0.0)
 		if dead_restart_delay <= 0.0 and confirm_pending and app_state == AppState.PLAYER_DEAD:
@@ -151,6 +164,8 @@ func restart() -> void:
 	spider.set_physics_process(true)
 	beans.set_physics_process(true)
 	stages.reset_run()
+	golds.reset_run()
+	golds.visible = true
 	state = State.PLAYING
 	app_state = AppState.PLAYING
 	death_cause = DeathCause.NONE
@@ -211,6 +226,9 @@ func _on_prototype_completed() -> void:
 	_update_hud()
 
 func _on_stage_completed(stage_number: int) -> void:
+	var reward := economy.complete_stage(stage_number)
+	reward_toast_remaining = 2.0
+	$HUD/RewardToast.text = "+%d GOLD  +%d XP" % [reward.gold, reward.xp]
 	if stage_number < Balance.STAGE_COUNT:
 		_show_tutorial_for_stage(stage_number + 1)
 
@@ -296,6 +314,7 @@ func _show_menu() -> void:
 	player.set_physics_process(false)
 	spider.set_physics_process(false)
 	beans.set_physics_process(false)
+	golds.visible = false
 	_update_hud()
 
 func _show_tutorial_for_stage(stage_number: int) -> void:
@@ -321,6 +340,15 @@ func _setup_hud() -> void:
 	_add_label("StageBanner", Vector2(360, 90), "", 20)
 	_add_label("Tutorial", Vector2(360, 130), "", 22)
 	_add_label("TimeWings", Vector2(690, 22), "", 16)
+	_add_label("GoldStatus", Vector2(690, 62), "GOLD 0", 18)
+	_add_label("XPStatus", Vector2(690, 87), "LV 1 · XP 0/100", 14)
+	var xp_bar := ProgressBar.new()
+	xp_bar.name = "XPBar"
+	xp_bar.show_percentage = false
+	xp_bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	$HUD.add_child(xp_bar)
+	_add_label("RewardToast", Vector2(300, 152), "", 20)
+	_add_label("LevelUpCard", Vector2(300, 202), "", 28)
 	var wings_orb := TextureRect.new()
 	wings_orb.name = "TimeWingsOrb"
 	wings_orb.texture = TIME_WINGS_ORB
@@ -372,6 +400,15 @@ func layout_hud_for_viewport(viewport_size: Vector2) -> void:
 	skill.position = Vector2(70.0, 82.0) if portrait else Vector2(width - 380.0, 24.0)
 	skill.size = Vector2(width - 88.0, 30.0) if portrait else Vector2(220.0, 30.0)
 	skill.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+	var meta_x := maxf(width - 270.0, 260.0)
+	$HUD/GoldStatus.position = Vector2(meta_x, 62.0)
+	$HUD/GoldStatus.size = Vector2(200.0, 24.0)
+	$HUD/XPStatus.position = Vector2(meta_x, 86.0)
+	$HUD/XPStatus.size = Vector2(200.0, 20.0)
+	$HUD/XPBar.position = Vector2(meta_x, 108.0)
+	$HUD/XPBar.size = Vector2(200.0, 10.0)
+	_layout_centered_label($HUD/RewardToast, width, 154.0, 30.0, 190.0)
+	_layout_centered_label($HUD/LevelUpCard, width, 198.0, 42.0, 190.0)
 	_layout_centered_label($HUD/StageBanner, width, 124.0 if portrait else 86.0, 30.0, 82.0 if portrait else 300.0)
 	_layout_centered_label($HUD/Tutorial, width, 158.0 if portrait else 122.0, 36.0, 82.0 if portrait else 300.0)
 	var map_height := minf(360.0, height - (370.0 if portrait else 112.0))
@@ -497,6 +534,7 @@ func _clear_direction_inputs() -> void:
 
 func _update_hud() -> void:
 	var playing := app_state == AppState.PLAYING
+	var meta_visible := playing or app_state == AppState.GAME_COMPLETE
 	$HUD/Menu.visible = app_state == AppState.MENU
 	$HUD/Pause.visible = app_state == AppState.PAUSED
 	$HUD/Dead.visible = app_state == AppState.PLAYER_DEAD
@@ -512,6 +550,11 @@ func _update_hud() -> void:
 	$HUD/Tutorial.visible = playing
 	$HUD/TimeWings.visible = playing
 	$HUD/TimeWingsOrb.visible = playing
+	$HUD/GoldStatus.visible = meta_visible
+	$HUD/XPStatus.visible = meta_visible
+	$HUD/XPBar.visible = meta_visible
+	$HUD/RewardToast.visible = meta_visible and reward_toast_remaining > 0.0
+	$HUD/LevelUpCard.visible = meta_visible and level_up_remaining > 0.0
 	$HUD/TouchLeft.visible = playing and DisplayServer.is_touchscreen_available()
 	$HUD/TouchRight.visible = playing and DisplayServer.is_touchscreen_available()
 	$HUD/TouchWings.visible = playing and DisplayServer.is_touchscreen_available()
@@ -520,6 +563,11 @@ func _update_hud() -> void:
 	var route_hint_visible := tutorial_text != "CHANGE BRANCH" or stages.branch_targets_visible(player.global_position.y, get_viewport_rect().size.y)
 	$HUD/Tutorial.text = tutorial_text if tutorial_remaining > 0.0 and app_state == AppState.PLAYING and route_hint_visible else ""
 	$HUD/TimeWings.text = _time_wings_status()
+	var meta := economy.snapshot()
+	$HUD/GoldStatus.text = "GOLD %d" % meta.gold
+	$HUD/XPStatus.text = "LV %d · XP %d/%d" % [meta.level, meta.xp, meta.xp_threshold]
+	$HUD/XPBar.max_value = meta.xp_threshold
+	$HUD/XPBar.value = meta.xp
 	_update_time_wings_orb()
 	if app_state == AppState.GAME_COMPLETE:
 		$HUD/Stats.text = _stats_text()
@@ -529,6 +577,10 @@ func _update_hud() -> void:
 		$HUD/Stats.text = ""
 		$HUD/Replay.text = ""
 	$HUD/MiniMap.queue_redraw()
+
+func _on_level_up(new_level: int, gold_reward: int) -> void:
+	level_up_remaining = 2.4
+	$HUD/LevelUpCard.text = "LEVEL UP · LV %d · +%d GOLD" % [new_level, gold_reward]
 
 func _death_text() -> String:
 	match death_cause:

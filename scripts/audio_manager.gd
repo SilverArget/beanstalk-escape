@@ -11,6 +11,7 @@ const STREAMS := {
 	"time_wings": preload("res://assets/audio/time_wings.ogg"), "stage_complete": preload("res://assets/audio/stage_complete.ogg"),
 	"game_complete": preload("res://assets/audio/game_complete.ogg"), "death_bass_down": preload("res://assets/audio/death_bass_down.ogg"),
 	"ui_click": preload("res://assets/audio/ui_click.ogg"), "climb_rustle_1": preload("res://assets/audio/climb_rustle_1.ogg"),
+	"gold_pickup": preload("res://assets/audio/gold_pickup.ogg"),
 	"climb_rustle_2": preload("res://assets/audio/climb_rustle_2.ogg"), "climb_rustle_3": preload("res://assets/audio/climb_rustle_3.ogg"),
 }
 const VOLUME_DB := {"music": -14.0, "ambience": -24.0, "sfx": -7.0, "heartbeat": -12.0}
