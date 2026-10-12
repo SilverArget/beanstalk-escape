@@ -817,6 +817,10 @@ func _readonly_state_snapshot() -> Dictionary:
 	var stage_number := stages.stage_for_y(player.global_position.y)
 	var dead_end_route := player.active_branch if stage_number >= 3 else stages.route_for_x(player.global_position.x)
 	var dead_end_distance := stages.next_dead_end_distance(player.global_position.y, player.global_position.x, dead_end_route)
+	var spider_visibility := {"on_screen": false, "visible_px": 0.0}
+	var spider_visual := spider.get_node_or_null("Body")
+	if spider_visual != null and spider_visual.has_method("visibility_snapshot"):
+		spider_visibility = spider_visual.visibility_snapshot()
 	var state_beans := []
 	for bean in get_tree().get_nodes_in_group("beans"):
 		if bean.active:
@@ -831,7 +835,7 @@ func _readonly_state_snapshot() -> Dictionary:
 		"death_cause": DeathCause.keys()[death_cause],
 		"stage": stages.stage_for_y(player.global_position.y),
 		"player": {"x": player.global_position.x, "y": player.global_position.y, "vy": player.velocity.y},
-		"spider": {"y": spider.global_position.y, "distance": gauge.distance_px, "ratio": spider.speed_ratio, "boost": spider.boost_remaining > 0.0, "boost_remaining": spider.boost_remaining, "catchup_active": spider.catchup_active, "catchup_blend": spider.catchup_blend},
+		"spider": {"y": spider.global_position.y, "distance": gauge.distance_px, "ratio": spider.speed_ratio, "boost": spider.boost_remaining > 0.0, "boost_remaining": spider.boost_remaining, "catchup_active": spider.catchup_active, "catchup_blend": spider.catchup_blend, "on_screen": spider_visibility.on_screen, "visible_px": spider_visibility.visible_px},
 		"gauge_level": gauge.level,
 		"time_wings": {"unlocked": stages.stage_for_y(player.global_position.y) >= Balance.TIME_WINGS_STAGE, "active": time_wings_remaining > 0.0, "remaining": time_wings_remaining, "started_remaining": time_wings_started_remaining, "used": time_wings_used_stage.has(stages.stage_for_y(player.global_position.y))},
 		"audio_events": audio.audio_event_snapshot(),
