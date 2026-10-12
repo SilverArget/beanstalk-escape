@@ -306,6 +306,7 @@ func _update_intro_presentation() -> void:
 		"BUT THE GUARDIAN\nWILL TRY TO STOP US.",
 	]
 	$HUD/IntroText.text = messages[intro_beat]
+	_layout_intro_text(get_viewport_rect().size)
 	$HUD/IntroSummit.visible = intro_beat == 1
 	$HUD/IntroSummit.modulate = Color.WHITE
 	var spider_body := spider.get_node_or_null("Body") as CanvasItem
@@ -779,7 +780,7 @@ func layout_hud_for_viewport(viewport_size: Vector2) -> void:
 	_layout_centered_label($HUD/Pause, width, height * 0.38, 42.0, 40.0)
 	_layout_centered_label($HUD/Dead, width, height * 0.36, 80.0, 36.0)
 	_layout_centered_label($HUD/Complete, width, height * 0.25, 48.0, 36.0)
-	_layout_centered_label($HUD/IntroText, width, height * 0.34, 110.0, 72.0)
+	_layout_intro_text(Vector2(width, height))
 	_layout_centered_label($HUD/Stats, width, height * 0.38, 140.0, 44.0)
 	_layout_centered_label($HUD/Replay, width, height * 0.76, 44.0, 36.0)
 	var touch_y := height - 148.0
@@ -794,6 +795,12 @@ func _layout_centered_label(label: Label, width: float, y: float, height: float,
 	label.position = Vector2(side_margin, y)
 	label.size = Vector2(maxf(width - side_margin * 2.0, 1.0), height)
 	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+
+func _layout_intro_text(viewport_size: Vector2) -> void:
+	var guardian_beat := intro_active and intro_beat == 2
+	var panel_y := 12.0 if guardian_beat else viewport_size.y * 0.34
+	var panel_height := 96.0 if guardian_beat else 110.0
+	_layout_centered_label($HUD/IntroText, viewport_size.x, panel_y, panel_height, 72.0)
 
 func _add_label(name: String, pos: Vector2, text: String, font_size: int) -> Label:
 	var label := Label.new()

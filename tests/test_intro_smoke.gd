@@ -40,6 +40,9 @@ func _run() -> void:
 	var guardian_body := complete_game.spider.get_node("Body") as Node2D
 	var guardian_visible: bool = complete_game.intro_beat == 2 and complete_game._readonly_state_snapshot().intro.visual_mode == "guardian" and guardian_body.visible and guardian_body.scale == GameManager.INTRO_GUARDIAN_SCALE
 	_check(guardian_visible, "INTRO-GUARDIAN", "mode=%s scale=%.2f shake=%.2f" % [complete_game._readonly_state_snapshot().intro.visual_mode, guardian_body.scale.x, complete_game.player.get_node("Camera2D").offset.length()])
+	var guardian_text := complete_game.get_node("HUD/IntroText") as Label
+	var guardian_text_clear: bool = guardian_text.position.y <= 12.0 and guardian_text.position.y + guardian_text.size.y <= 120.0
+	_check(guardian_text_clear, "INTRO-GUARDIAN-TEXT", "panel_y=%.1f panel_bottom=%.1f" % [guardian_text.position.y, guardian_text.position.y + guardian_text.size.y])
 	complete_game._update_intro(float(GameManager.INTRO_BEAT_SECONDS[2]) + 0.01)
 	var complete_snapshot := [complete_game.player.global_position, complete_game.spider.global_position, complete_game.beans.hit_count, complete_game.total_time]
 	_check(complete_game.app_state == GameManager.AppState.PLAYING and not complete_game.intro_active, "INTRO-COMPLETE", "state=%s duration=%.1f" % [GameManager.AppState.keys()[complete_game.app_state], 7.6])
