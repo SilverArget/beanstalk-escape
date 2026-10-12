@@ -18,3 +18,11 @@
 - `VIS12 / FAIL F`: CODEX PASS, owner visual verification pending. Split gap outline waits for an 8 px real opening; Stage 3 branch outlines are trimmed 36 px at the split join.
 - Windowed capture `6/6 + 26/26`; isolated GA08 `5/0`; rig `8/0`; scale `15/0 + 2 headless frame NOT RUN`; Gate A `9/0`. No assertion changes. Full 17-file regression remains for owner verification.
 - Next exact work: owner opens the final QA frames and runs the complete 17-file regression; on acceptance, close GATE 3A Sıra 2 and continue to Sıra 3.
+
+## GATE 3A step 2 correction 7 — 2026-10-12
+
+- `§21-4 / FAIL D`: CODEX numeric/render PASS, owner visual verification pending. Removed the player-following world patch; fixed-geometry M1/F1 contrast halo gives exact requested game ratios `97.970 / 99.446 / 97.786 / 97.232%` and pilot minima M1 `94.58%`, F1 `93.17%`.
+- `§5.1-character`: PASS across all pilot animations: M1 `101..109 × 40..46 px`, F1 `102..109 × 40..47 px`; rig parts/poses/identity and pilot lock unchanged.
+- `VIS12 / FAIL F`: CODEX geometry/render PASS, owner visual verification pending. Gap contours derive from exact painted ribbon edges; real branch exterior edges are untrimmed; the player-following per-quad fan source is removed.
+- Windowed capture `6/6 + 26/26`; isolated GA08 `5/0`; M1/F1 pilot `150/150` each; rig `8/0`; scale `15/0 + 2 headless frame NOT RUN`; Gate A `9/0`. No assertion changes. Full 17-file regression remains NOT RUN.
+- Next exact work: owner opens the final D/F frames and runs the complete 17-file regression; on acceptance, close GATE 3A Sıra 2 and continue to Sıra 3.

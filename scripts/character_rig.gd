@@ -150,18 +150,10 @@ func seek_animation(animation_name: String, time_seconds: float) -> void:
 	animation_player.seek(time_seconds, true)
 	animation_player.pause()
 
-func set_outline_background(background: Color) -> void:
-	var red := background.r / 12.92 if background.r <= 0.04045 else pow((background.r + 0.055) / 1.055, 2.4)
-	var green := background.g / 12.92 if background.g <= 0.04045 else pow((background.g + 0.055) / 1.055, 2.4)
-	var blue := background.b / 12.92 if background.b <= 0.04045 else pow((background.b + 0.055) / 1.055, 2.4)
-	var luminance := 0.2126 * red + 0.7152 * green + 0.0722 * blue
-	var dark_contrast := (luminance + 0.05) / 0.058
-	var light_contrast := 0.95 / (luminance + 0.05)
-	var use_light := light_contrast > dark_contrast
-	outline_material.set_shader_parameter("use_light_outline", use_light)
-	outline_non_hair_material.set_shader_parameter("use_light_outline", use_light)
-	for sprite: Sprite2D in outline_sprites.values():
-		(sprite.material as ShaderMaterial).set_shader_parameter("use_light_outline", use_light)
+func set_outline_background(_background: Color) -> void:
+	# Kept as a compatibility hook for deterministic capture scripts. The
+	# production shader needs no player/world position or caller-supplied color.
+	pass
 
 func rig_contract() -> Dictionary:
 	return {
@@ -191,34 +183,54 @@ void fragment() {
 	cutout_material.shader = cutout_shader
 	non_hair_material = cutout_material.duplicate() as ShaderMaterial
 	non_hair_material.set_shader_parameter("suppress_stray_red", true)
-	# Compatibility-safe silhouette copies sit behind every textured part. Their
-	# 27 atlas-texel dilation renders as a consistent 2-4 px outer rim at the
-	# production rig scale; original sprites cover joins and interior fill.
+	# Compatibility-safe silhouette copies sit behind every textured part. The
+	# authored dark edge stays in the cutout; this adds the same thin contrast
+	# halo geometry and fixed dark/light palette to M1 and F1.
 	outline_material = ShaderMaterial.new()
 	var outline_shader := Shader.new()
 	outline_shader.code = """
 shader_type canvas_item;
 uniform bool suppress_stray_red = false;
-uniform vec4 dark_outline : source_color = vec4(0.035, 0.045, 0.070, 1.0);
-uniform vec4 light_outline : source_color = vec4(0.965, 0.950, 0.895, 1.0);
-uniform bool use_light_outline = false;
+uniform vec4 inner_outline : source_color = vec4(0.035, 0.045, 0.070, 1.0);
+uniform vec4 outer_outline : source_color = vec4(1.0, 0.98, 0.90, 1.0);
+uniform sampler2D screen_texture : hint_screen_texture, repeat_disable, filter_nearest;
 uniform vec2 region_min = vec2(0.0);
 uniform vec2 region_max = vec2(1.0);
+float linear_channel(float value) {
+	return value <= 0.04045 ? value / 12.92 : pow((value + 0.055) / 1.055, 2.4);
+}
+float relative_luminance(vec3 color) {
+	return 0.2126 * linear_channel(color.r) + 0.7152 * linear_channel(color.g) + 0.0722 * linear_channel(color.b);
+}
 void fragment() {
-	float neighbour_alpha = 0.0;
-	for (int y = -27; y <= 27; y++) {
-		for (int x = -27; x <= 27; x++) {
-			if (x * x + y * y <= 729) {
+	float outer_alpha = 0.0;
+	// Two-atlas-pixel sampling is subpixel at the 0.10 production art scale
+	// and keeps the thin outer ring continuous on both skin silhouettes.
+	for (int y = -20; y <= 20; y += 2) {
+		for (int x = -20; x <= 20; x += 2) {
+			int distance_squared = x * x + y * y;
+			if (distance_squared <= 400) {
 				vec2 sample_uv = UV + vec2(float(x), float(y)) * TEXTURE_PIXEL_SIZE;
 				if (any(lessThan(sample_uv, region_min)) || any(greaterThanEqual(sample_uv, region_max))) { continue; }
 				vec4 neighbour = texture(TEXTURE, sample_uv);
 				bool red_fringe = suppress_stray_red && neighbour.r > 0.45 && neighbour.g < 0.30 && neighbour.b < 0.22 && neighbour.r > neighbour.g * 2.6;
-				neighbour_alpha = max(neighbour_alpha, red_fringe ? 0.0 : neighbour.a);
+				float alpha = red_fringe ? 0.0 : neighbour.a;
+				outer_alpha = max(outer_alpha, alpha);
 			}
 		}
 	}
-	if (neighbour_alpha < 0.50) { discard; }
-	COLOR = use_light_outline ? light_outline : dark_outline;
+	if (outer_alpha < 0.50) { discard; }
+	vec4 background = textureLod(screen_texture, SCREEN_UV, 0.0);
+	float background_luminance = relative_luminance(background.rgb);
+	float dark_luminance = relative_luminance(inner_outline.rgb);
+	float light_luminance = relative_luminance(outer_outline.rgb);
+	float dark_contrast = (max(background_luminance, dark_luminance) + 0.05) / (min(background_luminance, dark_luminance) + 0.05);
+	float light_contrast = (max(background_luminance, light_luminance) + 0.05) / (min(background_luminance, light_luminance) + 0.05);
+	vec4 contrast_outline = light_contrast > dark_contrast ? outer_outline : inner_outline;
+	// The painted cutouts retain their authored dark edge. This silhouette copy
+	// is the thin contrast halo outside that edge, so every exposed halo pixel
+	// follows the same fixed two-color selection rule.
+	COLOR = contrast_outline;
 }
 """
 	outline_material.shader = outline_shader

@@ -234,3 +234,18 @@ No assertion changed. Evidence: `../03-test/qa/world/stage-1-960x540.png` and `s
 | Targeted regression | PASS | `test_gate3a_rig.gd` 8/0; `test_scale_lock.gd` 15/0 plus 2 headless frame NOT RUN; `test_gate_a.gd` 9/0. Complete 17-file regression NOT RUN this checkpoint. |
 
 No assertion changed and no PNG asset changed. Evidence: `../03-test/qa/world/stage-{1,3-split,4,5}-960x540.png` plus matching `world-only` and `support-mask` frames.
+
+## Checkpoint: GATE 3A Sıra 2 world-art correction 7 — 2026-10-12
+
+| Item ID | Status | Evidence / measurement |
+|---|---|---|
+| §21-4 / FAIL D | CODEX PASS (numeric/render); owner visual verification pending | Removed every player-position-dependent surface glaze and world-outline lift. Exact owner method (full frame minus world-only, `x=420..539`, `y=320..479`, 4-neighbor boundary, WCAG >=3): Stage 1 `97.970%`, Stage 3 split `99.446%`, Stage 4 `97.786%`, Stage 5 `97.232%`. World-only support luminance std remains `62.852 / 56.870 / 53.060 / 53.835`. |
+| §12.1-4 pilot contrast | PASS (render) | Across all 150 frames per skin, minimum flat-background boundary contrast is M1 `94.58%` and F1 `93.17%` (sunny/twilight/storm all >=80%). |
+| §5.1 character scale | PASS (render) | Across all pilot animations M1 is `101..109 px` high and `40..46 px` body width; F1 is `102..109 px` high and `40..47 px` body width. Parts, pivots, animations, collider, and `ART_REFERENCE_LOCK.json` are unchanged. |
+| VIS12 / FAIL F | CODEX PASS (geometry/render); owner visual verification pending | Fork contours now use the exact tangent-normal edges of the same three painted ribbons. No inner line is emitted after a fill closes the gap; branch outlines are no longer trimmed at the fork, preserving both real outer silhouettes. Removing player-following per-quad glaze also removes the reported lower-left fan/strip source. |
+| §12 / FAIL E | PRESERVED | Transfer tangent UV and branch-over-bridge-foot order are unchanged. |
+| VIS12 capture | PASS (render) | Final windowed 960×540 capture emitted 6/6 stage frames and 26/26 seam frames; support-mask sky leak remains `0`. |
+| GA08 | PASS (render) | Final isolated windowed run 5 PASS / 0 FAIL; assertions unchanged. |
+| Targeted regression | PASS | `test_gate3a_rig.gd` 8/0; `test_scale_lock.gd` 15/0 plus 2 headless frame NOT RUN; `test_gate_a.gd` 9/0. Complete 17-file regression NOT RUN. |
+
+No assertion or PNG asset changed. Before evidence: `../03-test/kontrol-20261012-11200b8/world/zoom-karakter-kontrast.png` and `zoom-split-catal.png`. After evidence: `../03-test/qa/world/stage-{1,3-split,4,5}-960x540.png`, matching `world-only` frames, and `../03-test/qa/art-reference/pilot/contrast/`.

@@ -48,3 +48,10 @@
 - Render the new tile at full opacity. Use true per-corner world-space UVs on trunk/fork overlap so every world pixel samples the same paint regardless of ribbon ownership; this removes rectangular overlap boundaries and horizontal texture jumps.
 - Draw the Stage 3 fork as three fill ribbons plus one union-aware exterior outline. Interior overlap edges and filled outline end-caps are forbidden.
 - Close real branch ends with collider-independent attached tapers. A taper never changes support geometry and is omitted at a segment start that already joins the fork.
+
+## D-009 — §21-4 character contrast halo and fork contour ownership (2026-10-12)
+
+- Authority: §21 item 4 requires: "oyuncu ve aktif tehlike silueti maskelerinin sınırının en az %80'inde yerel parlaklık kontrastı 3:1 sağlansın; gerekiyorsa tutarlı outline kullan."
+- A world-side lift that follows the player is rejected: it changes the world art and exposes a moving rectangular patch. No surface tint or world-outline color may depend on player position.
+- M1 and F1 keep the same parts, pivots, poses, animations, and scale. Their authored dark edge receives one shared, approximately 2 px silhouette halo. Halo geometry and its fixed dark/warm-light palette are identical for both skins; at each halo pixel the shader selects the palette member with the larger WCAG contrast against the already-rendered pixel. It takes no player/world position or caller-supplied background color.
+- Stage 3 contour ownership follows the painted union itself: fork inner contours are emitted only on exact tangent-normal fill boundaries where a real sky gap exists; branch outlines begin at the fork endpoint without trimming real exterior edges. Gameplay support/collider geometry remains unchanged.
