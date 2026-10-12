@@ -221,3 +221,16 @@ Targeted Godot results: `tests/test_gate2_fairness.gd` 8 PASS / 0 FAIL; `tests/t
 | Targeted regression | PASS | `test_gate3a_rig.gd` 8/0; `test_scale_lock.gd` 15/0 plus 2 frame NOT RUN; `test_gate_a.gd` 9/0. Complete 16-file regression NOT RUN this checkpoint. |
 
 No assertion changed. Evidence: `../03-test/qa/world/stage-1-960x540.png` and `stage-3-split-960x540.png`. Image source: Codex built-in imagegen, 2026-10-12, owner decision 2026-10-10.
+
+## Checkpoint: GATE 3A Sıra 2 world-art correction 6 — 2026-10-12
+
+| Item ID | Status | Evidence / measurement |
+|---|---|---|
+| §12.1-4 / FAIL D | CODEX PASS; owner visual verification pending | The locked rig and its assets are unchanged. A feathered world-side value lift and exterior-rim lift operate only behind the player. Exact requested 4-neighbor WCAG pair result: Stage 1 `98.408%`, Stage 3 split `98.276%`, Stage 4 `98.408%`, Stage 5 `98.408%` (target >=80%). Support-mask PIL-L std remains `65.302 / 61.168 / 56.054 / 56.173`; the painted tile remains readable. |
+| §12 / FAIL E | CODEX PASS; owner visual verification pending | Transfer ribbons map source V to curve distance, so fibers follow the arch tangent. Branches render after transfers and bury both bridge feet. In the two Stage 4 arch boxes, horizontal/vertical luminance-gradient ratio changed from `5.724 / 4.088` before to `1.646 / 0.883` after; the vertical barcode signature is removed. |
+| VIS12 / FAIL F | CODEX PASS; owner visual verification pending | Split inner contours begin only after an actual sky gap exceeds `8 px`; the first three 12 px branch-outline segments are omitted where branches join the split. Fill/collider geometry is unchanged. Exact-outline-like pixels deeper than 4 px inside the split support crop fell from `1540` to `788`; branch join and gap contours no longer overlap the unified face. |
+| VIS12 capture | PASS (render) | Final windowed 960×540 capture emitted 6/6 stage frames and 26/26 seam frames; every recorded support mask has sky leak `0`. |
+| GA08 | PASS (render) | Final windowed isolated run 5 PASS / 0 FAIL; assertions unchanged. |
+| Targeted regression | PASS | `test_gate3a_rig.gd` 8/0; `test_scale_lock.gd` 15/0 plus 2 headless frame NOT RUN; `test_gate_a.gd` 9/0. Complete 17-file regression NOT RUN this checkpoint. |
+
+No assertion changed and no PNG asset changed. Evidence: `../03-test/qa/world/stage-{1,3-split,4,5}-960x540.png` plus matching `world-only` and `support-mask` frames.

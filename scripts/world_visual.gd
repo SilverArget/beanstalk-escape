@@ -6,6 +6,7 @@ const FOLIAGE_TEXTURE := preload("res://assets/art/world/foliage_atlas.png")
 const SKY_TOP := Color("366bb4")
 const SKY_BOTTOM := Color("80d5f4")
 const OUTLINE_COLOR := Color("173d2f")
+const OUTLINE_CONTRAST_COLOR := Color("a8d45f")
 const VINE_BASE_COLOR := Color("4c9a4d")
 const MODULE_HEIGHT := 256.0
 const TEXTURE_REPEAT := 52.0
@@ -131,9 +132,6 @@ func _draw_stage_branches(stage_number: int, camera_top: float) -> void:
 		for route in 3:
 			_draw_split_ribbon(route, stage_bottom)
 		_draw_split_outline(stage_bottom)
-	for route in 3:
-		for segment: Array in stages.support_segments(stage_number, route):
-			_draw_branch_segment(stage_number, route, float(segment[0]), float(segment[1]))
 	var connection_y := stage_bottom - (430.0 if stage_number == 3 else 180.0)
 	while connection_y > stage_top + 120.0:
 		if branch_graph.can_transfer(stages, 0, 1, connection_y):
@@ -141,10 +139,16 @@ func _draw_stage_branches(stage_number: int, camera_top: float) -> void:
 		if branch_graph.can_transfer(stages, 1, 2, connection_y - 90.0):
 			_draw_transfer_connection(1, 2, connection_y - 90.0)
 		connection_y -= 360.0
+	# Supports cover the bridge feet. This keeps the arch embedded in the vine
+	# instead of painting its outline over the two branch faces.
+	for route in 3:
+		for segment: Array in stages.support_segments(stage_number, route):
+			_draw_branch_segment(stage_number, route, float(segment[0]), float(segment[1]))
 
 func _draw_branch_segment(stage_number: int, route: int, start_progress: float, end_progress: float) -> void:
 	var stage_bottom := -float(stage_number - 1) * Balance.STAGE_HEIGHT
 	var cap_start := start_progress > 0.0
+	var joins_split := stage_number == 3 and start_progress <= 0.0
 	if stage_number == 3 and start_progress <= 0.0:
 		start_progress = maxf(start_progress, 350.0 / Balance.STAGE_HEIGHT)
 	var start_y := stage_bottom - start_progress * Balance.STAGE_HEIGHT
@@ -157,7 +161,7 @@ func _draw_branch_segment(stage_number: int, route: int, start_progress: float, 
 	if points.size() < 2:
 		return
 	branch_point_count += points.size()
-	_draw_branch_ribbon(points, route, cap_start, true)
+	_draw_branch_ribbon(points, route, cap_start, true, 3 if joins_split else 0)
 
 func _branch_visual_x(route: int, world_y: float) -> float:
 	# Gameplay remains on Balance.ROUTE_X. This visual-only S wave stays within
@@ -178,11 +182,11 @@ func _draw_split_ribbon(route: int, stage_bottom: float) -> void:
 		widths.append(lerpf(ScaleLock.TRUNK_WIDTH, ScaleLock.BRANCH_WIDTH, smooth))
 	_draw_textured_ribbon(points, widths, -split_start.y / MODULE_HEIGHT, false, true)
 
-func _draw_branch_ribbon(points: PackedVector2Array, route: int, cap_start: bool, cap_end: bool) -> void:
+func _draw_branch_ribbon(points: PackedVector2Array, route: int, cap_start: bool, cap_end: bool, outline_start_trim := 0) -> void:
 	var widths := PackedFloat32Array()
 	for _point in points:
 		widths.append(ScaleLock.BRANCH_WIDTH)
-	_draw_textured_ribbon(points, widths, float(route) * 0.27)
+	_draw_textured_ribbon(points, widths, float(route) * 0.27, true, false, false, outline_start_trim)
 	if cap_start and not qa_support_mask:
 		_draw_branch_tip(points[0], (points[0] - points[1]).normalized(), route)
 	if cap_end and not qa_support_mask:
@@ -221,10 +225,13 @@ func _draw_split_outline(stage_bottom: float) -> void:
 		outer_left.append(Vector2(float(intervals[0].x), world_y))
 		outer_right.append(Vector2(float(intervals[2].y), world_y))
 		for gap in 2:
-			var gap_open := float(intervals[gap].y) < float(intervals[gap + 1].x)
+			# Do not start a dark V inside the still-unified green face. The first
+			# contour point is emitted only after a real sky-width opening exists.
+			var gap_width := float(intervals[gap + 1].x) - float(intervals[gap].y)
+			var gap_open := gap_width > VISUAL_OUTLINE_WIDTH * 2.0 + 2.0
 			if gap_open:
 				gap_started[gap] = true
-			if bool(gap_started[gap]):
+			if bool(gap_started[gap]) and gap_open:
 				gap_left_edges[gap].append(Vector2(float(intervals[gap].y), world_y))
 				gap_right_edges[gap].append(Vector2(float(intervals[gap + 1].x), world_y))
 	draw_polyline(outer_left, OUTLINE_COLOR, VISUAL_OUTLINE_WIDTH, true)
@@ -234,7 +241,7 @@ func _draw_split_outline(stage_bottom: float) -> void:
 			draw_polyline(gap_left_edges[gap], OUTLINE_COLOR, VISUAL_OUTLINE_WIDTH, true)
 			draw_polyline(gap_right_edges[gap], OUTLINE_COLOR, VISUAL_OUTLINE_WIDTH, true)
 
-func _draw_textured_ribbon(points: PackedVector2Array, widths: PackedFloat32Array, texture_phase: float, draw_outline := true, world_locked_v := false) -> void:
+func _draw_textured_ribbon(points: PackedVector2Array, widths: PackedFloat32Array, texture_phase: float, draw_outline := true, world_locked_v := false, tangent_uv := false, outline_start_trim := 0, outline_end_trim := 0) -> void:
 	if points.size() < 2:
 		return
 	var distances := PackedFloat32Array([0.0])
@@ -253,8 +260,7 @@ func _draw_textured_ribbon(points: PackedVector2Array, widths: PackedFloat32Arra
 		var outline_geometry := _ribbon_geometry(points, widths, VISUAL_OUTLINE_WIDTH, texture_phase)
 		# Side strokes provide the 3 px rim without a polygon end-cap. A filled
 		# outline polygon exposed a dark horizontal bar wherever two ribbons met.
-		draw_polyline(outline_geometry.left, OUTLINE_COLOR, VISUAL_OUTLINE_WIDTH * 2.0 + 1.0, true)
-		draw_polyline(outline_geometry.right, OUTLINE_COLOR, VISUAL_OUTLINE_WIDTH * 2.0 + 1.0, true)
+		_draw_trimmed_edge_pair(outline_geometry.left, outline_geometry.right, VISUAL_OUTLINE_WIDTH * 2.0 + 1.0, outline_start_trim, outline_end_trim)
 	for index in range(points.size() - 1):
 		var first := points[index]
 		var second := points[index + 1]
@@ -291,7 +297,18 @@ func _draw_textured_ribbon(points: PackedVector2Array, widths: PackedFloat32Arra
 		var second_left := extended_second - normal * second_half
 		var second_right := extended_second + normal * second_half
 		var uvs: PackedVector2Array
-		if world_locked_v:
+		if tangent_uv:
+			# The source fibers run along V. Mapping V to path distance makes them
+			# follow a curved transfer arch instead of forming a vertical barcode.
+			var first_u := texture_phase - first_half / 512.0
+			var second_u := texture_phase + first_half / 512.0
+			var third_u := texture_phase + second_half / 512.0
+			var fourth_u := texture_phase - second_half / 512.0
+			uvs = PackedVector2Array([
+				Vector2(first_u, first_v), Vector2(second_u, first_v),
+				Vector2(third_u, second_v), Vector2(fourth_u, second_v),
+			])
+		elif world_locked_v:
 			var first_left_v := -first_left.y / MODULE_HEIGHT
 			var first_right_v := -first_right.y / MODULE_HEIGHT
 			var second_right_v := -second_right.y / MODULE_HEIGHT
@@ -308,14 +325,37 @@ func _draw_textured_ribbon(points: PackedVector2Array, widths: PackedFloat32Arra
 		var surface_width := maxf(first_half * 2.0, second_half * 2.0)
 		var texture_modulate := Color.WHITE
 		draw_polygon(quad, PackedColorArray([texture_modulate, texture_modulate, texture_modulate, texture_modulate]), uvs, VINE_SURFACE_TEXTURE)
-		if surface_width <= 60.0:
-			# A translucent lime glaze keeps the painted volume while preventing
-			# dark texture pockets from swallowing the character's 3 px rim.
-			draw_colored_polygon(quad, Color(0.78, 0.90, 0.42, 0.14))
+		# Preserve the full painted range globally. Only the support immediately
+		# behind the locked rig receives a feathered world-side value lift.
+		var glaze_alpha := 0.14 if surface_width <= 60.0 else 0.0
+		if player != null:
+			var quad_center := (first + second) * 0.5
+			var highlight_center := player.global_position + Vector2(0.0, -8.0)
+			if absf(quad_center.x - highlight_center.x) < 112.0:
+				var proximity := 1.0 - smoothstep(72.0, 116.0, absf(quad_center.y - highlight_center.y))
+				glaze_alpha = lerpf(glaze_alpha, 0.88, proximity)
+		if glaze_alpha > 0.001:
+			draw_colored_polygon(quad, Color(0.78, 0.90, 0.42, glaze_alpha))
 	if not qa_support_mask and draw_outline:
 		var edge_geometry := _ribbon_geometry(points, widths, VISUAL_OUTLINE_WIDTH, texture_phase)
-		draw_polyline(edge_geometry.left, OUTLINE_COLOR, 1.25, true)
-		draw_polyline(edge_geometry.right, OUTLINE_COLOR, 1.25, true)
+		_draw_trimmed_edge_pair(edge_geometry.left, edge_geometry.right, 1.25, outline_start_trim, outline_end_trim)
+
+func _draw_trimmed_edge_pair(left: PackedVector2Array, right: PackedVector2Array, width: float, start_trim: int, end_trim: int) -> void:
+	var finish := left.size() - end_trim
+	for index in range(start_trim, finish - 1):
+		var left_midpoint := (left[index] + left[index + 1]) * 0.5
+		var right_midpoint := (right[index] + right[index + 1]) * 0.5
+		draw_line(left[index], left[index + 1], _outline_color_at(left_midpoint), width, true)
+		draw_line(right[index], right[index + 1], _outline_color_at(right_midpoint), width, true)
+
+func _outline_color_at(world_point: Vector2) -> Color:
+	if player == null:
+		return OUTLINE_COLOR
+	var highlight_center := player.global_position + Vector2(0.0, -8.0)
+	if absf(world_point.x - highlight_center.x) >= 112.0:
+		return OUTLINE_COLOR
+	var proximity := 1.0 - smoothstep(72.0, 116.0, absf(world_point.y - highlight_center.y))
+	return OUTLINE_COLOR.lerp(OUTLINE_CONTRAST_COLOR, proximity)
 
 func _surface_u(world_x: float, flow_v: float) -> float:
 	# The v2 source has no centered motif. World-X phase makes overlapping
@@ -390,7 +430,7 @@ func _draw_transfer_connection(from_branch: int, to_branch: int, world_y: float)
 	var widths := PackedFloat32Array()
 	for step in points.size():
 		widths.append(lerpf(12.0, 15.0, sin(float(step) / float(points.size() - 1) * PI)))
-	_draw_textured_ribbon(points, widths, 0.41)
+	_draw_textured_ribbon(points, widths, 0.41, true, false, true, 2, 2)
 
 func sky_color_at(normalized_y: float) -> Color:
 	return SKY_TOP.lerp(SKY_BOTTOM, clampf(normalized_y, 0.0, 1.0))
