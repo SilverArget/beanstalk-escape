@@ -32,7 +32,7 @@ func _ready() -> void:
 func configure_sandbox(for_stage := 3) -> void:
 	sandbox_active = true
 	stage_number = for_stage
-	stage_bottom_y = -float(stage_number - 1) * Balance.STAGE_HEIGHT
+	stage_bottom_y = stages.stage_bottom_y(stage_number)
 	reset_run()
 	if beans != null:
 		beans.sandbox_mode = true
@@ -192,15 +192,17 @@ func _world_y(climbed: float) -> float:
 func _draw_wind() -> void:
 	var center_y := _world_y(float(wind.anchor) + 110.0)
 	var direction := float(wind.direction)
-	for index in 5:
-		var y := center_y - 72.0 + float(index) * 34.0
-		var start := Vector2(-265.0 if direction > 0.0 else 265.0, y)
-		var finish := start + Vector2(direction * (120.0 + float(index % 2) * 34.0), -6.0)
+	var flow := fposmod(Time.get_ticks_msec() * 0.16, 120.0)
+	for index in 9:
+		var y := center_y - 136.0 + float(index) * 34.0
+		var start_x := -440.0 + flow if direction > 0.0 else 440.0 - flow
+		var start := Vector2(start_x, y)
+		var finish := start + Vector2(direction * (620.0 + float(index % 2) * 80.0), -8.0)
 		draw_line(start, finish, Color(0.78, 0.94, 0.88, 0.72), 3.0, true)
 		draw_circle(finish, 6.0, Color(0.52, 0.72, 0.31, 0.92))
-	var arrow_x := -235.0 if direction > 0.0 else 235.0
-	var tip := Vector2(arrow_x + direction * 72.0, center_y)
-	draw_line(Vector2(arrow_x, center_y), tip, Color(1.0, 0.91, 0.42), 8.0, true)
+	var arrow_origin := player.global_position + Vector2(-76.0 * direction, -54.0)
+	var tip := arrow_origin + Vector2(direction * 72.0, 0.0)
+	draw_line(arrow_origin, tip, Color(1.0, 0.91, 0.42), 8.0, true)
 	draw_colored_polygon(PackedVector2Array([tip, tip + Vector2(-direction * 22.0, -15.0), tip + Vector2(-direction * 22.0, 15.0)]), Color(1.0, 0.91, 0.42))
 
 func _draw_breakable() -> void:

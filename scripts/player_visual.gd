@@ -22,6 +22,7 @@ var frame_textures: Dictionary = {}
 var sprite: Sprite2D
 var time_wings: Sprite2D
 var fire_wings: Sprite2D
+var fire_trails: Array[Polygon2D] = []
 var flash_material: ShaderMaterial
 var cosmetic_sprites: Dictionary = {}
 var equipped_cosmetics := {"HAIR": "", "FACE": "", "TRAIL": "", "OUTFIT": ""}
@@ -49,12 +50,15 @@ func _process(delta: float) -> void:
 	celebrate_remaining = maxf(celebrate_remaining - delta, 0.0)
 	time_wings.visible = player.time_wings_active
 	fire_wings.visible = player.fire_wings_active
+	for trail in fire_trails: trail.visible = player.fire_wings_active
 	if time_wings.visible:
 		var wing_pulse := sin(Time.get_ticks_msec() * 0.010) * 0.002
 		time_wings.scale = Vector2(0.045 + wing_pulse, 0.045 - wing_pulse * 0.5)
 	if fire_wings.visible:
 		var fire_pulse := sin(Time.get_ticks_msec() * 0.014) * 0.008
-		fire_wings.scale = Vector2(0.22 + fire_pulse, 0.22 - fire_pulse * 0.35)
+		fire_wings.scale = Vector2(0.32 + fire_pulse, 0.32 - fire_pulse * 0.35)
+		for index in fire_trails.size():
+			fire_trails[index].modulate.a = 0.55 + 0.18 * sin(Time.get_ticks_msec() * 0.018 + float(index) * PI)
 	_update_mode(player, delta)
 	flash_material.set_shader_parameter("flash_amount", 0.78 if hurt_remaining > 0.18 else 0.0)
 	_update_cosmetic_anchors()
@@ -245,10 +249,19 @@ func _build_visual() -> void:
 	fire_wings.texture = fire_texture
 	fire_wings.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
 	fire_wings.position = Vector2(0.0, -12.0)
-	fire_wings.scale = Vector2.ONE * 0.22
+	fire_wings.scale = Vector2.ONE * 0.32
 	fire_wings.z_index = -1
 	fire_wings.visible = false
 	add_child(fire_wings)
+	for side in [-1.0, 1.0]:
+		var trail := Polygon2D.new()
+		trail.polygon = PackedVector2Array([Vector2(side * 22.0, -19.0), Vector2(side * 58.0, -7.0), Vector2(side * 30.0, 5.0), Vector2(side * 16.0, 2.0)])
+		trail.color = Color("ff8a24")
+		trail.modulate.a = 0.65
+		trail.z_index = -2
+		trail.visible = false
+		add_child(trail)
+		fire_trails.append(trail)
 	time_wings = Sprite2D.new()
 	time_wings.name = "TimeWings"
 	time_wings.texture = WING_TEXTURE

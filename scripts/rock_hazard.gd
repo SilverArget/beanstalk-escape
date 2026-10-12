@@ -28,7 +28,7 @@ func setup(id: String, recipe_kind: String, lane_values: Array, at_y: float, sta
 	texture.region = Rect2(Vector2(cell) * CELL_SIZE, CELL_SIZE)
 	sprite.texture = texture
 	sprite.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
-	sprite.scale = Vector2.ONE * (0.23 if kind == "WALL" else 0.15)
+	sprite.scale = Vector2.ONE * (0.26 if kind == "WALL" else (0.23 if kind == "S" else 0.18))
 	add_child(sprite)
 	_reset_position()
 	previous_position = global_position
@@ -78,7 +78,7 @@ func collision_centers() -> Array[Vector2]:
 	return result
 
 func collision_radius() -> float:
-	return 31.0 if kind == "M" else (24.0 if kind in ["R", "F"] else 30.0)
+	return 31.0 if kind == "M" else (24.0 if kind in ["R", "F"] else 42.0)
 
 func _draw() -> void:
 	if not released:

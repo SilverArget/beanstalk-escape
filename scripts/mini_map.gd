@@ -16,7 +16,7 @@ func _draw() -> void:
 		draw_circle(Vector2(24, y), 3.5 if active else 2.0, Palette.ACCENT_PROGRESS if active else Palette.MAP_INACTIVE)
 	if game == null:
 		return
-	var total_height := Balance.STAGE_HEIGHT * Balance.STAGE_COUNT
+	var total_height := game.stages.stage_target_height(Balance.STAGE_COUNT)
 	var progress := clampf(-game.player.global_position.y / total_height, 0.0, 1.0)
 	var player_y := lerpf(size.y - 28.0, 28.0, progress)
 	draw_circle(Vector2(24, player_y), 7.0, Palette.WHITE_FLASH)

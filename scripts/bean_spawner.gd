@@ -15,9 +15,10 @@ func _physics_process(_delta: float) -> void:
 	for stage_pattern: Dictionary in ([] if sandbox_mode else stages.patterns):
 		for slot_index in stage_pattern.bean_slots.size():
 			var slot: Dictionary = stage_pattern.bean_slots[slot_index]
-			var warning_y: float = -(float(stage_pattern.stage - 1) * Balance.STAGE_HEIGHT + float(slot.warning_height))
+			var stage_bottom_y := stages.stage_bottom_y(int(stage_pattern.stage))
+			var warning_y: float = stage_bottom_y - float(slot.warning_height)
 			for volley_index in int(slot.get("count", 1)):
-				var target_y: float = -((stage_pattern.stage - 1 + slot.progress) * Balance.STAGE_HEIGHT) - float(volley_index) * 70.0
+				var target_y: float = stage_bottom_y - float(slot.anchor) - float(volley_index) * 70.0
 				var key := "%d:%d:%d" % [stage_pattern.stage, slot_index, volley_index]
 				if not spawned_keys.has(key) and player.global_position.y <= warning_y:
 					if game != null:

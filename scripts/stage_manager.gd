@@ -22,7 +22,10 @@ func _physics_process(delta: float) -> void:
 		stage_banner_remaining = maxf(stage_banner_remaining - delta, 0.0)
 
 func update_progress(player_y: float) -> void:
-	var reached := mini(int(floor(-player_y / Balance.STAGE_HEIGHT)), Balance.STAGE_COUNT)
+	var reached := 0
+	var climbed := -player_y
+	for stage_number in range(1, Balance.STAGE_COUNT + 1):
+		if climbed + 0.001 >= stage_target_height(stage_number): reached = stage_number
 	while current_stage <= reached and current_stage <= Balance.STAGE_COUNT:
 		_complete_stage(current_stage)
 		current_stage += 1
@@ -64,7 +67,7 @@ func _set_runtime_hazard(target: Array, stage_number: int, route: int, start_hei
 		target.append({"stage": stage_number, "route": route, "start": start_height, "end": end_height})
 
 func _runtime_hazard_at(target: Array, stage_number: int, route: int, progress: float) -> bool:
-	var height := progress * Balance.STAGE_HEIGHT
+	var height := progress * stage_length(stage_number)
 	for item: Dictionary in target:
 		if int(item.stage) == stage_number and int(item.route) == route and height >= float(item.start) and height <= float(item.end):
 			return true
@@ -75,6 +78,18 @@ func has_route_support_at(stage_number: int, route: int, progress: float) -> boo
 
 func can_enter_route_at(stage_number: int, route: int, progress: float) -> bool:
 	return has_route_support_at(stage_number, route, progress) and not _runtime_hazard_at(runtime_webs, stage_number, route, progress)
+
+func transfer_window_open(stage_number: int, progress: float) -> bool:
+	if stage_number != 13:
+		return true
+	var height := progress * stage_length(stage_number)
+	var previous_end := 0.0
+	for encounter: Dictionary in pattern_for_stage(stage_number).encounters:
+		var window_start := maxf(float(encounter.anchor) - 280.0, previous_end)
+		if height >= window_start and height <= float(encounter.anchor) - 36.0:
+			return true
+		previous_end = float(encounter.occupancy[1])
+	return false
 func generate_patterns(seed_value: int) -> Array:
 	var result: Array = []
 	for stage: Dictionary in StageDatabase.stages_for_variant(run_variant):
@@ -84,20 +99,25 @@ func generate_patterns(seed_value: int) -> Array:
 		var trunk_features: Array = []
 		var support_windows: Array = []
 		var bean_slots: Array = []
+		var rock_slots: Array = []
 		for encounter: Dictionary in stage.encounters:
 			var kind := String(encounter.recipe.kind)
 			if kind == "GUIDE" or kind == "BULGE":
 				trunk_features.append({"id": encounter.id, "kind": kind, "x": float(encounter.recipe.x), "warning_height": encounter.warning_height, "occupancy": encounter.occupancy})
 			elif kind == "FORK":
 				support_windows.append({"id": encounter.id, "start_progress": float(encounter.anchor) / float(stage.length), "end_progress": float(encounter.occupancy[1]) / float(stage.length), "supports": encounter.recipe.supports.duplicate(), "warning_progress": float(encounter.warning_height) / float(stage.length)})
-			elif kind == "BEAN":
-				var blocked := int(encounter.recipe.lane)
-				var slot_progress := float(encounter.anchor) / float(stage.length)
-				var safe_routes := [0, 1, 2]
-				safe_routes.erase(blocked)
-				var safety_route := int(encounter.witness)
-				bean_slots.append({"id": encounter.id, "anchor": encounter.anchor, "warning_height": encounter.warning_height, "occupancy": encounter.occupancy, "progress": slot_progress, "blocked_route": blocked, "safe_routes": safe_routes, "safety_route": safety_route, "warning_seconds": Balance.BEAN_WARNING_SECONDS, "count": int(encounter.recipe.get("count", 1))})
-		result.append({"stage": stage_number, "entry": 1, "open_routes": open_routes, "route_end_progress": route_end_progress, "trunk_features": trunk_features, "support_windows": support_windows, "bean_slots": bean_slots, "encounters": stage.encounters, "variant": run_variant})
+			for threat: Dictionary in StageDatabase.threats_for_recipe(encounter.recipe):
+				var threat_kind := String(threat.kind)
+				if threat_kind == "BEAN":
+					var blocked := int(threat.lane)
+					var slot_progress := float(encounter.anchor) / float(stage.length)
+					var safe_routes := [0, 1, 2]
+					safe_routes.erase(blocked)
+					bean_slots.append({"id": "%s-B%d" % [encounter.id, blocked], "anchor": encounter.anchor, "warning_height": encounter.warning_height, "occupancy": encounter.occupancy, "progress": slot_progress, "blocked_route": blocked, "safe_routes": safe_routes, "safety_route": int(encounter.witness), "warning_seconds": Balance.BEAN_WARNING_SECONDS, "count": int(threat.get("count", 1))})
+				elif threat_kind in ["S", "R", "F", "WALL", "M"]:
+					var routes: Array = threat.get("lanes", [int(threat.get("lane", 1))])
+					rock_slots.append({"id": "%s-%s-%d" % [encounter.id, threat_kind, rock_slots.size()], "kind": threat_kind, "routes": routes.duplicate(), "anchor": float(encounter.anchor), "warning_height": float(encounter.warning_height), "witness": int(encounter.witness)})
+		result.append({"stage": stage_number, "length": stage.length, "start_height": stage.start_height, "entry": 1, "open_routes": open_routes, "route_end_progress": route_end_progress, "trunk_features": trunk_features, "support_windows": support_windows, "bean_slots": bean_slots, "rock_slots": rock_slots, "encounters": stage.encounters, "variant": run_variant})
 	return result
 func pattern_hash(seed_value: int) -> int: return hash(var_to_str(generate_patterns(seed_value)))
 func patterns_are_reachable(candidate: Array) -> bool:
@@ -157,11 +177,26 @@ func _reachable_targets(from_routes: Array[int], allowed_routes: Array, availabl
 	return result
 
 func stage_for_y(player_y: float) -> int:
-	return clampi(int(floor(-player_y / Balance.STAGE_HEIGHT)) + 1, 1, Balance.STAGE_COUNT)
+	var climbed := maxf(-player_y, 0.0)
+	for stage_number in range(1, Balance.STAGE_COUNT + 1):
+		if climbed < stage_target_height(stage_number): return stage_number
+	return Balance.STAGE_COUNT
 
 func progress_in_stage(player_y: float) -> float:
-	var stage_start := float(stage_for_y(player_y) - 1) * Balance.STAGE_HEIGHT
-	return clampf((-player_y - stage_start) / Balance.STAGE_HEIGHT, 0.0, 1.0)
+	var stage_number := stage_for_y(player_y)
+	return clampf((-player_y - stage_start_height(stage_number)) / stage_length(stage_number), 0.0, 1.0)
+
+func stage_start_height(stage_number: int) -> float:
+	return float(StageDatabase.stage(stage_number, run_variant).get("start_height", 0.0))
+
+func stage_target_height(stage_number: int) -> float:
+	return float(StageDatabase.stage(stage_number, run_variant).get("target_height", 0.0))
+
+func stage_length(stage_number: int) -> float:
+	return float(StageDatabase.stage(stage_number, run_variant).get("length", Balance.STAGE_HEIGHT))
+
+func stage_bottom_y(stage_number: int) -> float:
+	return -stage_start_height(stage_number)
 
 func pattern_for_stage(stage_number: int) -> Dictionary:
 	for pattern: Dictionary in patterns:
@@ -205,8 +240,7 @@ func support_segments(stage_number: int, route: int) -> Array:
 	return segments
 
 func route_end_world_y(stage_number: int, route: int) -> float:
-	var stage_bottom := -float(stage_number - 1) * Balance.STAGE_HEIGHT
-	return stage_bottom - float(pattern_for_stage(stage_number).route_end_progress[route]) * Balance.STAGE_HEIGHT
+	return stage_bottom_y(stage_number) - float(pattern_for_stage(stage_number).route_end_progress[route]) * stage_length(stage_number)
 
 func has_recovery_edge(stage_number: int, from_route: int, to_route: int) -> bool:
 	var pattern := pattern_for_stage(stage_number)
@@ -229,7 +263,7 @@ func next_dead_end_distance(player_y: float, x: float, active_route := -1) -> fl
 		if progress >= float(window.start_progress) and progress <= float(window.end_progress):
 			return 0.0
 		if progress < float(window.start_progress):
-			return (float(window.start_progress) - progress) * Balance.STAGE_HEIGHT
+			return (float(window.start_progress) - progress) * stage_length(stage_number)
 	return INF
 
 func open_routes_at(player_y: float) -> Array:

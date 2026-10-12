@@ -18,8 +18,11 @@ func setup(target: PlayerController, stage_manager: StageManager) -> void:
 
 func start_sandbox() -> void:
 	reset_run()
+	for hazard in hazards:
+		if is_instance_valid(hazard): hazard.queue_free()
+	hazards.clear()
 	sandbox_active = true
-	var base_y := -Balance.STAGE_HEIGHT * 2.0
+	var base_y := stages.stage_bottom_y(3)
 	_spawn("rocks-s", "S", [0], base_y - 500.0)
 	_spawn("rocks-r", "R", [1], base_y - 930.0)
 	_spawn("rocks-f", "F", [2], base_y - 1360.0)
@@ -36,6 +39,15 @@ func reset_run() -> void:
 	warning_ids.clear()
 	invulnerability_remaining = 0.0
 	if player != null: previous_player_position = player.global_position
+	_spawn_campaign()
+
+func _spawn_campaign() -> void:
+	if stages == null:
+		return
+	for pattern: Dictionary in stages.patterns:
+		for slot: Dictionary in pattern.get("rock_slots", []):
+			var anchor_y := stages.stage_bottom_y(int(pattern.stage)) - float(slot.anchor)
+			_spawn(String(slot.id), String(slot.kind), slot.routes, anchor_y)
 
 func _spawn(id: String, kind: String, routes: Array, anchor_y: float) -> RockHazard:
 	var hazard := RockHazard.new()
@@ -48,7 +60,7 @@ func _spawn(id: String, kind: String, routes: Array, anchor_y: float) -> RockHaz
 
 func _physics_process(delta: float) -> void:
 	var game := get_parent() as GameManager
-	if not sandbox_active or player == null or game == null or game.app_state != GameManager.AppState.PLAYING:
+	if player == null or game == null or game.app_state != GameManager.AppState.PLAYING:
 		return
 	invulnerability_remaining = maxf(invulnerability_remaining - delta, 0.0)
 	for hazard in hazards:

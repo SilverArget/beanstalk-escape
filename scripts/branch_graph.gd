@@ -13,7 +13,7 @@ func can_transfer(stages: StageManager, from_branch: int, to_branch: int, world_
 		return false
 	var stage := stages.stage_for_y(world_y)
 	var progress := stages.progress_in_stage(world_y)
-	return has_support(stages, from_branch, world_y) and stages.can_enter_route_at(stage, to_branch, progress)
+	return stages.transfer_window_open(stage, progress) and has_support(stages, from_branch, world_y) and stages.can_enter_route_at(stage, to_branch, progress)
 
 func support_point(stages: StageManager, branch_id: int, world_y: float, support_offset := 0.0) -> Vector2:
 	return Vector2(stages.branch_x_at(branch_id, world_y) + clampf(support_offset, -12.0, 12.0), world_y)

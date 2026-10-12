@@ -69,21 +69,25 @@ const STAGE_DEFINITIONS := [
 
 static func canonical_stages() -> Array:
 	var result: Array = []
-	for definition_value in STAGE_DEFINITIONS:
+	var definitions: Array = STAGE_DEFINITIONS.duplicate(true)
+	definitions.append_array(_stages_6_to_15())
+	var accumulated_height := 0
+	for definition_value in definitions:
 		var stage: Dictionary = (definition_value as Dictionary).duplicate(true)
-		var stage_index := int(stage.number) - 1
-		stage["length"] = STAGE_LENGTH
-		stage["start_height"] = stage_index * STAGE_LENGTH
-		stage["target_height"] = (stage_index + 1) * STAGE_LENGTH
-		stage["theme"] = "sunny"
+		stage["length"] = int(stage.get("length", STAGE_LENGTH))
+		stage["start_height"] = accumulated_height
+		accumulated_height += int(stage.length)
+		stage["target_height"] = accumulated_height
+		stage["theme"] = String(stage.get("theme", "sunny"))
 		stage["qa_seed_set"] = QA_VARIANTS.duplicate()
 		stage["release_allowlist"] = RELEASE_ALLOWLIST.duplicate()
 		stage["checkpoint"] = "stage_start"
-		stage["tutorial_trigger"] = "encounter_warning_once"
+		stage["tutorial_trigger"] = "none" if int(stage.number) >= 15 else "encounter_warning_once"
 		stage["end_transition"] = "next_stage_immediate_with_three_async_pulses"
-		stage["nominal_duration_no_fire"] = Balance.STAGE_DURATION_SECONDS
+		stage["nominal_duration_no_fire"] = float(stage.length) / Balance.PLAYER_VERTICAL_SPEED
 		stage["validation_status"] = "NOT_RUN"
-		stage["encounters"] = _paced_encounters(stage)
+		stage["encounters"] = _paced_encounters(stage) if int(stage.number) <= 5 else stage.encounters
+		stage["witness"] = stage.encounters.map(func(encounter: Dictionary) -> Variant: return encounter.witness)
 		for encounter: Dictionary in stage.encounters:
 			var anchor := int(encounter.anchor)
 			encounter["warning_height"] = anchor - WARNING_LEAD
@@ -91,12 +95,53 @@ static func canonical_stages() -> Array:
 		result.append(stage)
 	return result
 
+static func _stages_6_to_15() -> Array:
+	return [
+		_late_stage(6, "Rock Roots", 2800, "rock_cloud", [2, 1, 0, 1, 2], [
+			[500, [_hazard("S", 1)], 2], [950, [_hazard("S", 2)], 1], [1400, [_hazard("S", 1)], 0], [1850, [_hazard("S", 0)], 1], [2300, [_hazard("S", 1)], 2]]),
+		_late_stage(7, "Stone and Seed", 2800, "rock_cloud", [0, 1, 2, 1, 0], [
+			[500, [_hazard("S", 1)], 0], [970, [_hazard("BEAN", 0)], 1], [1440, [_hazard("S", 0), _hazard("BEAN", 1)], 2], [1910, [_hazard("S", 2)], 1], [2380, [_hazard("S", 1), _hazard("BEAN", 2)], 0]]),
+		_late_stage(8, "The Rolling Boulder", 2800, "rock_cloud", [2, 0, 1, 2, 0], [
+			[500, [_hazard("R", 1)], 2], [950, [_hazard("R", 2)], 0], [1400, [_hazard("R", 0)], 1], [1850, [_hazard("S", 0), _hazard("R", 1)], 2], [2300, [_hazard("R", 2)], 0]]),
+		_late_stage(9, "Crossfire", 2800, "rock_cloud", [0, 2, 1, 0, 2], [
+			[500, [_hazard("R", 1), _hazard("BEAN", 2)], 0], [970, [_hazard("R", 0), _hazard("BEAN", 1)], 2], [1440, [_hazard("R", 2), _hazard("BEAN", 0)], 1], [1910, [_hazard("S", 2), _hazard("BEAN", 1)], 0], [2380, [_hazard("R", 1), _hazard("BEAN", 0)], 2]]),
+		_late_stage(10, "Fire Ascension", 3000, "rock_cloud", [0, 1, 2, 1, 0], [
+			[500, [_hazard("BEAN", 1)], 0], [1000, [_hazard("S", 0)], 1], [1500, [_hazard("R", 1)], 2], [2000, [_hazard("BEAN", 2)], 1], [2500, [_hazard("S", 1), _hazard("BEAN", 2)], 0]], "FIRE"),
+		_late_stage(11, "Purple Glide", 3000, "violet_twilight", [2, 1, 0, 1], [
+			[500, [_hazard("S", 1)], 2], [1120, [_hazard("BEAN", 2)], 1], [1820, [_hazard("R", 1)], 0], [2500, [_hazard("S", 0)], 1]]),
+		_late_stage(12, "The Stone Locks", 3000, "violet_twilight", [0, 2, 1, 2, 0], [
+			[500, [_hazard("S", 1), _hazard("S", 2)], 0], [990, [_hazard("S", 0), _hazard("S", 1)], 2], [1485, [_hazard("S", 0), _hazard("S", 2)], 1], [1990, [_hazard("S", 0), _hazard("S", 1)], 2], [2500, [_hazard("S", 1), _hazard("S", 2)], 0]]),
+		_late_stage(13, "Twisting Junction", 3000, "violet_twilight", [2, 0, 1, 2, 0], [
+			[500, [_hazard("S", 0), _hazard("BEAN", 1)], 2], [1000, [_hazard("S", 1), _hazard("BEAN", 2)], 0], [1510, [_hazard("S", 2), _hazard("BEAN", 0)], 1], [2010, [_hazard("S", 0), _hazard("R", 1)], 2], [2500, [_hazard("S", 1), _hazard("BEAN", 2)], 0]], "none", true),
+		_late_stage(14, "Final Lesson", 3000, "violet_twilight", [1, 0, 2, 1, 0], [
+			[500, [_hazard("BEAN", 0), _hazard("S", 2)], 1], [995, [_hazard("R", 1), _hazard("BEAN", 2)], 0], [1490, [_hazard("S", 0), _hazard("BEAN", 1)], 2], [1995, [_hazard("R", 2), _hazard("S", 0)], 1], [2500, [_hazard("S", 1), _hazard("BEAN", 2)], 0]]),
+		_late_stage(15, "Into the Unknown", 3000, "violet_twilight", [2, 1, 0, 2, 1], [
+			[500, [_hazard("S", 0), _hazard("BEAN", 1)], 2], [990, [_hazard("R", 2), _hazard("BEAN", 0)], 1], [1485, [_hazard("S", 1), _hazard("R", 2)], 0], [1990, [_hazard("BEAN", 0), _hazard("S", 1)], 2], [2500, [_hazard("R", 0), _hazard("BEAN", 2)], 1]])
+	]
+
+static func _hazard(kind: String, lane: int, count := 1) -> Dictionary:
+	var result := {"kind": kind, "lane": lane}
+	if kind == "BEAN": result["count"] = count
+	return result
+
+static func _late_stage(number: int, title: String, length: int, theme: String, witness: Array, rows: Array, skill := "none", junction := false) -> Dictionary:
+	var encounters: Array = []
+	for index in rows.size():
+		var row: Array = rows[index]
+		var threats: Array = row[1]
+		var recipe: Dictionary = (threats[0] as Dictionary).duplicate(true) if threats.size() == 1 else {"kind": "COMBO", "threats": threats.duplicate(true)}
+		encounters.append({"id": "S%02d-E%02d" % [number, index + 1], "anchor": int(row[0]), "recipe": recipe, "witness": int(row[2]), "objective": "Read the telegraph and reach the canonical safe lane."})
+	return {"number": number, "title": title, "branch_graph": "J13" if junction else "G3", "skill_unlock": skill, "length": length, "theme": theme, "witness": witness, "encounters": encounters, "junction_override": junction}
+
+static func threats_for_recipe(recipe: Dictionary) -> Array:
+	return recipe.threats if String(recipe.kind) == "COMBO" else [recipe]
+
 static func _paced_encounters(stage: Dictionary) -> Array:
 	var source: Array = stage.encounters
 	var result: Array = []
 	for index in 10:
 		var template: Dictionary = (source[index % source.size()] as Dictionary).duplicate(true)
-		var use_bean := int(stage.number) >= 4 or (int(stage.number) == 1 and index >= 2 and index % 2 == 0) or (int(stage.number) == 2 or int(stage.number) == 3) and index % 2 == 1
+		var use_bean := int(stage.number) >= 4
 		template["id"] = "S%02d-E%02d" % [int(stage.number), index + 1]
 		# 240 px is 1.92 s at the 125 px/s tempo. Starting at 500 keeps every
 		# warning safely inside its stage and leaves Stage 1's first bean after 3 s.
@@ -141,14 +186,21 @@ static func stages_for_variant(variant: String) -> Array:
 		for encounter: Dictionary in stage.encounters:
 			encounter["witness"] = _mirror_position(encounter.witness)
 			var recipe: Dictionary = encounter.recipe
-			match String(recipe.kind):
-				"GUIDE", "BULGE":
-					recipe["x"] = 1.0 - float(recipe.x)
-				"FORK":
-					recipe["supports"] = _mirror_sequence(recipe.supports)
-				"BEAN":
-					recipe["lane"] = 2 - int(recipe.lane)
+			_mirror_recipe(recipe)
 	return stages
+
+static func _mirror_recipe(recipe: Dictionary) -> void:
+	match String(recipe.kind):
+		"GUIDE", "BULGE":
+			recipe["x"] = 1.0 - float(recipe.x)
+		"FORK":
+			recipe["supports"] = _mirror_sequence(recipe.supports)
+		"BEAN", "S", "R", "F":
+			recipe["lane"] = 2 - int(recipe.lane)
+		"WALL", "M":
+			recipe["lanes"] = _mirror_sequence(recipe.lanes)
+		"COMBO":
+			for threat: Dictionary in recipe.threats: _mirror_recipe(threat)
 
 static func stage(stage_number: int, variant := CANONICAL_VARIANT) -> Dictionary:
 	var stages := stages_for_variant(variant)

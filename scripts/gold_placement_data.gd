@@ -7,7 +7,7 @@ static func placements_for_stage(stage_number: int, count: int, stages: StageMan
 	var encounters: Array = definition.get("encounters", [])
 	for index in count:
 		var progress := float(index + 1) / float(count + 1)
-		var world_y := -float(stage_number - 1) * Balance.STAGE_HEIGHT - progress * Balance.STAGE_HEIGHT
+		var world_y := stages.stage_bottom_y(stage_number) - progress * stages.stage_length(stage_number)
 		var encounter_index := mini(int(floor(progress * encounters.size())), encounters.size() - 1)
 		var witness: Variant = encounters[encounter_index].witness
 		var route := stages.route_for_x((float(witness) - 0.5) * 2.0 * Balance.TRUNK_HALF_WIDTH) if stage_number <= 2 else int(witness)

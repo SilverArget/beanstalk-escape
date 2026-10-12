@@ -82,6 +82,17 @@ func _draw_sky(camera_top: float) -> void:
 	# The image_gen plate already contains cream clouds. The former draw_circle
 	# cloud clusters are deliberately gone; no primitive placeholder remains.
 	draw_texture_rect(ATMOSPHERE_TEXTURE, view_rect, false, Color(1.0, 1.0, 1.0, 0.72))
+	var stage_number := stages.stage_for_y(player.global_position.y) if stages != null and player != null else 1
+	var stage_progress := stages.progress_in_stage(player.global_position.y) if stages != null and player != null else 0.0
+	var rock_mix := clampf((float(stage_number) - 5.0 + stage_progress) / 2.0, 0.0, 1.0)
+	var violet_mix := clampf((float(stage_number) - 10.0 + stage_progress) / 2.0, 0.0, 1.0)
+	if rock_mix > 0.0:
+		draw_rect(view_rect, Color(0.34, 0.38, 0.47, 0.18 * rock_mix))
+	if violet_mix > 0.0:
+		draw_rect(view_rect, Color(0.29, 0.16, 0.46, 0.30 * violet_mix))
+		for fog_index in 4:
+			var fog_y := view_rect.position.y + fposmod(float(fog_index) * 151.0 - camera_top * 0.08, view_rect.size.y)
+			draw_circle(Vector2(view_rect.get_center().x + sin(float(fog_index) * 2.1) * 260.0, fog_y), 150.0, Color(0.70, 0.56, 0.82, 0.035 * violet_mix))
 	_draw_far_vines(camera_top)
 
 func _draw_far_vines(camera_top: float) -> void:
@@ -149,8 +160,9 @@ func _trunk_half_width(world_y: float) -> float:
 	return 90.0 + sin(world_y * TAU / MODULE_HEIGHT) * 4.0
 
 func _draw_stage_branches(stage_number: int, camera_top: float) -> void:
-	var stage_bottom := -float(stage_number - 1) * Balance.STAGE_HEIGHT
-	var stage_top := -float(stage_number) * Balance.STAGE_HEIGHT
+	var stage_bottom := stages.stage_bottom_y(stage_number)
+	var stage_length := stages.stage_length(stage_number)
+	var stage_top := stage_bottom - stage_length
 	var camera_bottom := camera_top + 556.0
 	if stage_bottom < camera_top - 120.0 or stage_top > camera_bottom + 120.0:
 		return
@@ -159,12 +171,13 @@ func _draw_stage_branches(stage_number: int, camera_top: float) -> void:
 			_draw_branch_segment(stage_number, route, float(segment[0]), float(segment[1]))
 
 func _draw_branch_segment(stage_number: int, route: int, start_progress: float, end_progress: float) -> void:
-	var stage_bottom := -float(stage_number - 1) * Balance.STAGE_HEIGHT
+	var stage_bottom := stages.stage_bottom_y(stage_number)
+	var stage_length := stages.stage_length(stage_number)
 	var cap_start := start_progress > 0.0
 	if stage_number == 3 and route == 1 and start_progress <= 0.0:
 		start_progress = STAGE_3_ENTRY_HEIGHT / Balance.STAGE_HEIGHT
-	var start_y := stage_bottom - start_progress * Balance.STAGE_HEIGHT
-	var end_y := stage_bottom - end_progress * Balance.STAGE_HEIGHT
+	var start_y := stage_bottom - start_progress * stage_length
+	var end_y := stage_bottom - end_progress * stage_length
 	var points := PackedVector2Array()
 	if stage_number == 3 and route != 1 and start_progress <= 0.0:
 		points = _side_vine_entry_points(route, stage_bottom)
@@ -224,7 +237,10 @@ func _draw_branch_tip(base: Vector2, direction: Vector2, route: int) -> void:
 	])
 	var widths := PackedFloat32Array([ScaleLock.BRANCH_WIDTH, 38.0, 20.0, 2.0])
 	_draw_textured_ribbon(points, widths, float(route) * 0.27, true, false, true, 0, 0, true)
-	_draw_branch_detail_sprite(4 + route % 2, base - direction * 18.0, Vector2(34.0, 34.0), direction.angle() + PI * 0.5, false)
+	# A painted bud and paired leaf conceal the mathematical endpoint. Separate
+	# stems still end independently; this never draws a bridge or Y union.
+	draw_circle(base - direction * 3.0, 7.0, Color("5cad50"))
+	_draw_branch_detail_sprite(4 + route % 2, base - direction * 15.0, Vector2(42.0, 42.0), direction.angle() + PI * 0.5, false)
 
 func _draw_branch_details(route: int, start_y: float, end_y: float) -> void:
 	if qa_support_mask:
@@ -388,7 +404,7 @@ func _ribbon_geometry(points: PackedVector2Array, widths: PackedFloat32Array, ex
 func _draw_trunk_features(camera_top: float) -> void:
 	var camera_bottom := camera_top + 556.0
 	for stage_number in [1, 2]:
-		var stage_bottom := -float(stage_number - 1) * Balance.STAGE_HEIGHT
+		var stage_bottom := stages.stage_bottom_y(stage_number)
 		for feature: Dictionary in stages.pattern_for_stage(stage_number).trunk_features:
 			var center_x := lerpf(-ScaleLock.TRUNK_WIDTH * 0.5, ScaleLock.TRUNK_WIDTH * 0.5, float(feature.x))
 			var top_y := stage_bottom - float(feature.occupancy[1])
@@ -423,9 +439,10 @@ func qa_point_inside_support(world_point: Vector2) -> bool:
 	var stage_number := stages.stage_for_y(world_point.y)
 	if stage_number <= 2:
 		return absf(world_point.x - _trunk_center_x(world_point.y)) <= _trunk_half_width(world_point.y)
-	var stage_bottom := -float(stage_number - 1) * Balance.STAGE_HEIGHT
-	var progress := (stage_bottom - world_point.y) / Balance.STAGE_HEIGHT
-	if stage_number == 3 and progress * Balance.STAGE_HEIGHT <= STAGE_3_ENTRY_HEIGHT:
+	var stage_bottom := stages.stage_bottom_y(stage_number)
+	var stage_length := stages.stage_length(stage_number)
+	var progress := (stage_bottom - world_point.y) / stage_length
+	if stage_number == 3 and progress * stage_length <= STAGE_3_ENTRY_HEIGHT:
 		if absf(world_point.x - _main_stem_center_x(world_point.y)) <= _main_stem_width(world_point.y) * 0.5:
 			return true
 	for route in 3:

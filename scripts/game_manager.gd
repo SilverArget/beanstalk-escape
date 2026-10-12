@@ -186,7 +186,7 @@ func _notification(what: int) -> void:
 func _debug_evidence_stage(stage_number: int) -> void:
 	if not _debug_state_enabled() or stage_number < 1 or stage_number > Balance.STAGE_COUNT:
 		return
-	player.global_position = Vector2(0, -Balance.STAGE_HEIGHT * (float(stage_number) - 0.35))
+	player.global_position = Vector2(0, -(stages.stage_start_height(stage_number) + stages.stage_length(stage_number) * 0.35))
 	spider.global_position = player.global_position + Vector2(0, Balance.START_DISTANCE)
 	player._sync_stage_mode()
 	stages.update_progress(player.global_position.y)
@@ -400,7 +400,7 @@ func restart_stage() -> void:
 	audio.play_sfx("ui_click")
 	_clear_direction_inputs()
 	var stage_number := stages.current_stage
-	var start_y := -float(stage_number - 1) * Balance.STAGE_HEIGHT
+	var start_y := stages.stage_bottom_y(stage_number)
 	for child in get_tree().get_nodes_in_group("run_transient"): child.free()
 	beans.reset_run()
 	rocks.reset_run()
@@ -655,7 +655,7 @@ func _skip_stage_after_reward(stage_number: int) -> void:
 		return
 	save_manager.mark_stage_skipped(stage_number)
 	stages.current_stage = stage_number + 1
-	var next_y := -float(stage_number) * Balance.STAGE_HEIGHT
+	var next_y := stages.stage_bottom_y(stage_number + 1)
 	player.reset_run(Vector2(0, next_y))
 	spider.reset_run(Vector2(0, next_y + SpiderController.retry_gap_for_stage(stage_number + 1)))
 	golds.reset_run()
@@ -684,7 +684,7 @@ func _on_remove_ads_ownership_changed(value: bool) -> void:
 	_update_hud()
 
 func _show_tutorial_for_stage(stage_number: int) -> void:
-	var messages := {1: "MOVE LEFT / RIGHT", 2: "AVOID", 3: "CHANGE BRANCH", 5: "PRESS F"}
+	var messages := {1: "MOVE LEFT / RIGHT", 2: "AVOID", 3: "CHANGE BRANCH", 5: "PRESS F", 6: "ROCKS BLOCK THE VINE", 8: "WATCH THE ROLL", 10: "PRESS H", 15: "NO MORE HELP"}
 	tutorial_text = messages.get(stage_number, "")
 	tutorial_remaining = Balance.TUTORIAL_SECONDS if tutorial_text != "" else 0.0
 
@@ -754,6 +754,7 @@ func _setup_hud() -> void:
 	intro_label.add_theme_stylebox_override("normal", intro_panel)
 	_add_label("Pause", Vector2(315, 235), "PAUSED - ESC TO RESUME", 22)
 	_add_label("StageBanner", Vector2(360, 90), "", 20)
+	_add_label("StageCounter", Vector2(16, 62), "STAGE 1 / 30", 14)
 	_add_label("Tutorial", Vector2(360, 130), "", 22)
 	_add_label("TimeWings", Vector2(690, 22), "", 16)
 	_add_label("FireWings", Vector2(690, 44), "", 16)
@@ -875,6 +876,8 @@ func layout_hud_for_viewport(viewport_size: Vector2) -> void:
 	_layout_centered_label($HUD/RewardToast, width, 154.0, 30.0, 190.0)
 	_layout_centered_label($HUD/LevelUpCard, width, 198.0, 42.0, 190.0)
 	_layout_centered_label($HUD/StageBanner, width, 124.0 if portrait else 86.0, 30.0, 82.0 if portrait else 300.0)
+	$HUD/StageCounter.position = Vector2(8.0 if portrait else 14.0, 172.0 if portrait else 58.0)
+	$HUD/StageCounter.size = Vector2(112.0, 22.0)
 	_layout_centered_label($HUD/Tutorial, width, 158.0 if portrait else 122.0, 36.0, 82.0 if portrait else 300.0)
 	var map_height := minf(360.0, height - (370.0 if portrait else 112.0))
 	$HUD/MiniMap.position = Vector2(16.0 if portrait else 22.0, 205.0 if portrait else 86.0)
@@ -1037,6 +1040,7 @@ func _update_hud() -> void:
 	$HUD/Gauge.visible = playing
 	$HUD/MiniMap.visible = playing
 	$HUD/StageBanner.visible = playing
+	$HUD/StageCounter.visible = playing
 	$HUD/Tutorial.visible = playing
 	$HUD/TimeWings.visible = playing
 	$HUD/TimeWingsOrb.visible = playing
@@ -1064,6 +1068,7 @@ func _update_hud() -> void:
 	$HUD/TouchFire.visible = playing and DisplayServer.is_touchscreen_available()
 	$HUD/Mute.text = "SOUND OFF" if audio.muted else "SOUND ON"
 	$HUD/StageBanner.text = stages.stage_banner if stages.stage_banner_remaining > 0.0 and app_state == AppState.PLAYING else ""
+	$HUD/StageCounter.text = "STAGE %d / 30" % stages.stage_for_y(player.global_position.y)
 	var route_hint_visible := tutorial_text != "CHANGE BRANCH" or stages.branch_targets_visible(player.global_position.y, get_viewport_rect().size.y)
 	$HUD/Tutorial.text = tutorial_text if tutorial_remaining > 0.0 and app_state == AppState.PLAYING and route_hint_visible else ""
 	$HUD/TimeWings.text = _time_wings_status()
@@ -1076,7 +1081,7 @@ func _update_hud() -> void:
 	_update_time_wings_orb()
 	if app_state == AppState.GAME_COMPLETE:
 		$HUD/Stats.text = _stats_text()
-		$HUD/Complete.text = "YOU MADE IT - STAGE 5"
+		$HUD/Complete.text = "YOU MADE IT - STAGE %d" % Balance.STAGE_COUNT
 		$HUD/Replay.text = "ENTER / TAP TO PLAY AGAIN"
 	else:
 		$HUD/Stats.text = ""
@@ -1224,7 +1229,7 @@ func _apply_debug_meta_overrides() -> void:
 func _start_debug_stage(stage_number: int) -> void:
 	if stage_number <= 1 or stage_number > Balance.STAGE_COUNT:
 		return
-	var start_y := -Balance.STAGE_HEIGHT * float(stage_number - 1)
+	var start_y := stages.stage_bottom_y(stage_number)
 	player.reset_run(Vector2(0.0, start_y))
 	spider.reset_run(Vector2(0.0, start_y + Balance.START_DISTANCE))
 	stages.update_progress(start_y)
