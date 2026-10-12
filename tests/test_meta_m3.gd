@@ -10,6 +10,26 @@ func _init() -> void:
 	var save := SaveManager.new(TEST_PATH)
 	var economy := EconomyManager.new()
 	_check(economy.initialize(save), "config loads")
+	var all_characters_available := true
+	var all_anchors_valid := true
+	var all_masks_present := true
+	var frame_names := ["climb_left", "climb_right", "climb_reach", "jump", "hurt", "fall", "cheer", "hang"]
+	for skin_id in ["M1", "M2", "M3", "F1", "F2", "F3"]:
+		all_characters_available = all_characters_available and economy.character_available(skin_id)
+		var root := "res://assets/art/character_frames/%s" % skin_id.to_lower()
+		var anchor_file := FileAccess.open("%s/anchors.json" % root, FileAccess.READ)
+		if anchor_file == null:
+			all_anchors_valid = false
+		else:
+			var parsed: Variant = JSON.parse_string(anchor_file.get_as_text())
+			var anchors: Dictionary = parsed.get("frames", {}) if parsed is Dictionary else {}
+			for frame_name in frame_names:
+				var anchor: Dictionary = anchors.get(frame_name, {})
+				all_anchors_valid = all_anchors_valid and anchor.has("head_center") and anchor.has("head_width") and anchor.has("face_view")
+				all_masks_present = all_masks_present and ResourceLoader.exists("%s/%s_outfit_mask.png" % [root, frame_name])
+	_check(all_characters_available, "six packaged character skins available")
+	_check(all_anchors_valid, "48 frame head anchors valid")
+	_check(all_masks_present, "48 frame outfit masks available")
 	economy.gold = 1000
 	economy.level = 1
 	_check(not economy.buy("face_goggles") and economy.locked_reason("face_goggles") == "LV 3", "level lock")

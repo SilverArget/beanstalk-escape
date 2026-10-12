@@ -58,6 +58,11 @@ func _build() -> void:
 	mouse_filter = Control.MOUSE_FILTER_STOP
 	panel = Panel.new()
 	panel.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	var backdrop := StyleBoxFlat.new()
+	backdrop.bg_color = Color("102d27")
+	backdrop.border_color = Color("d0a83c")
+	backdrop.set_border_width_all(3)
+	panel.add_theme_stylebox_override("panel", backdrop)
 	add_child(panel)
 	title_label = Label.new()
 	title_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -159,31 +164,49 @@ func _rebuild_cards() -> void:
 		for item in economy.cosmetic_catalog(active_tab):
 			grid.add_child(_cosmetic_card(item))
 
-func _base_card(title: String, subtitle: String) -> VBoxContainer:
-	var card := VBoxContainer.new()
-	card.custom_minimum_size = Vector2(142, 174)
+func _base_card(title: String, subtitle: String) -> PanelContainer:
+	var card := PanelContainer.new()
+	card.custom_minimum_size = Vector2(168, 220)
+	var card_style := StyleBoxFlat.new()
+	card_style.bg_color = Color("183c32")
+	card_style.border_color = Color("cda944")
+	card_style.set_border_width_all(2)
+	card_style.set_corner_radius_all(8)
+	card_style.content_margin_left = 8.0
+	card_style.content_margin_right = 8.0
+	card_style.content_margin_top = 6.0
+	card_style.content_margin_bottom = 6.0
+	card.add_theme_stylebox_override("panel", card_style)
+	var body := VBoxContainer.new()
+	card.add_child(body)
 	var name_label := Label.new()
 	name_label.text = title
 	name_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	name_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	name_label.custom_minimum_size.y = 38
-	card.add_child(name_label)
+	name_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	name_label.custom_minimum_size.y = 40
+	body.add_child(name_label)
 	var sub := Label.new()
 	sub.text = subtitle
 	sub.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	sub.add_theme_font_size_override("font_size", 12)
-	card.add_child(sub)
+	sub.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	body.add_child(sub)
 	return card
+
+func _card_body(card: PanelContainer) -> VBoxContainer:
+	return card.get_child(0) as VBoxContainer
 
 func _character_card(character_id: String, data: Dictionary) -> Control:
 	var card := _base_card("%s · %s" % [character_id, data.name], "LV %d · %d GOLD" % [int(data.level), int(data.price)])
+	var body := _card_body(card)
 	var portrait := TextureRect.new()
-	portrait.custom_minimum_size = Vector2(90, 78)
+	portrait.custom_minimum_size = Vector2(112, 104)
 	portrait.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	portrait.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 	var path := "res://assets/art/character_frames/%s/hang.png" % character_id.to_lower()
 	if ResourceLoader.exists(path): portrait.texture = load(path)
-	card.add_child(portrait)
+	body.add_child(portrait)
 	var button := Button.new()
 	button.custom_minimum_size.y = 36
 	var owned: bool = economy.shop.owned.has(character_id)
@@ -198,7 +221,7 @@ func _character_card(character_id: String, data: Dictionary) -> Control:
 	else:
 		button.text = reason
 		button.disabled = true
-	card.add_child(button)
+	body.add_child(button)
 	card.mouse_entered.connect(func(): _preview_character(character_id))
 	button.focus_entered.connect(func(): _preview_character(character_id))
 	return card
@@ -207,12 +230,13 @@ func _cosmetic_card(item: Dictionary) -> Control:
 	var source := str(item.get("source", ""))
 	var subtitle := source if not source.is_empty() else "%s · LV %d" % [item.rarity, int(item.level)]
 	var card := _base_card(str(item.name), subtitle)
+	var body := _card_body(card)
 	var icon := TextureRect.new()
-	icon.custom_minimum_size = Vector2(90, 78)
+	icon.custom_minimum_size = Vector2(112, 104)
 	icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 	icon.texture = load("res://assets/art/cosmetics/%s" % item.image)
-	card.add_child(icon)
+	body.add_child(icon)
 	var button := Button.new()
 	button.custom_minimum_size.y = 36
 	var item_id := str(item.id)
@@ -228,7 +252,7 @@ func _cosmetic_card(item: Dictionary) -> Control:
 	else:
 		button.text = reason
 		button.disabled = true
-	card.add_child(button)
+	body.add_child(button)
 	card.mouse_entered.connect(func(): _preview_item(item))
 	button.focus_entered.connect(func(): _preview_item(item))
 	return card

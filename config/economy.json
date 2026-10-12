@@ -34,7 +34,7 @@
     {"id": "trail_leaf", "slot": "TRAIL", "name": "LEAF WAKE", "rarity": "COMMON", "image": "leaf_trail.png"},
     {"id": "trail_cloud", "slot": "TRAIL", "name": "CLOUD WAKE", "rarity": "RARE", "image": "cloud_trail.png"},
     {"id": "trail_star", "slot": "TRAIL", "name": "STAR WAKE", "rarity": "EPIC", "image": "star_trail.png", "source": "MAP TREASURE"},
-    {"id": "outfit_moss", "slot": "OUTFIT", "name": "MOSS WEAVE", "rarity": "COMMON", "image": "moss_weave.png", "tint": "6fa84f"},
+    {"id": "outfit_moss", "slot": "OUTFIT", "name": "MOSS WEAVE", "rarity": "COMMON", "image": "moss_weave.png", "tint": "d6a83f"},
     {"id": "outfit_sky", "slot": "OUTFIT", "name": "SKY WEAVE", "rarity": "RARE", "image": "sky_weave.png", "tint": "416b9c", "source": "DAY 7 BONUS"},
     {"id": "outfit_ember", "slot": "OUTFIT", "name": "EMBER WEAVE", "rarity": "EPIC", "image": "ember_weave.png", "tint": "b85b35"}
   ]

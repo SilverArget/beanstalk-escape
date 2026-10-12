@@ -91,7 +91,8 @@ func cosmetic_catalog(slot := "") -> Array:
 
 func character_available(character_id: String) -> bool:
 	var normalized := character_id.to_upper()
-	return config.get("characters", {}).has(normalized) and DirAccess.dir_exists_absolute(ProjectSettings.globalize_path("res://assets/art/character_frames/%s" % normalized.to_lower()))
+	var required_frame := "res://assets/art/character_frames/%s/hang.png" % normalized.to_lower()
+	return config.get("characters", {}).has(normalized) and ResourceLoader.exists(required_frame)
 
 func locked_reason(item_id: String) -> String:
 	var item := _catalog_item(item_id)

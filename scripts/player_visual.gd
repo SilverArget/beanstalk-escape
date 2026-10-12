@@ -4,6 +4,7 @@ extends Node2D
 const FRAME_ROOT := "res://assets/art/character_frames"
 const WING_TEXTURE := preload("res://assets/art/character_rig/wing/time_wings.png")
 const FRAME_NAMES := ["climb_left", "climb_right", "climb_reach", "hang"]
+const SKIN_IDS := ["M1", "M2", "M3", "F1", "F2", "F3"]
 const FRAME_RATE := 8.0
 const ART_SCALE := 0.49
 const BASE_Y := -7.2
@@ -23,6 +24,10 @@ var flash_material: ShaderMaterial
 var cosmetic_sprites: Dictionary = {}
 var equipped_cosmetics := {"HAT": "", "FACE": "", "TRAIL": "", "OUTFIT": ""}
 var cosmetic_data: Dictionary = {}
+var anchor_data: Dictionary = {}
+var outfit_masks: Dictionary = {}
+var face_strap: Line2D
+var face_knot: Polygon2D
 
 func _ready() -> void:
 	_build_visual()
@@ -56,16 +61,18 @@ func _unhandled_input(event: InputEvent) -> void:
 
 func _update_mode(player: PlayerController, delta: float) -> void:
 	var game := player.get_parent()
-	var app_state := int(game.get("app_state")) if game != null else 1
-	if app_state == 0:
+	var app_state := int(game.get("app_state")) if game != null else GameManager.AppState.MENU
+	if app_state == GameManager.AppState.PAUSED:
+		return
+	if app_state in [GameManager.AppState.MENU, GameManager.AppState.INTRO, GameManager.AppState.SHOP, GameManager.AppState.CHARACTER_SELECT]:
 		_set_mode("menu", "hang")
-	elif app_state == 3:
+	elif app_state == GameManager.AppState.PLAYER_DEAD:
 		if mode != "death":
 			death_offset = 0.0
 		death_offset = minf(death_offset + delta * 76.0, 92.0)
 		_set_mode("death", "fall")
 		sprite.position = Vector2(0.0, BASE_Y + death_offset)
-	elif app_state == 4 or celebrate_remaining > 0.0:
+	elif app_state == GameManager.AppState.GAME_COMPLETE or celebrate_remaining > 0.0:
 		_set_mode("celebrate", "cheer")
 	elif hurt_remaining > 0.0:
 		_set_mode("hurt", "hurt")
@@ -92,26 +99,43 @@ func _set_frame(requested_frame: String) -> void:
 		return
 	frame_name = requested_frame
 	sprite.texture = frame_textures.get(requested_frame) as Texture2D
+	flash_material.set_shader_parameter("outfit_mask_texture", outfit_masks.get(requested_frame))
+	_update_cosmetic_anchors()
 
 func set_skin(requested_skin: String) -> bool:
 	var normalized := requested_skin.to_upper()
-	if normalized not in ["M1", "M2", "M3", "F1", "F2", "F3"] or not _skin_exists(normalized):
+	if normalized not in SKIN_IDS or not _skin_exists(normalized):
 		return false
 	_load_skin(normalized)
 	return true
 
 func _load_skin(requested_skin: String) -> void:
 	var normalized := requested_skin.to_upper()
-	skin_id = normalized if normalized in ["M1", "M2", "M3", "F1", "F2", "F3"] and _skin_exists(normalized) else "M1"
+	skin_id = normalized if normalized in SKIN_IDS and _skin_exists(normalized) else "M1"
 	frame_textures.clear()
+	outfit_masks.clear()
 	for requested_frame in ["climb_left", "climb_right", "climb_reach", "jump", "hurt", "fall", "cheer", "hang"]:
 		frame_textures[requested_frame] = load("%s/%s/%s.png" % [FRAME_ROOT, skin_id.to_lower(), requested_frame])
+		var mask_path := "%s/%s/%s_outfit_mask.png" % [FRAME_ROOT, skin_id.to_lower(), requested_frame]
+		if ResourceLoader.exists(mask_path):
+			outfit_masks[requested_frame] = load(mask_path)
+	_load_anchors()
 	var current := frame_name
 	frame_name = ""
 	_set_frame(current)
 
 func _skin_exists(requested_skin: String) -> bool:
-	return DirAccess.dir_exists_absolute(ProjectSettings.globalize_path("%s/%s" % [FRAME_ROOT, requested_skin.to_lower()]))
+	return ResourceLoader.exists("%s/%s/hang.png" % [FRAME_ROOT, requested_skin.to_lower()])
+
+func _load_anchors() -> void:
+	anchor_data.clear()
+	var path := "%s/%s/anchors.json" % [FRAME_ROOT, skin_id.to_lower()]
+	var file := FileAccess.open(path, FileAccess.READ)
+	if file == null:
+		return
+	var parsed: Variant = JSON.parse_string(file.get_as_text())
+	if parsed is Dictionary:
+		anchor_data = (parsed as Dictionary).get("frames", {}).duplicate(true)
 
 func set_cosmetics(equipped: Dictionary, catalog: Array) -> void:
 	equipped_cosmetics = equipped.duplicate(true)
@@ -148,16 +172,44 @@ func _update_cosmetic_anchors() -> void:
 	if used.size == Vector2i.ZERO:
 		return
 	var texture_size := Vector2(image.get_width(), image.get_height())
-	var center_x := float(used.position.x) + float(used.size.x) * 0.5
-	var top_y := float(used.position.y)
+	var frame_anchor: Dictionary = anchor_data.get(frame_name, {})
+	var center_data: Array = frame_anchor.get("head_center", [float(used.get_center().x), float(used.position.y) + float(used.size.y) * 0.25])
+	var head_center := Vector2(float(center_data[0]), float(center_data[1]))
+	var head_width := float(frame_anchor.get("head_width", float(used.size.x) * 0.42))
 	var source_to_local := func(source_point: Vector2) -> Vector2:
 		return sprite.position + (source_point - texture_size * 0.5) * ART_SCALE
 	var hat := cosmetic_sprites.get("HAT") as Sprite2D
 	var face := cosmetic_sprites.get("FACE") as Sprite2D
 	var trail := cosmetic_sprites.get("TRAIL") as Sprite2D
-	hat.position = source_to_local.call(Vector2(center_x, top_y - float(used.size.y) * 0.025))
-	face.position = source_to_local.call(Vector2(center_x, top_y + float(used.size.y) * 0.19))
-	trail.position = source_to_local.call(Vector2(center_x, float(used.end.y) - float(used.size.y) * 0.08))
+	hat.position = source_to_local.call(head_center - Vector2(0.0, head_width * 0.56))
+	face.position = source_to_local.call(head_center + Vector2(0.0, head_width * 0.04))
+	trail.position = source_to_local.call(Vector2(head_center.x, float(used.end.y) - float(used.size.y) * 0.08))
+	if hat.texture != null:
+		var hat_scale := head_width * ART_SCALE * 1.45 / maxf(float(hat.texture.get_width()), 1.0)
+		hat.scale = Vector2.ONE * hat_scale
+	if face.texture != null:
+		var face_scale := head_width * ART_SCALE * 0.92 / maxf(float(face.texture.get_width()), 1.0)
+		face.scale = Vector2.ONE * face_scale
+	var face_equipped := not str(equipped_cosmetics.get("FACE", "")).is_empty()
+	var face_front := str(frame_anchor.get("face_view", "back")) == "front"
+	face.visible = face_equipped and face_front
+	face_strap.visible = face_equipped and not face_front
+	face_knot.visible = face_strap.visible
+	if face_strap.visible:
+		var local_head_width := head_width * ART_SCALE
+		face_strap.position = source_to_local.call(head_center + Vector2(0.0, head_width * 0.02))
+		face_strap.points = PackedVector2Array([
+			Vector2(-local_head_width * 0.42, 0.0),
+			Vector2(0.0, local_head_width * 0.09),
+			Vector2(local_head_width * 0.42, 0.0),
+		])
+		face_strap.width = maxf(2.2, local_head_width * 0.09)
+		face_knot.position = face_strap.position + Vector2(local_head_width * 0.32, local_head_width * 0.03)
+		var knot_size := maxf(2.8, local_head_width * 0.12)
+		face_knot.polygon = PackedVector2Array([
+			Vector2(-knot_size, 0.0), Vector2(0.0, -knot_size),
+			Vector2(knot_size, 0.0), Vector2(0.0, knot_size),
+		])
 
 func play_celebration() -> void:
 	celebrate_remaining = 0.75
@@ -193,6 +245,7 @@ shader_type canvas_item;
 uniform float flash_amount : hint_range(0.0, 1.0) = 0.0;
 uniform float outfit_enabled : hint_range(0.0, 1.0) = 0.0;
 uniform vec4 outfit_color : source_color = vec4(1.0);
+uniform sampler2D outfit_mask_texture : filter_linear;
 uniform vec4 outline_color : source_color = vec4(0.035, 0.043, 0.071, 1.0);
 uniform float outline_source_px = 4.1;
 uniform vec2 shadow_source_offset = vec2(0.0, 7.0);
@@ -220,11 +273,9 @@ void fragment() {
 	float border_alpha = max(outline_alpha - pixel.a, 0.0);
 	float backdrop_alpha = max(border_alpha, shadow_alpha * (1.0 - outline_alpha));
 	vec3 backdrop_color = mix(vec3(0.02, 0.025, 0.035), outline_color.rgb, step(shadow_alpha, border_alpha));
-	// Restrict dye to the clothed torso/leg zone. The head/hair/face and outer
-	// hand zone remain the source art; alpha and luminance preserve shading.
-	float body_y = smoothstep(0.34, 0.44, UV.y) * (1.0 - smoothstep(0.91, 0.98, UV.y));
-	float body_x = smoothstep(0.12, 0.27, UV.x) * (1.0 - smoothstep(0.73, 0.88, UV.x));
-	float cloth_mask = body_y * body_x * outfit_enabled * pixel.a;
+	// Offline masks isolate the original garment pixels for every skin/pose.
+	// Hair, skin, face, gloves, boots, bag and the dark outline remain untouched.
+	float cloth_mask = texture(outfit_mask_texture, UV).a * outfit_enabled * pixel.a;
 	float luminance = dot(pixel.rgb, vec3(0.299, 0.587, 0.114));
 	vec3 dyed = outfit_color.rgb * mix(0.42, 1.34, luminance);
 	vec3 outfitted_rgb = mix(pixel.rgb, dyed, cloth_mask * 0.72);
@@ -246,3 +297,17 @@ void fragment() {
 		layer.visible = false
 		add_child(layer)
 		cosmetic_sprites[slot] = layer
+	face_strap = Line2D.new()
+	face_strap.name = "FaceBackStrap"
+	face_strap.default_color = Color("365f45")
+	face_strap.begin_cap_mode = Line2D.LINE_CAP_ROUND
+	face_strap.end_cap_mode = Line2D.LINE_CAP_ROUND
+	face_strap.z_index = 2
+	face_strap.visible = false
+	add_child(face_strap)
+	face_knot = Polygon2D.new()
+	face_knot.name = "FaceBackKnot"
+	face_knot.color = Color("284a38")
+	face_knot.z_index = 2
+	face_knot.visible = false
+	add_child(face_knot)
