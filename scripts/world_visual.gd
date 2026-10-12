@@ -86,6 +86,10 @@ func _draw_sky(camera_top: float) -> void:
 	var stage_progress := stages.progress_in_stage(player.global_position.y) if stages != null and player != null else 0.0
 	var rock_mix := clampf((float(stage_number) - 5.0 + stage_progress) / 2.0, 0.0, 1.0)
 	var violet_mix := clampf((float(stage_number) - 10.0 + stage_progress) / 2.0, 0.0, 1.0)
+	var storm_mix := clampf((float(stage_number) - 15.0 + stage_progress) / 2.0, 0.0, 1.0)
+	var lightning_mix := clampf((float(stage_number) - 20.0 + stage_progress) / 2.0, 0.0, 1.0)
+	var upper_cloud_mix := clampf((float(stage_number) - 25.0 + stage_progress) / 2.0, 0.0, 1.0)
+	var summit_mix := clampf((float(stage_number) - 29.0 + stage_progress) / 1.0, 0.0, 1.0)
 	if rock_mix > 0.0:
 		draw_rect(view_rect, Color(0.34, 0.38, 0.47, 0.18 * rock_mix))
 	if violet_mix > 0.0:
@@ -93,6 +97,17 @@ func _draw_sky(camera_top: float) -> void:
 		for fog_index in 4:
 			var fog_y := view_rect.position.y + fposmod(float(fog_index) * 151.0 - camera_top * 0.08, view_rect.size.y)
 			draw_circle(Vector2(view_rect.get_center().x + sin(float(fog_index) * 2.1) * 260.0, fog_y), 150.0, Color(0.70, 0.56, 0.82, 0.035 * violet_mix))
+	if storm_mix > 0.0:
+		draw_rect(view_rect, Color(0.10, 0.16, 0.25, 0.32 * storm_mix * (1.0 - summit_mix)))
+	if lightning_mix > 0.0:
+		var distant_flash := pow(maxf(sin(Time.get_ticks_msec() * 0.0017 + float(stage_number)), 0.0), 18.0)
+		draw_rect(view_rect, Color(0.72, 0.77, 0.92, distant_flash * 0.16 * lightning_mix * (1.0 - summit_mix)))
+	if upper_cloud_mix > 0.0:
+		for fog_index in 5:
+			var fog_y := view_rect.position.y + fposmod(float(fog_index) * 127.0 - camera_top * 0.06, view_rect.size.y)
+			draw_circle(Vector2(view_rect.get_center().x + sin(float(fog_index) * 1.8) * 300.0, fog_y), 190.0, Color(0.74, 0.79, 0.84, 0.075 * upper_cloud_mix * (1.0 - summit_mix)))
+	if summit_mix > 0.0:
+		draw_rect(view_rect, Color(1.0, 0.78, 0.34, 0.24 * summit_mix))
 	_draw_far_vines(camera_top)
 
 func _draw_far_vines(camera_top: float) -> void:

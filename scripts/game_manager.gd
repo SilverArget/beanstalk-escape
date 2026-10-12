@@ -4,7 +4,7 @@ extends Node2D
 const TIME_WINGS_ORB := preload("res://assets/art/gpt/items/wing_orb.png")
 
 enum State { PLAYING, PLAYER_DEAD, PROTOTYPE_COMPLETE }
-enum AppState { MENU, INTRO, PLAYING, PAUSED, PLAYER_DEAD, GAME_COMPLETE, SHOP, CHARACTER_SELECT }
+enum AppState { MENU, INTRO, PLAYING, PAUSED, PLAYER_DEAD, FINAL_CINEMATIC, GAME_COMPLETE, SHOP, CHARACTER_SELECT }
 enum DeathCause { NONE, FALL, CAUGHT, OBSTACLE }
 var state := State.PLAYING
 var app_state := AppState.MENU
@@ -66,6 +66,10 @@ var intro_t := 0.0
 var debug_start_stage := 1
 var debug_sandbox := ""
 var meta_ui: MetaShopUI
+const FINAL_CINEMATIC_SECONDS := 8.0
+var final_t := 0.0
+var final_character: Sprite2D
+var final_wings: Polygon2D
 
 func _ready() -> void:
 	process_physics_priority = 10
@@ -103,6 +107,11 @@ func _physics_process(delta: float) -> void:
 			return
 	if app_state == AppState.INTRO:
 		_update_intro(delta)
+		_update_hud()
+		_publish_readonly_web_state()
+		return
+	if app_state == AppState.FINAL_CINEMATIC:
+		_update_final_cinematic(delta)
 		_update_hud()
 		_publish_readonly_web_state()
 		return
@@ -146,6 +155,9 @@ func _physics_process(delta: float) -> void:
 func _unhandled_input(event: InputEvent) -> void:
 	if app_state == AppState.INTRO and _is_intro_skip_event(event):
 		_finish_intro()
+		return
+	if app_state == AppState.FINAL_CINEMATIC and _is_intro_skip_event(event):
+		_finish_final_cinematic()
 		return
 	if event is InputEventKey and event.pressed and not event.echo and _debug_state_enabled():
 		if event.physical_keycode == KEY_3:
@@ -438,8 +450,70 @@ func restart_stage() -> void:
 
 func _on_prototype_completed() -> void:
 	state = State.PROTOTYPE_COMPLETE
+	_start_final_cinematic()
+
+func _start_final_cinematic() -> void:
+	final_t = 0.0
+	app_state = AppState.FINAL_CINEMATIC
+	player.set_physics_process(false)
+	spider.set_physics_process(false)
+	beans.set_physics_process(false)
+	rocks.set_physics_process(false)
+	$HUD/IntroSummit.visible = true
+	$HUD/IntroSummit.modulate = Color.WHITE
+	$HUD/IntroText.visible = true
+	$HUD/IntroText.text = "THE TOP OF THE WORLD"
+	var body := player.get_node_or_null("Body") as PlayerVisual
+	if body != null and body.sprite != null:
+		final_character.texture = body.sprite.texture
+	final_character.visible = true
+	final_character.position = Vector2(480.0, 330.0)
+	final_character.rotation = 0.0
+	final_wings.visible = false
+	_update_hud()
+
+func _update_final_cinematic(delta: float) -> void:
+	final_t = minf(final_t + delta, FINAL_CINEMATIC_SECONDS)
+	if final_t < 2.0:
+		$HUD/IntroText.text = "AT THE SUMMIT, THE GUARDIAN CATCHES UP."
+		final_character.position = Vector2(480.0, 330.0)
+	elif final_t < 3.0:
+		$HUD/IntroText.text = "JUMP."
+		final_character.position = Vector2(480.0 + (final_t - 2.0) * 54.0, 330.0 + (final_t - 2.0) * 130.0)
+		final_character.rotation = 0.18
+	else:
+		$HUD/IntroText.text = "THE WOOD-AND-CLOTH WINGS OPEN ABOVE THE CLOUDS."
+		final_wings.visible = true
+		var glide := (final_t - 3.0) / 5.0
+		final_character.position = Vector2(534.0 + glide * 270.0, 430.0 - glide * 210.0 + sin(glide * TAU) * 18.0)
+		final_character.rotation = -0.16
+		final_wings.position = final_character.position
+	if final_t >= FINAL_CINEMATIC_SECONDS:
+		_finish_final_cinematic()
+
+func _finish_final_cinematic() -> void:
+	if app_state != AppState.FINAL_CINEMATIC:
+		return
+	final_t = FINAL_CINEMATIC_SECONDS
+	final_character.visible = false
+	final_wings.visible = false
+	$HUD/IntroSummit.visible = false
+	$HUD/IntroText.visible = false
 	app_state = AppState.GAME_COMPLETE
 	_update_hud()
+	call_deferred("_focus_complete_action")
+
+func _focus_complete_action() -> void:
+	if app_state == AppState.GAME_COMPLETE:
+		($HUD/CompleteNewRun as Button).grab_focus()
+
+func _complete_new_run() -> void:
+	if app_state == AppState.GAME_COMPLETE:
+		_show_character_select()
+
+func _complete_menu() -> void:
+	if app_state == AppState.GAME_COMPLETE:
+		_show_menu()
 
 func _on_stage_completed(stage_number: int) -> void:
 	var player_body := player.get_node_or_null("Body")
@@ -533,8 +607,11 @@ func _request_confirm() -> void:
 		else:
 			_focus_default_death_action()
 	elif app_state == AppState.GAME_COMPLETE:
-		restart()
-		_begin_intro()
+		var focused := get_viewport().gui_get_focus_owner() as Button
+		if focused != null and focused.visible:
+			focused.pressed.emit()
+		else:
+			_complete_new_run()
 
 func _spider_can_catch() -> bool:
 	var claw_half_width := ScaleLock.BRANCH_CENTER_GAP + ScaleLock.BRANCH_WIDTH * 0.5
@@ -784,6 +861,19 @@ func _setup_hud() -> void:
 	$HUD.add_child(wings_orb)
 	_add_label("Stats", Vector2(300, 190), "", 18)
 	_add_label("Replay", Vector2(300, 375), "", 18)
+	_add_action_button("CompleteNewRun", "NEW RUN", _complete_new_run)
+	_add_action_button("CompleteMenu", "MENU", _complete_menu)
+	final_character = Sprite2D.new()
+	final_character.name = "FinalCharacter"
+	final_character.scale = Vector2.ONE * 0.49
+	final_character.visible = false
+	$HUD.add_child(final_character)
+	final_wings = Polygon2D.new()
+	final_wings.name = "FinalWoodClothWings"
+	final_wings.polygon = PackedVector2Array([Vector2(-98, 0), Vector2(-28, -30), Vector2(0, -8), Vector2(28, -30), Vector2(98, 0), Vector2(34, 22), Vector2(0, 8), Vector2(-34, 22)])
+	final_wings.color = Color("d9b878")
+	final_wings.visible = false
+	$HUD.add_child(final_wings)
 	var mini := Control.new()
 	mini.name = "MiniMap"
 	mini.set_script(load("res://scripts/mini_map.gd"))
@@ -890,6 +980,11 @@ func layout_hud_for_viewport(viewport_size: Vector2) -> void:
 	_layout_intro_text(Vector2(width, height))
 	_layout_centered_label($HUD/Stats, width, height * 0.38, 140.0, 44.0)
 	_layout_centered_label($HUD/Replay, width, height * 0.76, 44.0, 36.0)
+	var complete_width := minf(210.0, (width - 48.0) * 0.5)
+	$HUD/CompleteNewRun.position = Vector2(width * 0.5 - complete_width - 6.0, height - 76.0)
+	$HUD/CompleteNewRun.size = Vector2(complete_width, 52.0)
+	$HUD/CompleteMenu.position = Vector2(width * 0.5 + 6.0, height - 76.0)
+	$HUD/CompleteMenu.size = Vector2(complete_width, 52.0)
 	var touch_y := height - 148.0
 	$HUD/TouchLeft.position = Vector2(18.0, touch_y)
 	$HUD/TouchLeft.size = Vector2(104.0, 128.0)
@@ -1032,10 +1127,12 @@ func _update_hud() -> void:
 	$HUD/Complete.visible = app_state == AppState.GAME_COMPLETE
 	$HUD/Stats.visible = app_state == AppState.GAME_COMPLETE
 	$HUD/Replay.visible = app_state == AppState.GAME_COMPLETE
+	$HUD/CompleteNewRun.visible = app_state == AppState.GAME_COMPLETE
+	$HUD/CompleteMenu.visible = app_state == AppState.GAME_COMPLETE
 	$HUD/MenuLogo.visible = app_state == AppState.MENU
 	$HUD/NewRun.visible = app_state == AppState.MENU
 	$HUD/Shop.visible = app_state == AppState.MENU
-	$HUD/IntroText.visible = app_state == AppState.INTRO
+	$HUD/IntroText.visible = app_state in [AppState.INTRO, AppState.FINAL_CINEMATIC]
 	$HUD/ReduceMotion.visible = app_state == AppState.PAUSED
 	$HUD/Gauge.visible = playing
 	$HUD/MiniMap.visible = playing
@@ -1082,7 +1179,7 @@ func _update_hud() -> void:
 	if app_state == AppState.GAME_COMPLETE:
 		$HUD/Stats.text = _stats_text()
 		$HUD/Complete.text = "YOU MADE IT - STAGE %d" % Balance.STAGE_COUNT
-		$HUD/Replay.text = "ENTER / TAP TO PLAY AGAIN"
+		$HUD/Replay.text = "CHOOSE NEW RUN OR MENU"
 	else:
 		$HUD/Stats.text = ""
 		$HUD/Replay.text = ""
@@ -1139,7 +1236,9 @@ func _stats_text() -> String:
 	var mm := total_seconds / 60
 	var ss := total_seconds % 60
 	var best_m := best_spider_distance / Balance.PIXELS_PER_METER
-	return "TIME %02d:%02d\nBEAN HITS %d\nCLOSE CALLS %d\nSKILLS USED %d\nBEST SPIDER DISTANCE %.1fm" % [mm, ss, beans.hit_count, close_calls, skills_used, best_m]
+	var deaths := 0
+	for count in death_count_by_stage.values(): deaths += int(count)
+	return "TIME %02d:%02d\nDEATHS / RETRIES %d / %d\nBEAN / ROCK HITS %d / %d\nCLOSE CALLS %d\nSKILLS USED %d\nGOLD COLLECTED %d\nBEST SPIDER DISTANCE %.1fm" % [mm, ss, deaths, stage_restart_count, beans.hit_count, rocks.hit_count, close_calls, skills_used, golds.collected_ids.size(), best_m]
 
 func _publish_readonly_web_state() -> void:
 	if not OS.has_feature("web") or not _debug_state_enabled():
@@ -1175,6 +1274,7 @@ func _readonly_state_snapshot() -> Dictionary:
 	return {
 		"app_state": AppState.keys()[app_state],
 		"intro": {"active": intro_active, "beat": intro_beat, "t": intro_t, "visual_mode": INTRO_VISUAL_MODES[intro_beat] if intro_active else "none"},
+		"final": {"active": app_state == AppState.FINAL_CINEMATIC, "t": final_t, "duration": FINAL_CINEMATIC_SECONDS},
 		"death_cause": DeathCause.keys()[death_cause],
 		"stage": stages.stage_for_y(player.global_position.y),
 		"player": {"x": player.global_position.x, "y": player.global_position.y, "vy": player.velocity.y},

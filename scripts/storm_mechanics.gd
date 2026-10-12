@@ -24,6 +24,7 @@ var rain := {"lane": 0, "anchor": 1900.0, "warned": false, "released": [false, f
 var wind_audio_announced := false
 var break_audio_announced := false
 var web_audio_announced := false
+var campaign_slots: Array = []
 
 func _ready() -> void:
 	process_physics_priority = -5
@@ -53,14 +54,29 @@ func reset_run() -> void:
 	wind_audio_announced = false
 	break_audio_announced = false
 	web_audio_announced = false
+	campaign_slots.clear()
 	if stages != null:
 		stages.clear_runtime_hazards()
+		for pattern: Dictionary in stages.patterns:
+			for source: Dictionary in pattern.get("storm_slots", []):
+				var slot := source.duplicate(true)
+				slot["stage"] = int(pattern.stage)
+				slot["stage_bottom_y"] = stages.stage_bottom_y(int(pattern.stage))
+				slot["clock"] = 0.0
+				slot["touched"] = false
+				slot["active"] = false
+				slot["finished"] = false
+				campaign_slots.append(slot)
 	if beans != null:
 		beans.sandbox_mode = sandbox_active
 	queue_redraw()
 
 func _physics_process(delta: float) -> void:
-	if not sandbox_active or player == null:
+	if player == null:
+		return
+	if not sandbox_active:
+		_update_campaign(delta)
+		queue_redraw()
 		return
 	var climbed := stage_bottom_y - player.global_position.y
 	_update_wind_audio(climbed)
@@ -84,7 +100,19 @@ func wind_envelope(climbed: float) -> float:
 
 func wind_force_at(world_y: float, time_active: bool) -> float:
 	if not sandbox_active:
-		return 0.0
+		var force := 0.0
+		for slot: Dictionary in campaign_slots:
+			if String(slot.kind) != "V":
+				continue
+			var climbed := float(slot.stage_bottom_y) - world_y
+			var local := climbed - float(slot.anchor)
+			var length := float(slot.occupancy[1]) - float(slot.occupancy[0])
+			if local < 0.0 or local > length:
+				continue
+			var edge := minf(40.0, length * 0.25)
+			var envelope := minf(minf(local / edge, (length - local) / edge), 1.0)
+			force += float(slot.direction) * WIND_ACCELERATION * float(slot.gain) * maxf(envelope, 0.0)
+		return force * threat_scale(time_active)
 	var climbed := stage_bottom_y - world_y
 	return float(wind.direction) * WIND_ACCELERATION * float(wind.gain) * wind_envelope(climbed) * threat_scale(time_active)
 
@@ -169,6 +197,7 @@ func _update_rain(climbed: float) -> void:
 func snapshot() -> Dictionary:
 	return {
 		"sandbox": sandbox_active,
+		"campaign_active": campaign_slots.filter(func(slot: Dictionary) -> bool: return bool(slot.active)).size(),
 		"wind": {"strength": wind_envelope(stage_bottom_y - player.global_position.y) if player != null else 0.0, "direction": wind.direction},
 		"breakable": breakable.duplicate(true),
 		"web": web.duplicate(true),
@@ -177,6 +206,7 @@ func snapshot() -> Dictionary:
 
 func _draw() -> void:
 	if not sandbox_active:
+		_draw_campaign()
 		return
 	_draw_wind()
 	_draw_breakable()
@@ -245,3 +275,90 @@ func _draw_rain_rhythm() -> void:
 	for index in 3:
 		var pulse := 7.0 + sin(Time.get_ticks_msec() * 0.012 - float(index) * 1.3) * 2.0
 		draw_circle(Vector2(x - 24.0 + float(index) * 24.0, y + 72.0), pulse, Color(0.98, 0.78, 0.24, 0.88))
+
+func _update_campaign(delta: float) -> void:
+	for slot: Dictionary in campaign_slots:
+		var climbed := float(slot.stage_bottom_y) - player.global_position.y
+		var anchor := float(slot.anchor)
+		var end_height := float(slot.occupancy[1])
+		var kind := String(slot.kind)
+		if kind == "V":
+			slot.active = climbed >= anchor and climbed <= end_height
+			continue
+		if bool(slot.finished):
+			continue
+		if kind == "K":
+			var inside := climbed >= anchor and climbed <= end_height
+			if inside and player.active_branch == int(slot.lane) and player.support_state == PlayerController.SupportState.SUPPORTED:
+				slot.touched = true
+			if bool(slot.touched):
+				slot.clock = minf(float(slot.clock) + delta * threat_scale(player.time_wings_active), BREAK_SECONDS)
+				slot.active = true
+				if float(slot.clock) >= BREAK_SECONDS:
+					slot.finished = true
+					slot.active = false
+					stages.set_runtime_break(int(slot.stage), int(slot.lane), anchor, end_height, true)
+		elif kind == "WEB":
+			if climbed >= anchor and not bool(slot.active):
+				slot.active = true
+				slot.clock = WEB_SECONDS
+				stages.set_runtime_web(int(slot.stage), int(slot.lane), anchor, end_height, true)
+			if bool(slot.active):
+				slot.clock = maxf(float(slot.clock) - delta * threat_scale(player.time_wings_active), 0.0)
+				if float(slot.clock) <= 0.0:
+					slot.active = false
+					slot.finished = true
+					stages.set_runtime_web(int(slot.stage), int(slot.lane), anchor, end_height, false)
+
+func _draw_campaign() -> void:
+	for slot: Dictionary in campaign_slots:
+		var climbed := float(slot.stage_bottom_y) - player.global_position.y if player != null else -INF
+		var anchor := float(slot.anchor)
+		if climbed < float(slot.warning_height) or climbed > float(slot.occupancy[1]) + 180.0:
+			continue
+		var y0 := float(slot.stage_bottom_y) - anchor
+		var y1 := float(slot.stage_bottom_y) - float(slot.occupancy[1])
+		var kind := String(slot.kind)
+		if kind == "V":
+			_draw_campaign_wind(slot, (y0 + y1) * 0.5)
+		elif kind == "K":
+			_draw_campaign_break(slot, y0, y1)
+		elif kind == "WEB":
+			_draw_campaign_web(slot, y0, y1)
+
+func _draw_campaign_wind(slot: Dictionary, center_y: float) -> void:
+	var direction := float(slot.direction)
+	var flow := fposmod(Time.get_ticks_msec() * 0.16, 120.0)
+	for index in 9:
+		var y := center_y - 136.0 + float(index) * 34.0
+		var start_x := -440.0 + flow if direction > 0.0 else 440.0 - flow
+		var finish := Vector2(start_x, y) + Vector2(direction * (620.0 + float(index % 2) * 80.0), -8.0)
+		draw_line(Vector2(start_x, y), finish, Color(0.78, 0.94, 0.88, 0.72), 3.0, true)
+		draw_circle(finish, 6.0, Color(0.52, 0.72, 0.31, 0.92))
+	if player != null:
+		var origin := player.global_position + Vector2(-76.0 * direction, -54.0)
+		var tip := origin + Vector2(direction * 72.0, 0.0)
+		draw_line(origin, tip, Color(1.0, 0.91, 0.42), 8.0, true)
+		draw_colored_polygon(PackedVector2Array([tip, tip + Vector2(-direction * 22.0, -15.0), tip + Vector2(-direction * 22.0, 15.0)]), Color(1.0, 0.91, 0.42))
+
+func _draw_campaign_break(slot: Dictionary, y0: float, y1: float) -> void:
+	var x := _lane_x(int(slot.lane))
+	if bool(slot.finished):
+		draw_line(Vector2(x - 25.0, y0 + 24.0), Vector2(x + 34.0, y0 + 64.0), Color("6f4a28"), 18.0, true)
+		return
+	var shake := sin(Time.get_ticks_msec() * 0.045) * 3.0 * float(slot.clock) / BREAK_SECONDS if bool(slot.touched) else 0.0
+	for step in 4:
+		var y := lerpf(y0, y1, float(step + 1) / 5.0)
+		draw_polyline(PackedVector2Array([Vector2(x - 18.0 + shake, y - 9.0), Vector2(x + 3.0 + shake, y), Vector2(x - 15.0 + shake, y + 11.0)]), Color("3b291d"), 4.0, true)
+
+func _draw_campaign_web(slot: Dictionary, y0: float, y1: float) -> void:
+	var x := _lane_x(int(slot.lane))
+	if not bool(slot.active):
+		draw_circle(Vector2(x + 92.0, y0 + 118.0), 18.0, Color("39213f"))
+		draw_line(Vector2(x + 92.0, y0 + 118.0), Vector2(x, y0), Color(0.92, 0.94, 0.82, 0.70), 3.0, true)
+		return
+	for spoke in 5:
+		var y := lerpf(y0, y1, float(spoke) / 4.0)
+		draw_line(Vector2(x - 27.0, y), Vector2(x + 27.0, y - 22.0), Color(0.95, 0.97, 0.86, 0.82), 3.0, true)
+	for side in [-1.0, 1.0]:
+		draw_line(Vector2(x, y0), Vector2(x + side * 27.0, y1), Color(0.95, 0.97, 0.86, 0.82), 3.0, true)

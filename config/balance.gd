@@ -29,9 +29,7 @@ const SPIDER_PRESSURE_BANDS := [
 ]
 const ROUTE_X := [-150.0, 0.0, 150.0]
 const STAGE_DURATION_SECONDS := 22.4
-# P3a ships the first half of the authored 30-stage campaign. The minimap keeps
-# all 30 destinations visible while runtime completion stops at Stage 15.
-const STAGE_COUNT := 15
+const STAGE_COUNT := 30
 const STAGE_HEIGHT := 2800.0
 const PATTERN_SEED := 20260923
 const BEAN_WARNING_SECONDS := 1.60

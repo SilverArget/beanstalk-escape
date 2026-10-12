@@ -100,6 +100,7 @@ func generate_patterns(seed_value: int) -> Array:
 		var support_windows: Array = []
 		var bean_slots: Array = []
 		var rock_slots: Array = []
+		var storm_slots: Array = []
 		for encounter: Dictionary in stage.encounters:
 			var kind := String(encounter.recipe.kind)
 			if kind == "GUIDE" or kind == "BULGE":
@@ -117,7 +118,18 @@ func generate_patterns(seed_value: int) -> Array:
 				elif threat_kind in ["S", "R", "F", "WALL", "M"]:
 					var routes: Array = threat.get("lanes", [int(threat.get("lane", 1))])
 					rock_slots.append({"id": "%s-%s-%d" % [encounter.id, threat_kind, rock_slots.size()], "kind": threat_kind, "routes": routes.duplicate(), "anchor": float(encounter.anchor), "warning_height": float(encounter.warning_height), "witness": int(encounter.witness)})
-		result.append({"stage": stage_number, "length": stage.length, "start_height": stage.start_height, "entry": 1, "open_routes": open_routes, "route_end_progress": route_end_progress, "trunk_features": trunk_features, "support_windows": support_windows, "bean_slots": bean_slots, "rock_slots": rock_slots, "encounters": stage.encounters, "variant": run_variant})
+				elif threat_kind in ["V", "K", "WEB"]:
+					storm_slots.append({
+						"id": "%s-%s-%d" % [encounter.id, threat_kind, storm_slots.size()],
+						"kind": threat_kind,
+						"lane": int(threat.get("lane", int(encounter.witness))),
+						"direction": float(threat.get("direction", 0.0)),
+						"gain": float(threat.get("gain", 1.0)),
+						"anchor": float(encounter.anchor),
+						"warning_height": float(encounter.warning_height),
+						"occupancy": encounter.occupancy.duplicate(),
+					})
+		result.append({"stage": stage_number, "length": stage.length, "start_height": stage.start_height, "entry": 1, "open_routes": open_routes, "route_end_progress": route_end_progress, "trunk_features": trunk_features, "support_windows": support_windows, "bean_slots": bean_slots, "rock_slots": rock_slots, "storm_slots": storm_slots, "encounters": stage.encounters, "variant": run_variant})
 	return result
 func pattern_hash(seed_value: int) -> int: return hash(var_to_str(generate_patterns(seed_value)))
 func patterns_are_reachable(candidate: Array) -> bool:
