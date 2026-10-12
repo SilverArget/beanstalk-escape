@@ -1,6 +1,6 @@
 extends SceneTree
 
-const OUTPUT_ROOT := "res://../03-test/qa/dal-gorsel"
+const OUTPUT_ROOT := "res://../03-test/qa/dal-gorsel/v2"
 const STAGES := [1, 3, 8, 16, 30]
 const SAMPLE_FRAMES := 30
 
@@ -20,6 +20,8 @@ func _initialize() -> void:
 	await process_frame
 	for stage_number in STAGES:
 		await _capture_stage(stage_number)
+	await _capture_stage_at(3, 0.18, "etap-03-uc-alt-960x540.png")
+	await _capture_stage_at(3, 0.52, "etap-03-uc-ust-960x540.png")
 	var output := FileAccess.open(OUTPUT_ROOT.path_join("measurements.json"), FileAccess.WRITE)
 	output.store_string(JSON.stringify(report, "\t") + "\n")
 	print("DAL-GORSEL-CAPTURE: PASS stages=%d output=%s" % [report.stages.size(), ProjectSettings.globalize_path(OUTPUT_ROOT)])
@@ -28,11 +30,14 @@ func _initialize() -> void:
 	quit(0)
 
 func _capture_stage(stage_number: int) -> void:
-	var y := game.stages.stage_bottom_y(stage_number) - game.stages.stage_length(stage_number) * 0.35
+	await _capture_stage_at(stage_number, 0.35, "etap-%02d-960x540.png" % stage_number, true)
+
+func _capture_stage_at(stage_number: int, progress: float, file_name: String, record_measurement := false) -> void:
+	var y := game.stages.stage_bottom_y(stage_number) - game.stages.stage_length(stage_number) * progress
 	var lane := 1
 	if stage_number >= 3:
 		for candidate in 3:
-			if game.stages.is_route_open_at(stage_number, candidate, 0.35):
+			if game.stages.is_route_open_at(stage_number, candidate, progress):
 				lane = candidate
 				break
 	var x := 0.0 if stage_number <= 2 else float(Balance.ROUTE_X[lane])
@@ -65,7 +70,6 @@ func _capture_stage(stage_number: int) -> void:
 		calls.append(RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_TOTAL_DRAW_CALLS_IN_FRAME))
 	RenderingServer.force_draw(true)
 	await RenderingServer.frame_post_draw
-	var file_name := "etap-%02d-960x540.png" % stage_number
 	var image := root.get_texture().get_image()
 	var save_error := image.save_png(OUTPUT_ROOT.path_join(file_name))
 	var average := _average(calls)
@@ -75,7 +79,8 @@ func _capture_stage(stage_number: int) -> void:
 	var calls_without_world := RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_TOTAL_DRAW_CALLS_IN_FRAME)
 	world.visible = true
 	await process_frame
-	report.stages.append({"stage": stage_number, "file": file_name, "draw_calls_avg": average, "draw_calls_min": calls.min(), "draw_calls_max": calls.max(), "draw_calls_without_world": calls_without_world, "world_draw_delta": int(round(average)) - calls_without_world, "save_error": save_error})
+	if record_measurement:
+		report.stages.append({"stage": stage_number, "file": file_name, "draw_calls_avg": average, "draw_calls_min": calls.min(), "draw_calls_max": calls.max(), "draw_calls_without_world": calls_without_world, "world_draw_delta": int(round(average)) - calls_without_world, "save_error": save_error})
 	print("DAL-GORSEL stage=%d draw_calls_avg=%.1f min=%d max=%d frame=%s" % [stage_number, average, calls.min(), calls.max(), file_name])
 
 func _average(values: Array[int]) -> float:

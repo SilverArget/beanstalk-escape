@@ -17,7 +17,7 @@ const MAX_LEAF_SIZE := 140.0
 const VISUAL_OUTLINE_WIDTH := 5.0
 const FOLIAGE_CELL := Vector2(512.0, 512.0)
 const BRANCH_DETAIL_GRID := Vector2(4.0, 2.0)
-const BRANCH_NODE_SPACING := 150.0
+const BRANCH_NODE_SPACING := [173.0, 211.0, 187.0]
 const STAGE_3_ENTRY_HEIGHT := 350.0
 const SIDE_VINE_ENTRY_DEPTH := 240.0
 const SIDE_VINE_OFFSCREEN_X := 560.0
@@ -238,6 +238,8 @@ func _draw_branch_segment(stage_number: int, route: int, start_progress: float, 
 	if stage_number == 3 and route != 1 and start_progress <= 0.0:
 		points = _side_vine_entry_points(route, stage_bottom)
 		cap_start = false
+	elif cap_start and not qa_support_mask:
+		points = _restart_vine_entry_points(route, start_y)
 	else:
 		points.append(Vector2(_branch_visual_x(route, start_y), start_y))
 	var cursor_y := start_y
@@ -248,7 +250,25 @@ func _draw_branch_segment(stage_number: int, route: int, start_progress: float, 
 		return
 	branch_point_count += points.size()
 	_draw_branch_ribbon(points, route, cap_start, show_end_tip)
-	_draw_branch_details(route, start_y, end_y)
+	_draw_branch_details(stage_number, route, start_y, end_y)
+
+func _restart_vine_entry_points(route: int, start_y: float) -> PackedVector2Array:
+	# A returning support is a separate vine: outer routes curl in from beyond
+	# the screen edge, while the middle route emerges from behind the right vine.
+	# This is decorative lead-in only and never changes support/collision data.
+	var points := PackedVector2Array()
+	var target_x := _branch_visual_x(route, start_y)
+	var source_x := SIDE_VINE_OFFSCREEN_X
+	if route == 0:
+		source_x = -SIDE_VINE_OFFSCREEN_X
+	elif route == 1:
+		source_x = _branch_visual_x(2, start_y + 74.0)
+	for step in 9:
+		var t := float(step) / 8.0
+		var smooth := t * t * (3.0 - 2.0 * t)
+		var curl := sin(t * PI) * (28.0 if route != 0 else -28.0)
+		points.append(Vector2(lerpf(source_x, target_x, smooth) + curl, lerpf(start_y + 86.0, start_y, t)))
+	return points
 
 func _side_vine_entry_points(route: int, stage_bottom: float) -> PackedVector2Array:
 	var points := PackedVector2Array()
@@ -267,54 +287,84 @@ func _branch_visual_x(route: int, world_y: float) -> float:
 func _draw_branch_ribbon(points: PackedVector2Array, route: int, cap_start: bool, cap_end: bool) -> void:
 	var widths := PackedFloat32Array()
 	for point in points:
-		var node_phase := fposmod(-point.y + float(route) * 31.0, BRANCH_NODE_SPACING)
-		var node_distance := minf(node_phase, BRANCH_NODE_SPACING - node_phase)
+		var spacing: float = BRANCH_NODE_SPACING[route]
+		var node_phase := fposmod(-point.y + float(route) * 47.0, spacing)
+		var node_distance := minf(node_phase, spacing - node_phase)
 		var node_weight := 0.5 + 0.5 * cos(clampf(node_distance / 30.0, 0.0, 1.0) * PI)
 		var breathing := sin((-point.y + float(route) * 67.0) * TAU / 390.0) * 4.5
 		widths.append(clampf(45.0 + breathing + node_weight * 5.5, 36.0, 56.0))
+	# Taper the retained ribbon itself. Painting a taper over a full-width ribbon
+	# leaves the old square silhouette visible underneath.
+	if cap_start:
+		_taper_branch_endpoint(points, widths, true)
+	if cap_end:
+		_taper_branch_endpoint(points, widths, false)
 	# All routes share one material phase; world position must not turn the
 	# center vine yellow while its neighbours remain green.
 	_draw_textured_ribbon(points, widths, 0.5, true, true, false, 0, 0, true)
 	if cap_start and not qa_support_mask:
-		_draw_branch_tip(points[0], (points[0] - points[1]).normalized(), route)
+		_draw_branch_tip_detail(points[0], (points[0] - points[1]).normalized(), route, true)
 	if cap_end and not qa_support_mask:
-		_draw_branch_tip(points[points.size() - 1], (points[points.size() - 1] - points[points.size() - 2]).normalized(), route)
+		_draw_branch_tip_detail(points[points.size() - 1], (points[points.size() - 1] - points[points.size() - 2]).normalized(), route, false)
 
-func _draw_branch_tip(base: Vector2, direction: Vector2, route: int) -> void:
-	# The taper ends exactly at the gameplay endpoint: no rounded pipe cap and
-	# no visual promise of support beyond the real segment.
+func _taper_branch_endpoint(points: PackedVector2Array, widths: PackedFloat32Array, at_start: bool) -> void:
+	var endpoint_index := 0 if at_start else points.size() - 1
+	var distance := 0.0
+	for offset in range(mini(6, points.size())):
+		var index := offset if at_start else points.size() - 1 - offset
+		if offset > 0:
+			var previous := index - 1 if at_start else index + 1
+			distance += points[index].distance_to(points[previous])
+		var t := clampf(distance / 42.0, 0.0, 1.0)
+		var smooth := t * t * (3.0 - 2.0 * t)
+		widths[index] = lerpf(2.0, widths[index], smooth)
+	widths[endpoint_index] = 2.0
+
+func _draw_branch_tip_detail(base: Vector2, direction: Vector2, route: int, is_restart: bool) -> void:
+	# Atlas quads remain in the shared detail mesh. The curled shoot/leaf hides
+	# the mathematical endpoint without restoring a round pipe cap.
 	var normal := Vector2(-direction.y, direction.x)
-	var points := PackedVector2Array([
-		base - direction * 20.0,
-		base - direction * 12.0 + normal * 0.8,
-		base - direction * 5.0 - normal * 0.6,
-		base,
-	])
-	var widths := PackedFloat32Array([48.0, 38.0, 20.0, 2.0])
-	_draw_textured_ribbon(points, widths, float(route) * 0.27, true, false, true, 0, 0, true)
-	# A painted bud and paired leaf conceal the mathematical endpoint. Separate
-	# stems still end independently; this never draws a bridge or Y union.
-	draw_circle(base - direction * 3.0, 7.0, Color("5cad50"))
-	_draw_branch_detail_sprite(4 + route % 2, base - direction * 15.0, Vector2(42.0, 42.0), direction.angle() + PI * 0.5, false)
+	var side := -1.0 if (route + int(is_restart)) % 2 == 0 else 1.0
+	var cell := route % 4 if is_restart else 6 + route % 2
+	var size := Vector2(62.0, 62.0) if is_restart else Vector2(54.0, 54.0)
+	_draw_branch_detail_sprite(cell, base - direction * 12.0 + normal * side * 9.0, size, direction.angle() + PI * 0.5, side < 0.0)
 
-func _draw_branch_details(route: int, start_y: float, end_y: float) -> void:
+func _draw_branch_details(stage_number: int, route: int, start_y: float, end_y: float) -> void:
 	if qa_support_mask:
 		return
-	var node_y := start_y - 82.0
-	var node_index := 0
+	var spacing: float = BRANCH_NODE_SPACING[route]
+	var phase := fposmod(float(stage_number * 43 + route * 71), spacing)
+	var first_height := -start_y + 46.0
+	var node_height := first_height + fposmod(phase - first_height, spacing)
+	var node_y := -node_height
+	var node_index := int(floor((node_height - phase) / spacing))
 	while node_y > end_y + 32.0:
-		var outside := -1.0 if route == 0 else (1.0 if route == 2 else (-1.0 if node_index % 2 == 0 else 1.0))
+		var direction_noise := _detail_noise(stage_number, route, node_index, 0)
+		var outside := -1.0 if direction_noise < 0.5 else 1.0
+		if route == 0 and direction_noise < 0.78:
+			outside = -1.0
+		elif route == 2 and direction_noise < 0.78:
+			outside = 1.0
 		var stem_x := _branch_visual_x(route, node_y)
+		var scale := lerpf(0.84, 1.18, _detail_noise(stage_number, route, node_index, 1))
+		var leaf_size := Vector2(78.0, 78.0) * scale
+		var angle := lerpf(-0.28, 0.28, _detail_noise(stage_number, route, node_index, 2)) * outside
+		var cell := int(floor(_detail_noise(stage_number, route, node_index, 3) * 4.0)) % 4
 		# The stem root sits over the knot and the leaf overlaps the ribbon edge.
-		var leaf_center := Vector2(stem_x + outside * 31.0, node_y - 4.0)
-		_draw_branch_detail_sprite(node_index % 4, leaf_center, Vector2(78.0, 78.0), outside * 0.16, outside < 0.0)
-		if node_index % 3 == 1:
-			var tendril_center := Vector2(stem_x + outside * 29.0, node_y - 55.0)
-			_draw_branch_detail_sprite(6 + node_index % 2, tendril_center, Vector2(68.0, 68.0), outside * 0.12, outside < 0.0)
-		elif node_index % 3 == 2:
-			_draw_branch_detail_sprite(4 + node_index % 2, Vector2(stem_x, node_y), Vector2(58.0, 58.0), 0.0, false)
-		node_y -= BRANCH_NODE_SPACING
+		var leaf_center := Vector2(stem_x + outside * (27.0 + leaf_size.x * 0.06), node_y - 4.0)
+		_draw_branch_detail_sprite(cell, leaf_center, leaf_size, angle, outside < 0.0)
+		var ornament := _detail_noise(stage_number, route, node_index, 4)
+		if ornament > 0.67:
+			var tendril_center := Vector2(stem_x + outside * 29.0, node_y - lerpf(48.0, 61.0, ornament))
+			_draw_branch_detail_sprite(6 + (node_index & 1), tendril_center, Vector2(lerpf(58.0, 74.0, scale), lerpf(58.0, 74.0, scale)), angle * 0.7, outside < 0.0)
+		elif ornament < 0.24:
+			_draw_branch_detail_sprite(4 + (node_index & 1), Vector2(stem_x, node_y), Vector2(52.0, 52.0) * scale, angle * 0.35, node_index % 2 == 0)
+		node_y -= spacing
 		node_index += 1
+
+func _detail_noise(stage_number: int, route: int, node_index: int, channel: int) -> float:
+	var seed := float(stage_number * 97 + route * 193 + node_index * 53 + channel * 29)
+	return fposmod(sin(seed * 0.731) * 43758.5453, 1.0)
 
 func _draw_branch_detail_sprite(cell: int, center: Vector2, size: Vector2, rotation: float, flip_x: bool) -> void:
 	var column := cell % int(BRANCH_DETAIL_GRID.x)
@@ -375,6 +425,12 @@ func _draw_textured_ribbon(points: PackedVector2Array, widths: PackedFloat32Arra
 			# follow a curved transfer arch instead of forming a vertical barcode.
 			mesh_uvs.append(Vector2(texture_phase - widths[index] * 0.5 / 512.0, center_v))
 			mesh_uvs.append(Vector2(texture_phase + widths[index] * 0.5 / 512.0, center_v))
+		elif branch_material:
+			# Every lane samples the same green-lit local band. World-X sampling made
+			# the center lane land on the atlas' yellow highlight column.
+			var local_half_u := widths[index] * 0.5 / 512.0
+			mesh_uvs.append(Vector2(0.19 - local_half_u, center_v))
+			mesh_uvs.append(Vector2(0.19 + local_half_u, center_v))
 		elif world_locked_v:
 			var left_v := -left.y / MODULE_HEIGHT
 			var right_v := -right.y / MODULE_HEIGHT
@@ -541,7 +597,7 @@ func qa_visual_contract() -> Dictionary:
 		"surface_texture": "res://assets/art/world/vine_helix_tile_v4.png",
 		"branch_surface_texture": "res://assets/art/world/vine_helix_tile_v4.png",
 		"branch_detail_atlas": "res://assets/art/world/vine_details_atlas_v2.png",
-		"branch_node_spacing_px": BRANCH_NODE_SPACING,
+		"branch_node_spacing_px": BRANCH_NODE_SPACING.duplicate(),
 		"stage_3_layout": "continuous_middle_with_separate_side_vines",
 		"split_union_count": 0,
 		"transfer_bridge_count": 0,
