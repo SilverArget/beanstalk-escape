@@ -32,6 +32,7 @@ func setup(id: String, recipe_kind: String, lane_values: Array, at_y: float, sta
 	sprite.scale = Vector2.ONE * (0.26 if kind == "WALL" else (0.23 if kind == "S" else 0.18))
 	add_child(sprite)
 	_reset_position()
+	_update_vine_visual_offset()
 	previous_position = global_position
 	queue_redraw()
 
@@ -69,6 +70,16 @@ func advance_threat_clock(delta: float, time_active: bool, player_y: float) -> v
 			var p := float(Balance.ROUTE_X[routes[0]])
 			var q := float(Balance.ROUTE_X[routes[1]])
 			position.x = lerpf(p, q, clampf(t, 0.0, 1.0))
+	_update_vine_visual_offset()
+
+func _update_vine_visual_offset() -> void:
+	if sprite == null or stages == null or stages.stage_for_y(global_position.y) <= 2 or routes.is_empty():
+		if sprite != null: sprite.position.x = 0.0
+		return
+	var offset := ScaleLock.vine_visual_offset(routes[0], global_position.y)
+	if kind in ["M", "WALL"] and routes.size() > 1:
+		offset = (ScaleLock.vine_visual_offset(routes[0], global_position.y) + ScaleLock.vine_visual_offset(routes[-1], global_position.y)) * 0.5
+	sprite.position.x = offset
 
 func collision_centers() -> Array[Vector2]:
 	var result: Array[Vector2] = []

@@ -16,10 +16,12 @@ var taken := false
 var sparkle_remaining := 0.0
 var sprite := Sprite2D.new()
 var redraw_count := 0
+var visual_lane := 1
 
 func setup(id: String, target: PlayerController) -> void:
 	placement_id = id
 	player = target
+	visual_lane = target.stages.route_for_x(global_position.x) if target != null and target.stages != null else 1
 
 func _ready() -> void:
 	z_index = 1
@@ -27,6 +29,8 @@ func _ready() -> void:
 	sprite.texture = COIN_TEXTURE
 	sprite.scale = Vector2.ONE * 0.82
 	add_child(sprite)
+	if player != null and player.stages != null and player.stages.stage_for_y(global_position.y) > 2:
+		sprite.position.x = ScaleLock.vine_visual_offset(visual_lane, global_position.y)
 	queue_redraw()
 
 func _physics_process(delta: float) -> void:

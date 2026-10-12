@@ -1,20 +1,20 @@
 extends Node2D
 
 const ATMOSPHERE_TEXTURE := preload("res://assets/art/world/sunny_atmosphere.png")
-const VINE_SURFACE_TEXTURE := preload("res://assets/art/world/vine_surface_tile_v3.png")
+const VINE_SURFACE_TEXTURE := preload("res://assets/art/world/vine_helix_tile_v4.png")
 const BRANCH_SURFACE_TEXTURE := preload("res://assets/art/world/bean_branch_surface_v1.png")
-const BRANCH_DETAILS_TEXTURE := preload("res://assets/art/world/bean_branch_details_v1.png")
+const BRANCH_DETAILS_TEXTURE := preload("res://assets/art/world/vine_details_atlas_v2.png")
 const FOLIAGE_TEXTURE := preload("res://assets/art/world/foliage_atlas.png")
 const SKY_TOP := Color("366bb4")
 const SKY_BOTTOM := Color("80d5f4")
-const OUTLINE_COLOR := Color8(50, 105, 84)
+const OUTLINE_COLOR := Color8(25, 68, 49)
 const VINE_BASE_COLOR := Color("4c9a4d")
 const MODULE_HEIGHT := 256.0
 const TEXTURE_REPEAT := 52.0
 const MAX_TEXTURE_ELEMENT := 54.0
 const GRIP_DETAIL_SIZE := 12.0
 const MAX_LEAF_SIZE := 140.0
-const VISUAL_OUTLINE_WIDTH := 3.0
+const VISUAL_OUTLINE_WIDTH := 5.0
 const FOLIAGE_CELL := Vector2(512.0, 512.0)
 const BRANCH_DETAIL_GRID := Vector2(4.0, 2.0)
 const BRANCH_NODE_SPACING := 150.0
@@ -38,6 +38,11 @@ var qa_sky_only := false
 var cached_camera_top := INF
 var sky_visual: Node2D
 var draw_mesh_cache: Array[ArrayMesh] = []
+var detail_vertices := PackedVector2Array()
+var detail_uvs := PackedVector2Array()
+var detail_indices := PackedInt32Array()
+var outline_vertices := PackedVector2Array()
+var outline_indices := PackedInt32Array()
 
 func _ready() -> void:
 	texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
@@ -70,6 +75,11 @@ func _draw() -> void:
 	# Canvas draw commands retain mesh RIDs, not the local Resource references.
 	# Keep each rebuilt mesh alive until the next surface-cache redraw.
 	draw_mesh_cache.clear()
+	detail_vertices.clear()
+	detail_uvs.clear()
+	detail_indices.clear()
+	outline_vertices.clear()
+	outline_indices.clear()
 	branch_point_count = 0
 	var camera_top := cached_camera_top if not is_inf(cached_camera_top) else _camera_top()
 	if qa_sky_only:
@@ -79,6 +89,8 @@ func _draw() -> void:
 		_draw_trunk_features(camera_top)
 	for stage_number in range(3, Balance.STAGE_COUNT + 1):
 		_draw_stage_branches(stage_number, camera_top)
+	_flush_outlines()
+	_flush_branch_details()
 
 func _draw_sky(camera_top: float) -> void:
 	# Camera X follows the active branch from Stage 3 onward. Keep the painted
@@ -190,10 +202,10 @@ func _main_stem_width(world_y: float) -> float:
 	return lerpf(_trunk_half_width(stage_3_bottom) * 2.0, ScaleLock.BRANCH_WIDTH, smooth)
 
 func _trunk_center_x(world_y: float) -> float:
-	return sin(world_y * 0.0041) * 5.0 + sin(world_y * 0.0107) * 2.5
+	return sin(world_y * TAU / 560.0) * 10.0 + sin(world_y * TAU / 910.0 + 0.7) * 4.0
 
 func _trunk_half_width(world_y: float) -> float:
-	return 90.0 + sin(world_y * TAU / MODULE_HEIGHT) * 4.0
+	return 90.0 + sin(world_y * TAU / 470.0) * 7.0 + sin(world_y * TAU / 150.0) * 3.0
 
 func _draw_stage_branches(stage_number: int, camera_top: float) -> void:
 	var stage_bottom := stages.stage_bottom_y(stage_number)
@@ -250,9 +262,7 @@ func _side_vine_entry_points(route: int, stage_bottom: float) -> PackedVector2Ar
 	return points
 
 func _branch_visual_x(route: int, world_y: float) -> float:
-	# Gameplay remains on Balance.ROUTE_X. This visual-only S wave stays within
-	# the 44 px support, replacing the former ruler-straight tube.
-	return float(Balance.ROUTE_X[route]) + sin((world_y + float(route) * 83.0) * 0.0085) * 5.5
+	return float(Balance.ROUTE_X[route]) + ScaleLock.vine_visual_offset(route, world_y)
 
 func _draw_branch_ribbon(points: PackedVector2Array, route: int, cap_start: bool, cap_end: bool) -> void:
 	var widths := PackedFloat32Array()
@@ -260,7 +270,8 @@ func _draw_branch_ribbon(points: PackedVector2Array, route: int, cap_start: bool
 		var node_phase := fposmod(-point.y + float(route) * 31.0, BRANCH_NODE_SPACING)
 		var node_distance := minf(node_phase, BRANCH_NODE_SPACING - node_phase)
 		var node_weight := 0.5 + 0.5 * cos(clampf(node_distance / 30.0, 0.0, 1.0) * PI)
-		widths.append(ScaleLock.BRANCH_WIDTH + node_weight * 3.0)
+		var breathing := sin((-point.y + float(route) * 67.0) * TAU / 390.0) * 4.5
+		widths.append(clampf(45.0 + breathing + node_weight * 5.5, 36.0, 56.0))
 	# All routes share one material phase; world position must not turn the
 	# center vine yellow while its neighbours remain green.
 	_draw_textured_ribbon(points, widths, 0.5, true, true, false, 0, 0, true)
@@ -279,7 +290,7 @@ func _draw_branch_tip(base: Vector2, direction: Vector2, route: int) -> void:
 		base - direction * 5.0 - normal * 0.6,
 		base,
 	])
-	var widths := PackedFloat32Array([ScaleLock.BRANCH_WIDTH, 38.0, 20.0, 2.0])
+	var widths := PackedFloat32Array([48.0, 38.0, 20.0, 2.0])
 	_draw_textured_ribbon(points, widths, float(route) * 0.27, true, false, true, 0, 0, true)
 	# A painted bud and paired leaf conceal the mathematical endpoint. Separate
 	# stems still end independently; this never draws a bridge or Y union.
@@ -294,22 +305,41 @@ func _draw_branch_details(route: int, start_y: float, end_y: float) -> void:
 	while node_y > end_y + 32.0:
 		var outside := -1.0 if route == 0 else (1.0 if route == 2 else (-1.0 if node_index % 2 == 0 else 1.0))
 		var stem_x := _branch_visual_x(route, node_y)
-		var leaf_center := Vector2(stem_x + outside * 39.0, node_y)
-		_draw_branch_detail_sprite(node_index % 2, leaf_center, Vector2(40.0, 40.0), 0.0, outside < 0.0)
+		# The stem root sits over the knot and the leaf overlaps the ribbon edge.
+		var leaf_center := Vector2(stem_x + outside * 31.0, node_y - 4.0)
+		_draw_branch_detail_sprite(node_index % 4, leaf_center, Vector2(78.0, 78.0), outside * 0.16, outside < 0.0)
 		if node_index % 3 == 1:
-			var tendril_center := Vector2(stem_x + outside * 38.0, node_y - 54.0)
-			_draw_branch_detail_sprite(2 + node_index % 2, tendril_center, Vector2(36.0, 36.0), 0.0, outside < 0.0)
+			var tendril_center := Vector2(stem_x + outside * 29.0, node_y - 55.0)
+			_draw_branch_detail_sprite(6 + node_index % 2, tendril_center, Vector2(68.0, 68.0), outside * 0.12, outside < 0.0)
+		elif node_index % 3 == 2:
+			_draw_branch_detail_sprite(4 + node_index % 2, Vector2(stem_x, node_y), Vector2(58.0, 58.0), 0.0, false)
 		node_y -= BRANCH_NODE_SPACING
 		node_index += 1
 
 func _draw_branch_detail_sprite(cell: int, center: Vector2, size: Vector2, rotation: float, flip_x: bool) -> void:
-	var cell_size := Vector2(BRANCH_DETAILS_TEXTURE.get_width(), BRANCH_DETAILS_TEXTURE.get_height()) / BRANCH_DETAIL_GRID
 	var column := cell % int(BRANCH_DETAIL_GRID.x)
 	var row := cell / int(BRANCH_DETAIL_GRID.x)
-	var source := Rect2(Vector2(float(column), float(row)) * cell_size, cell_size)
-	draw_set_transform(center, rotation, Vector2(-1.0 if flip_x else 1.0, 1.0))
-	draw_texture_rect_region(BRANCH_DETAILS_TEXTURE, Rect2(-size * 0.5, size), source)
-	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+	var uv_min := Vector2(float(column), float(row)) / BRANCH_DETAIL_GRID
+	var uv_max := Vector2(float(column + 1), float(row + 1)) / BRANCH_DETAIL_GRID
+	var basis := Transform2D(rotation, center)
+	var base := detail_vertices.size()
+	detail_vertices.append(basis * Vector2(-size.x * 0.5, -size.y * 0.5))
+	detail_vertices.append(basis * Vector2(size.x * 0.5, -size.y * 0.5))
+	detail_vertices.append(basis * Vector2(size.x * 0.5, size.y * 0.5))
+	detail_vertices.append(basis * Vector2(-size.x * 0.5, size.y * 0.5))
+	var left_u := uv_max.x if flip_x else uv_min.x
+	var right_u := uv_min.x if flip_x else uv_max.x
+	detail_uvs.append(Vector2(left_u, uv_min.y))
+	detail_uvs.append(Vector2(right_u, uv_min.y))
+	detail_uvs.append(Vector2(right_u, uv_max.y))
+	detail_uvs.append(Vector2(left_u, uv_max.y))
+	detail_indices.append_array(PackedInt32Array([base, base + 1, base + 2, base, base + 2, base + 3]))
+
+func _flush_branch_details() -> void:
+	if detail_vertices.is_empty():
+		return
+	var mesh := _build_ribbon_mesh(detail_vertices, detail_uvs, detail_indices)
+	draw_mesh(mesh, BRANCH_DETAILS_TEXTURE)
 
 func _draw_textured_ribbon(points: PackedVector2Array, widths: PackedFloat32Array, texture_phase: float, draw_outline := true, world_locked_v := false, tangent_uv := false, outline_start_trim := 0, outline_end_trim := 0, branch_material := false) -> void:
 	if points.size() < 2:
@@ -367,20 +397,36 @@ func _draw_textured_ribbon(points: PackedVector2Array, widths: PackedFloat32Arra
 			# One indexed mesh replaces hundreds of identical per-segment canvas
 			# commands. UVs and overlap geometry are unchanged.
 			draw_mesh(ribbon_mesh, VINE_SURFACE_TEXTURE)
-			# Preserve the former uniform translucent glaze as one mesh command.
-			draw_mesh(ribbon_mesh, null, Transform2D.IDENTITY, Color(0.78, 0.90, 0.42, 0.14))
 	if not qa_support_mask and draw_outline:
 		var edge_geometry := _ribbon_geometry(points, widths, VISUAL_OUTLINE_WIDTH, texture_phase)
-		_draw_trimmed_edge_pair(edge_geometry.left, edge_geometry.right, VISUAL_OUTLINE_WIDTH, outline_start_trim, outline_end_trim)
+		_batch_edge_pair(edge_geometry.left, edge_geometry.right, VISUAL_OUTLINE_WIDTH, outline_start_trim, outline_end_trim)
 
-func _draw_trimmed_edge_pair(left: PackedVector2Array, right: PackedVector2Array, width: float, start_trim: int, end_trim: int) -> void:
+func _batch_edge_pair(left: PackedVector2Array, right: PackedVector2Array, width: float, start_trim: int, end_trim: int) -> void:
 	var finish := left.size() - end_trim
 	if finish - start_trim < 2:
 		return
-	# A polyline is one canvas command; the old loop emitted two commands for
-	# every 12 px branch segment with identical geometry and antialiasing.
-	draw_polyline(left.slice(start_trim, finish), OUTLINE_COLOR, width, true)
-	draw_polyline(right.slice(start_trim, finish), OUTLINE_COLOR, width, true)
+	for edge: PackedVector2Array in [left, right]:
+		for index in range(start_trim, finish - 1):
+			var direction := (edge[index + 1] - edge[index]).normalized()
+			var normal := Vector2(-direction.y, direction.x) * width * 0.5
+			var base := outline_vertices.size()
+			outline_vertices.append(edge[index] - normal)
+			outline_vertices.append(edge[index] + normal)
+			outline_vertices.append(edge[index + 1] + normal)
+			outline_vertices.append(edge[index + 1] - normal)
+			outline_indices.append_array(PackedInt32Array([base, base + 1, base + 2, base, base + 2, base + 3]))
+
+func _flush_outlines() -> void:
+	if outline_vertices.is_empty():
+		return
+	var arrays := []
+	arrays.resize(Mesh.ARRAY_MAX)
+	arrays[Mesh.ARRAY_VERTEX] = outline_vertices
+	arrays[Mesh.ARRAY_INDEX] = outline_indices
+	var mesh := ArrayMesh.new()
+	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+	draw_mesh_cache.append(mesh)
+	draw_mesh(mesh, null, Transform2D.IDENTITY, OUTLINE_COLOR)
 
 func _build_ribbon_mesh(vertices: PackedVector2Array, uvs: PackedVector2Array, indices: PackedInt32Array) -> ArrayMesh:
 	var arrays := []
@@ -485,16 +531,16 @@ func qa_visual_contract() -> Dictionary:
 	return {
 		"module_height_px": MODULE_HEIGHT,
 		"trunk_nominal_width_px": ScaleLock.TRUNK_WIDTH,
-		"trunk_render_width_range_px": [172.0, 188.0],
-		"branch_width_px": ScaleLock.BRANCH_WIDTH,
+		"trunk_render_width_range_px": [160.0, 200.0],
+		"branch_width_px": [36.0, 56.0],
 		"branch_centers_world_x": Balance.ROUTE_X.duplicate(),
 		"texture_repeat_px": MAX_TEXTURE_ELEMENT,
 		"grip_detail_px": GRIP_DETAIL_SIZE,
 		"max_leaf_px": MAX_LEAF_SIZE,
 		"outline_px": VISUAL_OUTLINE_WIDTH,
-		"surface_texture": "res://assets/art/world/vine_surface_tile_v3.png",
-		"branch_surface_texture": "res://assets/art/world/vine_surface_tile_v3.png",
-		"branch_detail_atlas": "res://assets/art/world/bean_branch_details_v1.png",
+		"surface_texture": "res://assets/art/world/vine_helix_tile_v4.png",
+		"branch_surface_texture": "res://assets/art/world/vine_helix_tile_v4.png",
+		"branch_detail_atlas": "res://assets/art/world/vine_details_atlas_v2.png",
 		"branch_node_spacing_px": BRANCH_NODE_SPACING,
 		"stage_3_layout": "continuous_middle_with_separate_side_vines",
 		"split_union_count": 0,

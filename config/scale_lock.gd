@@ -24,6 +24,15 @@ const TRUNK_SAFE_NORMALIZED_X := [0.20, 0.50, 0.80]
 const TRUNK_SAFE_WORLD_X := [-54.0, 0.0, 54.0]
 const SUPPORT_CORRIDOR_HALF_WIDTH := 18.0
 const SUPPORT_OFFSET_LIMIT := 12.0
+const VINE_VISUAL_AMPLITUDE := 12.0
+const VINE_VISUAL_WAVELENGTH := 420.0
+
+static func vine_visual_offset(lane: int, world_y: float) -> float:
+	# Rendering-only centerline shared by supports and their foreground actors.
+	# Gameplay remains pinned to ROUTE_X / TRUNK_SAFE_WORLD_X.
+	var phase := float(clampi(lane, 0, 2)) * 2.17
+	return sin(world_y * TAU / VINE_VISUAL_WAVELENGTH + phase) * VINE_VISUAL_AMPLITUDE \
+		+ sin(world_y * TAU / 690.0 + phase * 0.47) * 3.0
 
 static func measurements() -> Dictionary:
 	return {

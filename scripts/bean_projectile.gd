@@ -20,6 +20,13 @@ func setup(route: int, at_y: float, world_x := NAN) -> void:
 	warning_started_msec = Time.get_ticks_msec()
 	$Warning.visible = true
 	$Body.visible = false
+	_apply_vine_visual_offset()
+
+func _apply_vine_visual_offset() -> void:
+	var stages := get_parent().get_parent().get_node_or_null("StageManager") as StageManager
+	var stage_number := stages.stage_for_y(landing_y) if stages != null else 3
+	var offset := ScaleLock.vine_visual_offset(blocked_route, landing_y) if stage_number > 2 else 0.0
+	$Body.position.x = offset
 
 func _physics_process(delta: float) -> void:
 	advance_threat_clock(delta, get_tree().get_first_node_in_group("time_wings_active") != null)
@@ -54,7 +61,9 @@ func warning_screen_position() -> Vector2:
 		return Vector2(global_position.x, landing_y)
 	var top := player.global_position.y - WARNING_SCREEN_BOTTOM_PX
 	var bottom := player.global_position.y - WARNING_SCREEN_TOP_PX
-	return Vector2(global_position.x, clampf(landing_y, top, bottom))
+	var stages := get_parent().get_parent().get_node_or_null("StageManager") as StageManager
+	var offset := ScaleLock.vine_visual_offset(blocked_route, landing_y) if stages != null and stages.stage_for_y(landing_y) > 2 else 0.0
+	return Vector2(global_position.x + offset, clampf(landing_y, top, bottom))
 
 func consume() -> void:
 	if not active: return

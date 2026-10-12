@@ -66,6 +66,16 @@ func _physics_process(delta: float) -> void:
 		global_position.x = clampf(global_position.x, -Balance.TRUNK_HALF_WIDTH, Balance.TRUNK_HALF_WIDTH)
 	elif support_state == SupportState.SUPPORTED:
 		global_position.x = stages.branch_x_at(active_branch, global_position.y) + support_offset
+	_update_vine_visual_offset()
+
+func _update_vine_visual_offset() -> void:
+	if body == null or stages == null or stages.stage_for_y(global_position.y) <= 2:
+		return
+	var visual_lane := active_branch
+	var offset := ScaleLock.vine_visual_offset(visual_lane, global_position.y)
+	if movement_mode == MovementMode.TRANSITION:
+		offset = lerpf(ScaleLock.vine_visual_offset(transition_from, global_position.y), ScaleLock.vine_visual_offset(transition_to, global_position.y), transition_progress)
+	body.position.x = offset
 
 func _sync_stage_mode() -> void:
 	if stages == null:
@@ -200,7 +210,7 @@ func _update_transition_visual(progress: float) -> void:
 
 func _reset_visual_pose() -> void:
 	if body != null:
-		body.position = Vector2.ZERO
+		body.position = Vector2(ScaleLock.vine_visual_offset(active_branch, global_position.y) if stages != null and stages.stage_for_y(global_position.y) > 2 else 0.0, 0.0)
 		body.rotation = 0.0
 		body.scale = Vector2.ONE
 
