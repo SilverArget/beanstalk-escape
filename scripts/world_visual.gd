@@ -326,71 +326,39 @@ func _draw_textured_ribbon(points: PackedVector2Array, widths: PackedFloat32Arra
 	# Never stretch a 52 px source feature beyond the §5.1 54 px ceiling.
 	var flow_scale := maxf(TEXTURE_REPEAT / MAX_TEXTURE_ELEMENT, endpoint_flow_scale)
 	var start_v := -points[0].y / MODULE_HEIGHT if vertical_span > 1.0 else texture_phase
+	var extra_width := VISUAL_OUTLINE_WIDTH if qa_support_mask and qa_support_mask_include_outline else 0.0
+	var strip := _ribbon_geometry(points, widths, extra_width, texture_phase)
 	var mesh_vertices := PackedVector2Array()
 	var mesh_uvs := PackedVector2Array()
 	var mesh_indices := PackedInt32Array()
-	for index in range(points.size() - 1):
-		var first := points[index]
-		var second := points[index + 1]
-		var tangent := (second - first).normalized()
-		var normal := Vector2(-tangent.y, tangent.x)
-		# Adjacent textured quads overlap by 1.25 px. The UV remains locked to
-		# world Y, so the overlap is identical paint rather than a visible cap.
-		var extended_first := first - tangent * 1.25
-		var extended_second := second + tangent * 1.25
-		var first_half := widths[index] * 0.5
-		var second_half := widths[index + 1] * 0.5
-		var quad := PackedVector2Array([
-			extended_first - normal * first_half,
-			extended_first + normal * first_half,
-			extended_second + normal * second_half,
-			extended_second - normal * second_half,
-		])
+	for index in points.size():
+		var left: Vector2 = strip.left[index]
+		var right: Vector2 = strip.right[index]
+		mesh_vertices.append(left)
+		mesh_vertices.append(right)
+		var center_v := start_v + distances[index] * flow_scale / MODULE_HEIGHT
 		if qa_support_mask:
-			if qa_support_mask_include_outline:
-				var mask_outline_quad := PackedVector2Array([
-					extended_first - normal * (first_half + VISUAL_OUTLINE_WIDTH),
-					extended_first + normal * (first_half + VISUAL_OUTLINE_WIDTH),
-					extended_second + normal * (second_half + VISUAL_OUTLINE_WIDTH),
-					extended_second - normal * (second_half + VISUAL_OUTLINE_WIDTH),
-				])
-				_append_quad(mesh_vertices, mesh_uvs, mesh_indices, mask_outline_quad, PackedVector2Array())
-			else:
-				_append_quad(mesh_vertices, mesh_uvs, mesh_indices, quad, PackedVector2Array())
-			continue
-		var first_v := -extended_first.y / MODULE_HEIGHT if world_locked_v else start_v + (distances[index] - 1.25 * flow_scale) / MODULE_HEIGHT
-		var second_v := -extended_second.y / MODULE_HEIGHT if world_locked_v else start_v + (distances[index + 1] + 1.25 * flow_scale) / MODULE_HEIGHT
-		var first_left := extended_first - normal * first_half
-		var first_right := extended_first + normal * first_half
-		var second_left := extended_second - normal * second_half
-		var second_right := extended_second + normal * second_half
-		var uvs: PackedVector2Array
-		if tangent_uv:
+			mesh_uvs.append(Vector2.ZERO)
+			mesh_uvs.append(Vector2.RIGHT)
+		elif tangent_uv:
 			# The source fibers run along V. Mapping V to path distance makes them
 			# follow a curved transfer arch instead of forming a vertical barcode.
-			var first_u := texture_phase - first_half / 512.0
-			var second_u := texture_phase + first_half / 512.0
-			var third_u := texture_phase + second_half / 512.0
-			var fourth_u := texture_phase - second_half / 512.0
-			uvs = PackedVector2Array([
-				Vector2(first_u, first_v), Vector2(second_u, first_v),
-				Vector2(third_u, second_v), Vector2(fourth_u, second_v),
-			])
+			mesh_uvs.append(Vector2(texture_phase - widths[index] * 0.5 / 512.0, center_v))
+			mesh_uvs.append(Vector2(texture_phase + widths[index] * 0.5 / 512.0, center_v))
 		elif world_locked_v:
-			var first_left_v := -first_left.y / MODULE_HEIGHT
-			var first_right_v := -first_right.y / MODULE_HEIGHT
-			var second_right_v := -second_right.y / MODULE_HEIGHT
-			var second_left_v := -second_left.y / MODULE_HEIGHT
-			uvs = PackedVector2Array([
-				Vector2(_surface_u(first_left.x, first_left_v), first_left_v), Vector2(_surface_u(first_right.x, first_right_v), first_right_v),
-				Vector2(_surface_u(second_right.x, second_right_v), second_right_v), Vector2(_surface_u(second_left.x, second_left_v), second_left_v),
-			])
+			var left_v := -left.y / MODULE_HEIGHT
+			var right_v := -right.y / MODULE_HEIGHT
+			mesh_uvs.append(Vector2(_surface_u(left.x, left_v), left_v))
+			mesh_uvs.append(Vector2(_surface_u(right.x, right_v), right_v))
 		else:
-			uvs = PackedVector2Array([
-				Vector2(_surface_u(first_left.x, first_v), first_v), Vector2(_surface_u(first_right.x, first_v), first_v),
-				Vector2(_surface_u(second_right.x, second_v), second_v), Vector2(_surface_u(second_left.x, second_v), second_v),
-			])
-		_append_quad(mesh_vertices, mesh_uvs, mesh_indices, quad, uvs)
+			mesh_uvs.append(Vector2(_surface_u(left.x, center_v), center_v))
+			mesh_uvs.append(Vector2(_surface_u(right.x, center_v), center_v))
+	for index in range(points.size() - 1):
+		var left := index * 2
+		var right := left + 1
+		var next_left := left + 2
+		var next_right := left + 3
+		mesh_indices.append_array(PackedInt32Array([left, right, next_right, left, next_right, next_left]))
 	if not mesh_vertices.is_empty():
 		var ribbon_mesh := _build_ribbon_mesh(mesh_vertices, mesh_uvs, mesh_indices)
 		if qa_support_mask:
@@ -413,15 +381,6 @@ func _draw_trimmed_edge_pair(left: PackedVector2Array, right: PackedVector2Array
 	# every 12 px branch segment with identical geometry and antialiasing.
 	draw_polyline(left.slice(start_trim, finish), OUTLINE_COLOR, width, true)
 	draw_polyline(right.slice(start_trim, finish), OUTLINE_COLOR, width, true)
-
-func _append_quad(vertices: PackedVector2Array, uvs: PackedVector2Array, indices: PackedInt32Array, quad: PackedVector2Array, quad_uvs: PackedVector2Array) -> void:
-	var base := vertices.size()
-	vertices.append_array(quad)
-	if quad_uvs.size() == 4:
-		uvs.append_array(quad_uvs)
-	else:
-		uvs.append_array(PackedVector2Array([Vector2.ZERO, Vector2.RIGHT, Vector2.ONE, Vector2.DOWN]))
-	indices.append_array(PackedInt32Array([base, base + 1, base + 2, base, base + 2, base + 3]))
 
 func _build_ribbon_mesh(vertices: PackedVector2Array, uvs: PackedVector2Array, indices: PackedInt32Array) -> ArrayMesh:
 	var arrays := []
