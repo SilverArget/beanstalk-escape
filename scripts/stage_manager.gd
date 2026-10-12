@@ -4,7 +4,6 @@ extends Node
 signal stage_completed(stage_number: int)
 signal prototype_completed
 const BRANCH_HALF_WIDTH := 18.0
-const STAGE_3_SPLIT_HEIGHT := 350.0
 var current_stage := 1
 var completion_count := 0
 var completed_stages: Dictionary = {}
@@ -147,9 +146,6 @@ func branch_x_at(route: int, player_y: float) -> float:
 	var stage_number := stage_for_y(player_y)
 	if stage_number <= 2:
 		return 0.0
-	if stage_number == 3:
-		var split_pixels := progress_in_stage(player_y) * Balance.STAGE_HEIGHT
-		return lerpf(0.0, float(Balance.ROUTE_X[route]), clampf(split_pixels / STAGE_3_SPLIT_HEIGHT, 0.0, 1.0))
 	return float(Balance.ROUTE_X[route])
 
 func is_route_open_at(stage_number: int, route: int, progress: float) -> bool:
@@ -212,10 +208,4 @@ func open_routes_at(player_y: float) -> Array:
 	return routes
 
 func branch_targets_visible(player_y: float, viewport_height := 540.0) -> bool:
-	if stage_for_y(player_y) != 3:
-		return stage_for_y(player_y) > 3
-	var split_start_y := -Balance.STAGE_HEIGHT * 2.0 - 140.0
-	var split_end_y := -Balance.STAGE_HEIGHT * 2.0 - 350.0
-	var camera_top_y := player_y - ScaleLock.CHARACTER_REFERENCE_Y
-	var camera_bottom_y := camera_top_y + viewport_height
-	return (split_start_y >= camera_top_y and split_start_y <= camera_bottom_y) or (split_end_y >= camera_top_y and split_end_y <= camera_bottom_y) or player_y <= split_end_y
+	return stage_for_y(player_y) >= 3

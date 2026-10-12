@@ -58,6 +58,7 @@ const INTRO_VISUAL_MODES := ["climb", "summit", "guardian"]
 var intro_active := false
 var intro_beat := 0
 var intro_t := 0.0
+var debug_start_stage := 1
 var meta_ui: MetaShopUI
 
 func _ready() -> void:
@@ -332,6 +333,8 @@ func _finish_intro() -> void:
 	player.reset_run(Vector2.ZERO)
 	spider.reset_run(Vector2(0.0, Balance.START_DISTANCE))
 	beans.reset_run()
+	if debug_start_stage > 1:
+		_start_debug_stage(debug_start_stage)
 	player.set_physics_process(true)
 	spider.set_physics_process(true)
 	beans.set_physics_process(true)
@@ -1123,6 +1126,16 @@ func _apply_debug_meta_overrides() -> void:
 			continue
 		if parts[0] == "gold": economy.gold = maxi(int(parts[1]), 0)
 		if parts[0] == "level": economy.level = maxi(int(parts[1]), 1)
+		if parts[0] == "stage": debug_start_stage = clampi(int(parts[1]), 1, Balance.STAGE_COUNT)
+
+func _start_debug_stage(stage_number: int) -> void:
+	if stage_number <= 1 or stage_number > Balance.STAGE_COUNT:
+		return
+	var start_y := -Balance.STAGE_HEIGHT * float(stage_number - 1)
+	player.reset_run(Vector2(0.0, start_y))
+	spider.reset_run(Vector2(0.0, start_y + Balance.START_DISTANCE))
+	stages.update_progress(start_y)
+	gauge.update_from_positions(player.global_position.y, spider.global_position.y)
 
 func _ensure_actions() -> void:
 	_add_key_action("time_wings", [KEY_F])

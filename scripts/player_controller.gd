@@ -72,7 +72,9 @@ func _sync_stage_mode() -> void:
 		on_support = true
 		active_branch = stages.route_for_x(global_position.x)
 	elif _last_stage <= 2 or movement_mode == MovementMode.TRUNK:
-		active_branch = stages.route_for_x(global_position.x)
+		# The trunk itself continues as the middle vine. Entering Stage 3 always
+		# lands on that same support, regardless of the player's trunk-side X.
+		active_branch = 1
 		transition_from = active_branch
 		transition_to = active_branch
 		transition_progress = 0.0
@@ -167,8 +169,9 @@ func _update_transition_visual(progress: float) -> void:
 		body.position.y = 7.0 * sin(anticipation * PI)
 		body.scale = Vector2(1.0 + 0.08 * anticipation, 1.0 - 0.10 * anticipation)
 	elif progress < 0.85:
-		var arc_t := (progress - 0.15) / 0.70
-		body.position.y = -Balance.BRANCH_ARC_HEIGHT * sin(arc_t * PI)
+		# BranchGraph owns the airborne Y arc. Keep the body centered on that
+		# path so the visual pose does not double the configured jump height.
+		body.position.y = 0.0
 		body.scale = Vector2.ONE
 	else:
 		var settle := (progress - 0.85) / 0.15

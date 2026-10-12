@@ -18,6 +18,9 @@ const VISUAL_OUTLINE_WIDTH := 3.0
 const FOLIAGE_CELL := Vector2(512.0, 512.0)
 const BRANCH_DETAIL_GRID := Vector2(4.0, 2.0)
 const BRANCH_NODE_SPACING := 150.0
+const STAGE_3_ENTRY_HEIGHT := 350.0
+const SIDE_VINE_ENTRY_DEPTH := 240.0
+const SIDE_VINE_OFFSCREEN_X := 560.0
 
 @onready var player: PlayerController = get_parent().get_node_or_null("Player") as PlayerController
 @onready var stages: StageManager = get_parent().get_node_or_null("StageManager") as StageManager
@@ -55,8 +58,6 @@ func _draw() -> void:
 		_draw_trunk_features(camera_top)
 	for stage_number in range(3, Balance.STAGE_COUNT + 1):
 		_draw_stage_branches(stage_number, camera_top)
-	if not qa_support_mask and player != null and player.support_state == PlayerController.SupportState.TRANSFERRING:
-		_draw_transfer_connection(player.transition_from, player.transition_to, player.transition_base_y)
 
 func _draw_sky(camera_top: float) -> void:
 	# Camera X follows the active branch from Stage 3 onward. Keep the painted
@@ -103,27 +104,43 @@ func _draw_foreground_foliage(camera_top: float) -> void:
 		_draw_foliage_sprite(4, center, Vector2(MAX_LEAF_SIZE, MAX_LEAF_SIZE), side < 0.0, Color(1.0, 1.0, 1.0, 0.32))
 
 func _draw_trunk(camera_top: float) -> void:
-	# Overlap the fork by 48 px. The fork silhouette replaces the trunk edge in
-	# this zone, so its tangent and paint meet without a notch or butt joint.
-	var split_root_y := -Balance.STAGE_HEIGHT * 2.0 - 188.0
-	var visible_top := maxf(split_root_y, camera_top - 64.0)
+	# One continuous ribbon becomes the middle Stage 3 vine. Because the width,
+	# centerline, UV and glaze all live in this draw call, there is no fork seam.
+	var transition_top_y := -Balance.STAGE_HEIGHT * 2.0 - STAGE_3_ENTRY_HEIGHT
+	var visible_top := maxf(transition_top_y, camera_top - 64.0)
 	var visible_bottom := minf(740.0, camera_top + 620.0)
 	if visible_bottom <= visible_top:
 		return
 	var centers := PackedVector2Array()
 	var y := visible_bottom
 	while y > visible_top:
-		centers.append(Vector2(_trunk_center_x(y), y))
+		centers.append(Vector2(_main_stem_center_x(y), y))
 		y = maxf(y - 32.0, visible_top)
 	if centers.is_empty() or centers[centers.size() - 1].y != visible_top:
-		centers.append(Vector2(_trunk_center_x(visible_top), visible_top))
+		centers.append(Vector2(_main_stem_center_x(visible_top), visible_top))
 	_draw_textured_ribbon(centers, _trunk_widths(centers), -visible_bottom / MODULE_HEIGHT, true, true)
 
 func _trunk_widths(points: PackedVector2Array) -> PackedFloat32Array:
 	var widths := PackedFloat32Array()
 	for point in points:
-		widths.append(_trunk_half_width(point.y) * 2.0)
+		widths.append(_main_stem_width(point.y))
 	return widths
+
+func _main_stem_center_x(world_y: float) -> float:
+	var stage_3_bottom := -Balance.STAGE_HEIGHT * 2.0
+	if world_y >= stage_3_bottom:
+		return _trunk_center_x(world_y)
+	var t := clampf((stage_3_bottom - world_y) / STAGE_3_ENTRY_HEIGHT, 0.0, 1.0)
+	var smooth := t * t * t * (t * (t * 6.0 - 15.0) + 10.0)
+	return lerpf(_trunk_center_x(stage_3_bottom), _branch_visual_x(1, stage_3_bottom - STAGE_3_ENTRY_HEIGHT), smooth)
+
+func _main_stem_width(world_y: float) -> float:
+	var stage_3_bottom := -Balance.STAGE_HEIGHT * 2.0
+	if world_y >= stage_3_bottom:
+		return _trunk_half_width(world_y) * 2.0
+	var t := clampf((stage_3_bottom - world_y) / STAGE_3_ENTRY_HEIGHT, 0.0, 1.0)
+	var smooth := t * t * t * (t * (t * 6.0 - 15.0) + 10.0)
+	return lerpf(_trunk_half_width(stage_3_bottom) * 2.0, ScaleLock.BRANCH_WIDTH, smooth)
 
 func _trunk_center_x(world_y: float) -> float:
 	return sin(world_y * 0.0041) * 5.0 + sin(world_y * 0.0107) * 2.5
@@ -137,17 +154,6 @@ func _draw_stage_branches(stage_number: int, camera_top: float) -> void:
 	var camera_bottom := camera_top + 556.0
 	if stage_bottom < camera_top - 120.0 or stage_top > camera_bottom + 120.0:
 		return
-	if stage_number == 3:
-		_draw_split_union(stage_bottom)
-	var connection_y := stage_bottom - (430.0 if stage_number == 3 else 180.0)
-	while connection_y > stage_top + 120.0:
-		if branch_graph.can_transfer(stages, 0, 1, connection_y):
-			_draw_transfer_connection(0, 1, connection_y)
-		if branch_graph.can_transfer(stages, 1, 2, connection_y - 90.0):
-			_draw_transfer_connection(1, 2, connection_y - 90.0)
-		connection_y -= 360.0
-	# Supports cover the bridge feet. This keeps the arch embedded in the vine
-	# instead of painting its outline over the two branch faces.
 	for route in 3:
 		for segment: Array in stages.support_segments(stage_number, route):
 			_draw_branch_segment(stage_number, route, float(segment[0]), float(segment[1]))
@@ -155,11 +161,16 @@ func _draw_stage_branches(stage_number: int, camera_top: float) -> void:
 func _draw_branch_segment(stage_number: int, route: int, start_progress: float, end_progress: float) -> void:
 	var stage_bottom := -float(stage_number - 1) * Balance.STAGE_HEIGHT
 	var cap_start := start_progress > 0.0
-	if stage_number == 3 and start_progress <= 0.0:
-		start_progress = maxf(start_progress, 350.0 / Balance.STAGE_HEIGHT)
+	if stage_number == 3 and route == 1 and start_progress <= 0.0:
+		start_progress = STAGE_3_ENTRY_HEIGHT / Balance.STAGE_HEIGHT
 	var start_y := stage_bottom - start_progress * Balance.STAGE_HEIGHT
 	var end_y := stage_bottom - end_progress * Balance.STAGE_HEIGHT
-	var points := PackedVector2Array([Vector2(_branch_visual_x(route, start_y), start_y)])
+	var points := PackedVector2Array()
+	if stage_number == 3 and route != 1 and start_progress <= 0.0:
+		points = _side_vine_entry_points(route, stage_bottom)
+		cap_start = false
+	else:
+		points.append(Vector2(_branch_visual_x(route, start_y), start_y))
 	var cursor_y := start_y
 	while cursor_y > end_y:
 		cursor_y = maxf(cursor_y - 12.0, end_y)
@@ -170,27 +181,21 @@ func _draw_branch_segment(stage_number: int, route: int, start_progress: float, 
 	_draw_branch_ribbon(points, route, cap_start, true)
 	_draw_branch_details(route, start_y, end_y)
 
+func _side_vine_entry_points(route: int, stage_bottom: float) -> PackedVector2Array:
+	var points := PackedVector2Array()
+	var side := -1.0 if route == 0 else 1.0
+	for step in 17:
+		var t := float(step) / 16.0
+		var smooth := t * t * (3.0 - 2.0 * t)
+		var y := lerpf(stage_bottom + SIDE_VINE_ENTRY_DEPTH, stage_bottom, t)
+		var x := lerpf(side * SIDE_VINE_OFFSCREEN_X, _branch_visual_x(route, stage_bottom), smooth)
+		points.append(Vector2(x, y))
+	return points
+
 func _branch_visual_x(route: int, world_y: float) -> float:
 	# Gameplay remains on Balance.ROUTE_X. This visual-only S wave stays within
 	# the 44 px support, replacing the former ruler-straight tube.
 	return float(Balance.ROUTE_X[route]) + sin((world_y + float(route) * 83.0) * 0.0085) * 5.5
-
-func _split_ribbon_data(route: int, stage_bottom: float) -> Dictionary:
-	var split_start := Vector2(_trunk_center_x(stage_bottom - 100.0), stage_bottom - 100.0)
-	var split_start_width := _trunk_half_width(split_start.y) * 2.0
-	var split_end_y := stage_bottom - 350.0
-	var points := PackedVector2Array()
-	var widths := PackedFloat32Array()
-	for step in range(29):
-		var t := float(step) / 28.0
-		# Quintic easing keeps both slope and curvature continuous at the trunk
-		# and branch joins over a 250 px opening arc.
-		var smooth := t * t * t * (t * (t * 6.0 - 15.0) + 10.0)
-		var branch_end_x := _branch_visual_x(route, split_end_y)
-		var organic_x := lerpf(split_start.x, branch_end_x, smooth) + sin(t * PI) * float(route - 1) * 6.0
-		points.append(Vector2(organic_x, lerpf(split_start.y, split_end_y, t)))
-		widths.append(lerpf(split_start_width, ScaleLock.BRANCH_WIDTH, smooth))
-	return {"points": points, "widths": widths}
 
 func _draw_branch_ribbon(points: PackedVector2Array, route: int, cap_start: bool, cap_end: bool) -> void:
 	var widths := PackedFloat32Array()
@@ -245,99 +250,6 @@ func _draw_branch_detail_sprite(cell: int, center: Vector2, size: Vector2, rotat
 	draw_set_transform(center, rotation, Vector2(-1.0 if flip_x else 1.0, 1.0))
 	draw_texture_rect_region(BRANCH_DETAILS_TEXTURE, Rect2(-size * 0.5, size), source)
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
-
-func _draw_split_union(stage_bottom: float) -> void:
-	var merged := _split_union_polygon(stage_bottom)
-	if merged.size() < 3:
-		return
-	var triangles := Geometry2D.triangulate_polygon(merged)
-	for triangle_start in range(0, triangles.size(), 3):
-		var triangle := PackedVector2Array()
-		var uvs := PackedVector2Array()
-		for corner in 3:
-			var point: Vector2 = merged[triangles[triangle_start + corner]]
-			var v := -point.y / MODULE_HEIGHT
-			triangle.append(point)
-			uvs.append(Vector2(_surface_u(point.x, v), v))
-		if qa_support_mask:
-			draw_colored_polygon(triangle, Color.WHITE)
-		else:
-			draw_polygon(triangle, PackedColorArray([Color.WHITE, Color.WHITE, Color.WHITE]), uvs, VINE_SURFACE_TEXTURE)
-			draw_colored_polygon(triangle, Color(0.78, 0.90, 0.42, 0.14))
-	if qa_support_mask:
-		if qa_support_mask_include_outline:
-			_draw_closed_polygon_outline(merged, Color.WHITE, VISUAL_OUTLINE_WIDTH, stage_bottom - 350.0, stage_bottom - 140.0)
-		return
-	_draw_closed_polygon_outline(merged, OUTLINE_COLOR, VISUAL_OUTLINE_WIDTH, stage_bottom - 350.0, stage_bottom - 140.0)
-
-func _split_union_polygon(stage_bottom: float) -> PackedVector2Array:
-	var geometries := []
-	var split_root := Vector2.ZERO
-	var split_root_width := 0.0
-	for route in 3:
-		var data := _split_ribbon_data(route, stage_bottom)
-		if route == 0:
-			split_root = data.points[0]
-			split_root_width = data.widths[0]
-		geometries.append(_ribbon_geometry(data.points, data.widths, 0.0, 0.0))
-	var polygon := PackedVector2Array()
-	polygon.append(Vector2(split_root.x - split_root_width * 0.5, split_root.y))
-	var outer_left: PackedVector2Array = geometries[0].left
-	var left_root_index := _first_edge_point_above(outer_left, split_root.y)
-	for index in range(left_root_index, outer_left.size()):
-		polygon.append(outer_left[index])
-	for gap in 2:
-		var left_edge: PackedVector2Array = geometries[gap].right
-		var right_edge: PackedVector2Array = geometries[gap + 1].left
-		var closure := _split_gap_closure(left_edge, right_edge)
-		var left_index: int = closure.left_index
-		var right_index: int = closure.right_index
-		for reverse_index in range(left_edge.size() - 1, left_index - 1, -1):
-			polygon.append(left_edge[reverse_index])
-		polygon.append(closure.point)
-		for forward_index in range(right_index, right_edge.size()):
-			polygon.append(right_edge[forward_index])
-	var outer_right: PackedVector2Array = geometries[2].right
-	var right_root_index := _first_edge_point_above(outer_right, split_root.y)
-	for reverse_index in range(outer_right.size() - 1, right_root_index - 1, -1):
-		polygon.append(outer_right[reverse_index])
-	polygon.append(Vector2(split_root.x + split_root_width * 0.5, split_root.y))
-	return polygon
-
-func _split_gap_closure(left_edge: PackedVector2Array, right_edge: PackedVector2Array) -> Dictionary:
-	for left_index in range(left_edge.size() - 1):
-		for right_index in range(right_edge.size() - 1):
-			var crossing = Geometry2D.segment_intersects_segment(
-				left_edge[left_index], left_edge[left_index + 1],
-				right_edge[right_index], right_edge[right_index + 1]
-			)
-			if crossing != null:
-				return {"left_index": left_index + 1, "right_index": right_index + 1, "point": crossing as Vector2}
-	return {
-		"left_index": left_edge.size() - 1,
-		"right_index": right_edge.size() - 1,
-		"point": (left_edge[-1] + right_edge[-1]) * 0.5,
-	}
-
-func _first_edge_point_above(edge: PackedVector2Array, root_y: float) -> int:
-	for index in edge.size():
-		if edge[index].y <= root_y:
-			return index
-	return edge.size() - 1
-
-func _draw_closed_polygon_outline(polygon: PackedVector2Array, color: Color, width: float, branch_join_y: float, root_join_y: float) -> void:
-	for index in polygon.size():
-		var start := polygon[index]
-		var finish := polygon[(index + 1) % polygon.size()]
-		var midpoint := (start + finish) * 0.5
-		var delta := finish - start
-		# The three branch ribbons continue beyond the split polygon. Their top
-		# cross-sections are interior joins, not part of the union silhouette.
-		if absf(midpoint.y - branch_join_y) < 8.0 and absf(delta.x) > absf(delta.y) * 2.0 and delta.length() < 60.0:
-			continue
-		if absf(midpoint.y - root_join_y) < 8.0 and absf(delta.x) > absf(delta.y) * 2.0:
-			continue
-		draw_line(start, finish, color, width, true)
 
 func _draw_textured_ribbon(points: PackedVector2Array, widths: PackedFloat32Array, texture_phase: float, draw_outline := true, world_locked_v := false, tangent_uv := false, outline_start_trim := 0, outline_end_trim := 0, branch_material := false) -> void:
 	if points.size() < 2:
@@ -501,15 +413,6 @@ func _draw_foliage_sprite(cell: int, center: Vector2, size: Vector2, flip_x := f
 		destination.size.x *= -1.0
 	draw_texture_rect_region(FOLIAGE_TEXTURE, destination, source, modulate)
 
-func _draw_transfer_connection(from_branch: int, to_branch: int, world_y: float) -> void:
-	var points := PackedVector2Array()
-	for step in 17:
-		points.append(branch_graph.transfer_point(stages, from_branch, to_branch, world_y, float(step) / 16.0))
-	var widths := PackedFloat32Array()
-	for step in points.size():
-		widths.append(lerpf(12.0, 15.0, sin(float(step) / float(points.size() - 1) * PI)))
-	_draw_textured_ribbon(points, widths, 0.41, true, false, true, 2, 2, true)
-
 func sky_color_at(normalized_y: float) -> Color:
 	return SKY_TOP.lerp(SKY_BOTTOM, clampf(normalized_y, 0.0, 1.0))
 
@@ -522,15 +425,9 @@ func qa_point_inside_support(world_point: Vector2) -> bool:
 		return absf(world_point.x - _trunk_center_x(world_point.y)) <= _trunk_half_width(world_point.y)
 	var stage_bottom := -float(stage_number - 1) * Balance.STAGE_HEIGHT
 	var progress := (stage_bottom - world_point.y) / Balance.STAGE_HEIGHT
-	if stage_number == 3 and progress * Balance.STAGE_HEIGHT >= 140.0 and progress * Balance.STAGE_HEIGHT <= 350.0:
-		var t := (progress * Balance.STAGE_HEIGHT - 140.0) / 210.0
-		var smooth := t * t * (3.0 - 2.0 * t)
-		for route in 3:
-			var end_y := stage_bottom - 350.0
-			var center_x := lerpf(_trunk_center_x(stage_bottom - 140.0), _branch_visual_x(route, end_y), smooth) + sin(t * PI) * float(route - 1) * 6.0
-			var width := lerpf(ScaleLock.TRUNK_WIDTH, ScaleLock.BRANCH_WIDTH, smooth)
-			if absf(world_point.x - center_x) <= width * 0.5:
-				return true
+	if stage_number == 3 and progress * Balance.STAGE_HEIGHT <= STAGE_3_ENTRY_HEIGHT:
+		if absf(world_point.x - _main_stem_center_x(world_point.y)) <= _main_stem_width(world_point.y) * 0.5:
+			return true
 	for route in 3:
 		for segment: Array in stages.support_segments(stage_number, route):
 			if progress >= float(segment[0]) and progress <= float(segment[1]) and absf(world_point.x - _branch_visual_x(route, world_point.y)) <= ScaleLock.BRANCH_WIDTH * 0.5:
@@ -552,6 +449,11 @@ func qa_visual_contract() -> Dictionary:
 		"branch_surface_texture": "res://assets/art/world/vine_surface_tile_v3.png",
 		"branch_detail_atlas": "res://assets/art/world/bean_branch_details_v1.png",
 		"branch_node_spacing_px": BRANCH_NODE_SPACING,
+		"stage_3_layout": "continuous_middle_with_separate_side_vines",
+		"split_union_count": 0,
+		"transfer_bridge_count": 0,
+		"side_vine_entry_world_y": -Balance.STAGE_HEIGHT * 2.0 + SIDE_VINE_ENTRY_DEPTH,
+		"side_vine_entry_world_x": [-SIDE_VINE_OFFSCREEN_X, SIDE_VINE_OFFSCREEN_X],
 		"foliage_atlas": "res://assets/art/world/foliage_atlas.png",
 		"procedural_circle_cloud_count": 0,
 		"flat_polygon_leaf_count": 0,
