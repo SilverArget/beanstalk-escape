@@ -839,6 +839,7 @@ func _readonly_state_snapshot() -> Dictionary:
 		"gauge_level": gauge.level,
 		"time_wings": {"unlocked": stages.stage_for_y(player.global_position.y) >= Balance.TIME_WINGS_STAGE, "active": time_wings_remaining > 0.0, "remaining": time_wings_remaining, "started_remaining": time_wings_started_remaining, "used": time_wings_used_stage.has(stages.stage_for_y(player.global_position.y))},
 		"audio_events": audio.audio_event_snapshot(),
+		"gold_fx": golds.active_feedback_snapshot(),
 		"beans": state_beans,
 		"next_dead_end": {"route": dead_end_route, "distance_px": null if is_inf(dead_end_distance) else dead_end_distance},
 		"open_routes_at_player": stages.open_routes_at(player.global_position.y),

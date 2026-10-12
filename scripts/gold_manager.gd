@@ -36,3 +36,10 @@ func _on_collected(placement_id: String) -> void:
 	collected_ids[placement_id] = true
 	economy.collect_gold()
 	audio.play_sfx("gold_pickup")
+
+func active_feedback_snapshot() -> Array:
+	var result := []
+	for child in get_children():
+		if child is GoldCollectible and child.sparkle_remaining > 0.0:
+			result.append(child.feedback_snapshot())
+	return result
