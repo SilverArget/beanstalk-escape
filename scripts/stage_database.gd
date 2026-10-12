@@ -81,13 +81,48 @@ static func canonical_stages() -> Array:
 		stage["checkpoint"] = "stage_start"
 		stage["tutorial_trigger"] = "encounter_warning_once"
 		stage["end_transition"] = "next_stage_immediate_with_three_async_pulses"
-		stage["nominal_duration_no_fire"] = 28.0
+		stage["nominal_duration_no_fire"] = Balance.STAGE_DURATION_SECONDS
 		stage["validation_status"] = "NOT_RUN"
+		stage["encounters"] = _paced_encounters(stage)
 		for encounter: Dictionary in stage.encounters:
 			var anchor := int(encounter.anchor)
 			encounter["warning_height"] = anchor - WARNING_LEAD
 			encounter["occupancy"] = [anchor, anchor + OCCUPANCY_HEIGHT]
 		result.append(stage)
+	return result
+
+static func _paced_encounters(stage: Dictionary) -> Array:
+	var source: Array = stage.encounters
+	var result: Array = []
+	for index in 10:
+		var template: Dictionary = (source[index % source.size()] as Dictionary).duplicate(true)
+		var use_bean := int(stage.number) >= 4 or (int(stage.number) == 1 and index >= 2 and index % 2 == 0) or (int(stage.number) == 2 or int(stage.number) == 3) and index % 2 == 1
+		template["id"] = "S%02d-E%02d" % [int(stage.number), index + 1]
+		# 240 px is 1.92 s at the 125 px/s tempo. Starting at 500 keeps every
+		# warning safely inside its stage and leaves Stage 1's first bean after 3 s.
+		template["anchor"] = 500 + index * 240
+		if int(stage.number) == 3 and not use_bean and index > 0:
+			template["witness"] = int((result[-1] as Dictionary).witness)
+		if use_bean:
+			var blocked: int = (0 if index % 4 < 2 else 2) if int(stage.number) <= 2 else (index + int(stage.number)) % 3
+			if int(stage.number) == 3:
+				var preceding_supports: Array = (result[-1] as Dictionary).recipe.supports
+				template["witness"] = int(preceding_supports[0])
+				if index + 1 < 10:
+					var next_supports: Array = (source[(index + 1) % source.size()] as Dictionary).recipe.supports
+					for supported_route in preceding_supports:
+						if next_supports.has(supported_route):
+							template["witness"] = int(supported_route)
+							break
+				for route in 3:
+					if route != int(template.witness):
+						blocked = route
+						break
+			template["recipe"] = {"kind": "BEAN", "lane": blocked, "count": 2 if int(stage.number) == 5 else 1}
+			if int(stage.number) != 3:
+				template["witness"] = (blocked + 1) % 3
+			template["objective"] = "Read the warning and keep one safe route."
+		result.append(template)
 	return result
 
 static func stages_for_variant(variant: String) -> Array:

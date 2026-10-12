@@ -166,6 +166,7 @@ func _branch_visual_x(route: int, world_y: float) -> float:
 
 func _split_ribbon_data(route: int, stage_bottom: float) -> Dictionary:
 	var split_start := Vector2(_trunk_center_x(stage_bottom - 140.0), stage_bottom - 140.0)
+	var split_start_width := _trunk_half_width(split_start.y) * 2.0
 	var split_end_y := stage_bottom - 350.0
 	var points := PackedVector2Array()
 	var widths := PackedFloat32Array()
@@ -175,7 +176,7 @@ func _split_ribbon_data(route: int, stage_bottom: float) -> Dictionary:
 		var branch_end_x := _branch_visual_x(route, split_end_y)
 		var organic_x := lerpf(split_start.x, branch_end_x, smooth) + sin(t * PI) * float(route - 1) * 6.0
 		points.append(Vector2(organic_x, lerpf(split_start.y, split_end_y, t)))
-		widths.append(lerpf(ScaleLock.TRUNK_WIDTH, ScaleLock.BRANCH_WIDTH, smooth))
+		widths.append(lerpf(split_start_width, ScaleLock.BRANCH_WIDTH, smooth))
 	return {"points": points, "widths": widths}
 
 func _draw_branch_ribbon(points: PackedVector2Array, route: int, cap_start: bool, cap_end: bool) -> void:
@@ -218,11 +219,12 @@ func _draw_split_union(stage_bottom: float) -> void:
 			draw_colored_polygon(triangle, Color.WHITE)
 		else:
 			draw_polygon(triangle, PackedColorArray([Color.WHITE, Color.WHITE, Color.WHITE]), uvs, VINE_SURFACE_TEXTURE)
+			draw_colored_polygon(triangle, Color(0.78, 0.90, 0.42, 0.14))
 	if qa_support_mask:
 		if qa_support_mask_include_outline:
-			_draw_closed_polygon_outline(merged, Color.WHITE, VISUAL_OUTLINE_WIDTH * 2.0 + 1.0, stage_bottom - 350.0)
+			_draw_closed_polygon_outline(merged, Color.WHITE, VISUAL_OUTLINE_WIDTH, stage_bottom - 350.0, stage_bottom - 140.0)
 		return
-	_draw_closed_polygon_outline(merged, OUTLINE_COLOR, VISUAL_OUTLINE_WIDTH, stage_bottom - 350.0)
+	_draw_closed_polygon_outline(merged, OUTLINE_COLOR, VISUAL_OUTLINE_WIDTH, stage_bottom - 350.0, stage_bottom - 140.0)
 
 func _split_union_polygon(stage_bottom: float) -> PackedVector2Array:
 	var geometries := []
@@ -279,7 +281,7 @@ func _first_edge_point_above(edge: PackedVector2Array, root_y: float) -> int:
 			return index
 	return edge.size() - 1
 
-func _draw_closed_polygon_outline(polygon: PackedVector2Array, color: Color, width: float, branch_join_y: float) -> void:
+func _draw_closed_polygon_outline(polygon: PackedVector2Array, color: Color, width: float, branch_join_y: float, root_join_y: float) -> void:
 	for index in polygon.size():
 		var start := polygon[index]
 		var finish := polygon[(index + 1) % polygon.size()]
@@ -288,6 +290,8 @@ func _draw_closed_polygon_outline(polygon: PackedVector2Array, color: Color, wid
 		# The three branch ribbons continue beyond the split polygon. Their top
 		# cross-sections are interior joins, not part of the union silhouette.
 		if absf(midpoint.y - branch_join_y) < 8.0 and absf(delta.x) > absf(delta.y) * 2.0 and delta.length() < 60.0:
+			continue
+		if absf(midpoint.y - root_join_y) < 8.0 and absf(delta.x) > absf(delta.y) * 2.0:
 			continue
 		draw_line(start, finish, color, width, true)
 
@@ -306,11 +310,6 @@ func _draw_textured_ribbon(points: PackedVector2Array, widths: PackedFloat32Arra
 	# Never stretch a 52 px source feature beyond the §5.1 54 px ceiling.
 	var flow_scale := maxf(TEXTURE_REPEAT / MAX_TEXTURE_ELEMENT, endpoint_flow_scale)
 	var start_v := -points[0].y / MODULE_HEIGHT if vertical_span > 1.0 else texture_phase
-	if not qa_support_mask and draw_outline:
-		var outline_geometry := _ribbon_geometry(points, widths, VISUAL_OUTLINE_WIDTH, texture_phase)
-		# Side strokes provide the 3 px rim without a polygon end-cap. A filled
-		# outline polygon exposed a dark horizontal bar wherever two ribbons met.
-		_draw_trimmed_edge_pair(outline_geometry.left, outline_geometry.right, VISUAL_OUTLINE_WIDTH * 2.0 + 1.0, outline_start_trim, outline_end_trim)
 	for index in range(points.size() - 1):
 		var first := points[index]
 		var second := points[index + 1]
@@ -382,7 +381,7 @@ func _draw_textured_ribbon(points: PackedVector2Array, widths: PackedFloat32Arra
 			draw_colored_polygon(quad, Color(0.78, 0.90, 0.42, glaze_alpha))
 	if not qa_support_mask and draw_outline:
 		var edge_geometry := _ribbon_geometry(points, widths, VISUAL_OUTLINE_WIDTH, texture_phase)
-		_draw_trimmed_edge_pair(edge_geometry.left, edge_geometry.right, 1.25, outline_start_trim, outline_end_trim)
+		_draw_trimmed_edge_pair(edge_geometry.left, edge_geometry.right, VISUAL_OUTLINE_WIDTH, outline_start_trim, outline_end_trim)
 
 func _draw_trimmed_edge_pair(left: PackedVector2Array, right: PackedVector2Array, width: float, start_trim: int, end_trim: int) -> void:
 	var finish := left.size() - end_trim

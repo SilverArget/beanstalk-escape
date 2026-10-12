@@ -52,8 +52,12 @@ static func solve_stages_1_to_5(variant: String) -> Dictionary:
 			if not issue_ticks.is_empty():
 				minimum_gap = minf(minimum_gap, float(issue_ticks[-1] - issue_ticks[0]) / PHYSICS_HZ if issue_ticks.size() > 1 else COMMAND_GAP_SECONDS)
 			route = target
+	var expected_commands := 0
+	for stage: Dictionary in stages:
+		if int(stage.number) >= 3:
+			expected_commands += stage.encounters.size()
 	return {
-		"valid": commands.size() == 15,
+		"valid": commands.size() == expected_commands,
 		"variant": variant,
 		"commands": commands,
 		"physics_hz": PHYSICS_HZ,

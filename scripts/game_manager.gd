@@ -19,6 +19,9 @@ var death_cause := DeathCause.NONE
 var total_time := 0.0
 var close_calls := 0
 var danger_was_active := false
+var shake_remaining := 0.0
+var close_text_remaining := 0.0
+var danger_pulse_remaining := 0.0
 var skills_used := 0
 var best_spider_distance := 0.0
 var time_wings_remaining := 0.0
@@ -81,10 +84,15 @@ func _physics_process(delta: float) -> void:
 			restart_stage()
 			return
 	if app_state == AppState.PAUSED or app_state == AppState.MENU or app_state == AppState.PLAYER_DEAD or app_state == AppState.GAME_COMPLETE:
+		_apply_impact_fx(0.0)
 		_update_hud()
 		_publish_readonly_web_state()
 		return
 	total_time += delta
+	shake_remaining = maxf(shake_remaining - delta, 0.0)
+	close_text_remaining = maxf(close_text_remaining - delta, 0.0)
+	danger_pulse_remaining = maxf(danger_pulse_remaining - delta, 0.0)
+	_apply_impact_fx(delta)
 	if time_wings_remaining > 0.0:
 		time_wings_remaining = maxf(time_wings_remaining - delta, 0.0)
 		if time_wings_remaining <= 0.0:
@@ -98,8 +106,10 @@ func _physics_process(delta: float) -> void:
 	best_spider_distance = maxf(best_spider_distance, gauge.distance_px)
 	if gauge.level == "DANGER" and not danger_was_active:
 		danger_was_active = true
+		danger_pulse_remaining = 0.22
 	elif gauge.level != "DANGER" and danger_was_active:
 		close_calls += 1
+		close_text_remaining = 0.60
 		danger_was_active = false
 	if _spider_can_catch():
 		_die(DeathCause.CAUGHT)
@@ -191,6 +201,10 @@ func restart() -> void:
 	total_time = 0.0
 	close_calls = 0
 	danger_was_active = false
+	shake_remaining = 0.0
+	close_text_remaining = 0.0
+	danger_pulse_remaining = 0.0
+	_apply_impact_fx(0.0)
 	skills_used = 0
 	best_spider_distance = 0.0
 	time_wings_remaining = 0.0
@@ -220,6 +234,10 @@ func restart_stage() -> void:
 	var start_y := -float(stage_number - 1) * Balance.STAGE_HEIGHT
 	for child in get_tree().get_nodes_in_group("run_transient"): child.free()
 	beans.reset_run()
+	shake_remaining = 0.0
+	close_text_remaining = 0.0
+	danger_pulse_remaining = 0.0
+	_apply_impact_fx(0.0)
 	player.reset_run(Vector2(0, start_y))
 	spider.reset_run(Vector2(0, start_y + SpiderController.retry_gap_for_stage(stage_number)))
 	stage_restart_count += 1
@@ -450,12 +468,42 @@ func _show_tutorial_for_stage(stage_number: int) -> void:
 	tutorial_remaining = Balance.TUTORIAL_SECONDS if tutorial_text != "" else 0.0
 
 func show_bean_tutorial() -> void:
-	if stages.stage_for_y(player.global_position.y) == 4 and tutorial_text != "DODGE THE BEANS":
+	if tutorial_text != "DODGE THE BEANS":
 		tutorial_text = "DODGE THE BEANS"
 		tutorial_remaining = Balance.TUTORIAL_SECONDS
 
+func on_bean_hit() -> void:
+	if not reduced_motion:
+		shake_remaining = 0.20
+
+func _apply_impact_fx(_delta: float) -> void:
+	var camera := player.get_node_or_null("Camera2D") as Camera2D
+	if camera != null:
+		if shake_remaining > 0.0 and not reduced_motion and app_state == AppState.PLAYING:
+			var progress := 1.0 - shake_remaining / 0.20
+			camera.offset = Vector2.from_angle(progress * TAU * 7.0) * (6.0 * shake_remaining / 0.20)
+		else:
+			camera.offset = Vector2.ZERO
+	var close_label := player.get_node_or_null("CloseCall") as Label
+	if close_label != null:
+		close_label.visible = close_text_remaining > 0.0 and app_state == AppState.PLAYING
+
 func _setup_hud() -> void:
 	_apply_theme()
+	var close_label := Label.new()
+	close_label.name = "CloseCall"
+	close_label.text = "CLOSE!"
+	close_label.position = Vector2(-55.0, -92.0)
+	close_label.size = Vector2(110.0, 30.0)
+	close_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	close_label.theme = ui_theme
+	close_label.add_theme_font_size_override("font_size", 22)
+	close_label.add_theme_color_override("font_color", Color("ffe36b"))
+	close_label.add_theme_color_override("font_outline_color", Color("142b39"))
+	close_label.add_theme_constant_override("outline_size", 4)
+	close_label.z_index = 10
+	close_label.visible = false
+	player.add_child(close_label)
 	$HUD/Title.text = ""
 	$HUD/Hint.text = ""
 	$HUD/Dead.text = "CAUGHT\nENTER / TAP TO RETRY"
@@ -840,6 +888,8 @@ func _readonly_state_snapshot() -> Dictionary:
 		"time_wings": {"unlocked": stages.stage_for_y(player.global_position.y) >= Balance.TIME_WINGS_STAGE, "active": time_wings_remaining > 0.0, "remaining": time_wings_remaining, "started_remaining": time_wings_started_remaining, "used": time_wings_used_stage.has(stages.stage_for_y(player.global_position.y))},
 		"audio_events": audio.audio_event_snapshot(),
 		"gold_fx": golds.active_feedback_snapshot(),
+		"tempo": {"stage_seconds": Balance.STAGE_DURATION_SECONDS, "events_in_stage": stages.pattern_for_stage(stage_number).encounters.size()},
+		"fx": {"shake": shake_remaining, "close_text": close_text_remaining},
 		"beans": state_beans,
 		"next_dead_end": {"route": dead_end_route, "distance_px": null if is_inf(dead_end_distance) else dead_end_distance},
 		"open_routes_at_player": stages.open_routes_at(player.global_position.y),

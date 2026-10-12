@@ -10,6 +10,7 @@ func _draw() -> void:
 	if game == null or game.app_state != GameManager.AppState.PLAYING:
 		return
 	var amount := clampf((game.gauge.normalized_danger - 0.45) / 0.55, 0.0, 1.0)
+	amount = maxf(amount, clampf(game.danger_pulse_remaining / 0.22, 0.0, 1.0))
 	if amount <= 0.0:
 		return
 	var edge := 24.0 + amount * 34.0

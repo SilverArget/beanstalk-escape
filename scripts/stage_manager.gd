@@ -63,7 +63,7 @@ func generate_patterns(seed_value: int) -> Array:
 				var safe_routes := [0, 1, 2]
 				safe_routes.erase(blocked)
 				var safety_route := int(encounter.witness)
-				bean_slots.append({"id": encounter.id, "anchor": encounter.anchor, "warning_height": encounter.warning_height, "occupancy": encounter.occupancy, "progress": slot_progress, "blocked_route": blocked, "safe_routes": safe_routes, "safety_route": safety_route, "warning_seconds": Balance.BEAN_WARNING_SECONDS})
+				bean_slots.append({"id": encounter.id, "anchor": encounter.anchor, "warning_height": encounter.warning_height, "occupancy": encounter.occupancy, "progress": slot_progress, "blocked_route": blocked, "safe_routes": safe_routes, "safety_route": safety_route, "warning_seconds": Balance.BEAN_WARNING_SECONDS, "count": int(encounter.recipe.get("count", 1))})
 		result.append({"stage": stage_number, "entry": 1, "open_routes": open_routes, "route_end_progress": route_end_progress, "trunk_features": trunk_features, "support_windows": support_windows, "bean_slots": bean_slots, "encounters": stage.encounters, "variant": run_variant})
 	return result
 func pattern_hash(seed_value: int) -> int: return hash(var_to_str(generate_patterns(seed_value)))

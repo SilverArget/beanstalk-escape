@@ -12,20 +12,20 @@ const BEAN_SCENE := preload("res://scenes/bean_projectile.tscn")
 
 func _physics_process(_delta: float) -> void:
 	for stage_pattern: Dictionary in stages.patterns:
-		if stage_pattern.stage < 4: continue
 		for slot_index in stage_pattern.bean_slots.size():
 			var slot: Dictionary = stage_pattern.bean_slots[slot_index]
-			var target_y: float = -((stage_pattern.stage - 1 + slot.progress) * Balance.STAGE_HEIGHT)
-			var key := "%d:%d" % [stage_pattern.stage, slot_index]
 			var warning_y: float = -(float(stage_pattern.stage - 1) * Balance.STAGE_HEIGHT + float(slot.warning_height))
-			if not spawned_keys.has(key) and player.global_position.y <= warning_y:
-				if game != null:
-					game.show_bean_tutorial()
-				spawn_bean(slot.blocked_route, target_y, key)
-			if spawned_keys.has(key) and player.global_position.y <= target_y:
-				var spawned := get_node_or_null(NodePath(str(spawned_keys[key]))) as BeanProjectile
-				if spawned != null:
-					spawned.request_release()
+			for volley_index in int(slot.get("count", 1)):
+				var target_y: float = -((stage_pattern.stage - 1 + slot.progress) * Balance.STAGE_HEIGHT) - float(volley_index) * 70.0
+				var key := "%d:%d:%d" % [stage_pattern.stage, slot_index, volley_index]
+				if not spawned_keys.has(key) and player.global_position.y <= warning_y:
+					if game != null:
+						game.show_bean_tutorial()
+					spawn_bean(slot.blocked_route, target_y, key)
+				if spawned_keys.has(key) and player.global_position.y <= target_y:
+					var spawned := get_node_or_null(NodePath(str(spawned_keys[key]))) as BeanProjectile
+					if spawned != null:
+						spawned.request_release()
 	for bean in get_tree().get_nodes_in_group("beans"):
 		var relative_y: float = bean.global_position.y - player.global_position.y
 		var previous_y: float = bean.get_meta("previous_relative_y", relative_y)
@@ -58,6 +58,8 @@ func _hit(bean: BeanProjectile) -> void:
 		return
 	player.apply_bean_hit()
 	spider.apply_bean_boost()
+	if game != null:
+		game.on_bean_hit()
 	hit_count += 1
 	bean.consume()
 

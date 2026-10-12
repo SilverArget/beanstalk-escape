@@ -21,6 +21,7 @@ func setup(id: String, target: PlayerController) -> void:
 	player = target
 
 func _ready() -> void:
+	z_index = 1
 	texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
 	sprite.texture = COIN_TEXTURE
 	sprite.scale = Vector2.ONE * 0.82
