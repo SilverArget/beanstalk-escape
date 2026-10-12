@@ -52,11 +52,31 @@
       "dimensions": [1415, 1111],
       "alpha_result": "PASS: Format32bppArgb; 1,176,664 alpha=0, 394,020 partial alpha, 1,381 alpha=255; all outer corners alpha=0",
       "control_result": "PASS measured: image-backed purple Time Wings render from upper-back wing_anchor; open width 64 px, height 31 px, root gap 0 px, left/right extent delta maximum 1 px; polygon placeholder removed"
+    },
+    {
+      "skin": "WORLD_BRANCH",
+      "path": "res://assets/art/world/bean_branch_surface_v1.png",
+      "sha256": "b3bd153c0045a21e711cbf812798aec1a28279a3c43bb7aca73327730a29e8fb",
+      "source": "Codex built-in image_gen, 12.10.2026; Beanstalk Escape logo used as style reference",
+      "dimensions": [1254, 1254],
+      "alpha_result": "Edge-to-edge painted surface tile; corner alpha 222/226/226/230",
+      "control_result": "Branch-only material at 44 px display width; mipmaps enabled; gameplay geometry unchanged"
+    },
+    {
+      "skin": "WORLD_BRANCH_DETAILS",
+      "path": "res://assets/art/world/bean_branch_details_v1.png",
+      "sha256": "1894d7a68171ef2d7252b14ec5986b502bbc462bfb1f09c6e16478c008661760",
+      "source": "Codex built-in image_gen, 12.10.2026; Beanstalk Escape logo used as style reference",
+      "dimensions": [1774, 887],
+      "alpha_result": "PASS: all four atlas corners alpha=0",
+      "control_result": "4x2 leaf, tendril and tapered-tip atlas; rendered at 34-40 px; mipmaps enabled"
     }
   ],
   "prompt_summary": [
     "M1: transparent 6x4 production puppet-rig parts sheet; 22 strict row-major rear-view climbing parts; brown hair, green tunic, leather belt, cream boots, backpack; no pose/frame/background/text.",
     "F1: same rear-view M1 layout and proportions using owner-approved 01/02 references; copper-red ponytail, turquoise tunic; no pose/frame/background/text.",
-    "Time Wings: transparent rear-view purple wing pair with rounded feather lobes, cyan highlights, dark outline, and a central gem joining both wings into one connected accessory; no body/text/frame/shadow."
+    "Time Wings: transparent rear-view purple wing pair with rounded feather lobes, cyan highlights, dark outline, and a central gem joining both wings into one connected accessory; no body/text/frame/shadow.",
+    "Branch surface: seamless painted green beanstalk material with cylindrical light, central highlight and diagonal spiral fibers; logo palette reference; no text/characters/leaves.",
+    "Branch details: transparent 4x2 atlas of small paired leaves, tendrils, tapered tips and fibrous tips; <=40 px display size; logo palette reference."
   ]
 }

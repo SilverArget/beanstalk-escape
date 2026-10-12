@@ -2,6 +2,8 @@ extends Node2D
 
 const ATMOSPHERE_TEXTURE := preload("res://assets/art/world/sunny_atmosphere.png")
 const VINE_SURFACE_TEXTURE := preload("res://assets/art/world/vine_surface_tile_v3.png")
+const BRANCH_SURFACE_TEXTURE := preload("res://assets/art/world/bean_branch_surface_v1.png")
+const BRANCH_DETAILS_TEXTURE := preload("res://assets/art/world/bean_branch_details_v1.png")
 const FOLIAGE_TEXTURE := preload("res://assets/art/world/foliage_atlas.png")
 const SKY_TOP := Color("366bb4")
 const SKY_BOTTOM := Color("80d5f4")
@@ -14,6 +16,8 @@ const GRIP_DETAIL_SIZE := 12.0
 const MAX_LEAF_SIZE := 140.0
 const VISUAL_OUTLINE_WIDTH := 3.0
 const FOLIAGE_CELL := Vector2(512.0, 512.0)
+const BRANCH_DETAIL_GRID := Vector2(4.0, 2.0)
+const BRANCH_NODE_SPACING := 150.0
 
 @onready var player: PlayerController = get_parent().get_node_or_null("Player") as PlayerController
 @onready var stages: StageManager = get_parent().get_node_or_null("StageManager") as StageManager
@@ -158,6 +162,7 @@ func _draw_branch_segment(stage_number: int, route: int, start_progress: float, 
 		return
 	branch_point_count += points.size()
 	_draw_branch_ribbon(points, route, cap_start, true)
+	_draw_branch_details(route, start_y, end_y)
 
 func _branch_visual_x(route: int, world_y: float) -> float:
 	# Gameplay remains on Balance.ROUTE_X. This visual-only S wave stays within
@@ -181,26 +186,55 @@ func _split_ribbon_data(route: int, stage_bottom: float) -> Dictionary:
 
 func _draw_branch_ribbon(points: PackedVector2Array, route: int, cap_start: bool, cap_end: bool) -> void:
 	var widths := PackedFloat32Array()
-	for _point in points:
-		widths.append(ScaleLock.BRANCH_WIDTH)
-	_draw_textured_ribbon(points, widths, float(route) * 0.27)
+	for point in points:
+		var node_phase := fposmod(-point.y + float(route) * 31.0, BRANCH_NODE_SPACING)
+		var node_distance := minf(node_phase, BRANCH_NODE_SPACING - node_phase)
+		var node_weight := pow(maxf(1.0 - node_distance / 13.0, 0.0), 2.0)
+		widths.append(ScaleLock.BRANCH_WIDTH + node_weight * 6.0)
+	_draw_textured_ribbon(points, widths, float(route) * 0.27, true, false, false, 0, 0, true)
 	if cap_start and not qa_support_mask:
 		_draw_branch_tip(points[0], (points[0] - points[1]).normalized(), route)
 	if cap_end and not qa_support_mask:
 		_draw_branch_tip(points[points.size() - 1], (points[points.size() - 1] - points[points.size() - 2]).normalized(), route)
 
 func _draw_branch_tip(base: Vector2, direction: Vector2, route: int) -> void:
-	# A short taper is visual-only: it closes the painted support without
-	# extending or changing the gameplay collider/segment endpoint.
+	# The taper ends exactly at the gameplay endpoint: no rounded pipe cap and
+	# no visual promise of support beyond the real segment.
 	var normal := Vector2(-direction.y, direction.x)
 	var points := PackedVector2Array([
-		base - direction * 2.0,
-		base + direction * 6.0 + normal * 0.8,
-		base + direction * 13.0 - normal * 0.6,
-		base + direction * 18.0,
+		base - direction * 20.0,
+		base - direction * 12.0 + normal * 0.8,
+		base - direction * 5.0 - normal * 0.6,
+		base,
 	])
 	var widths := PackedFloat32Array([ScaleLock.BRANCH_WIDTH, 38.0, 20.0, 2.0])
-	_draw_textured_ribbon(points, widths, float(route) * 0.27, true, true)
+	_draw_textured_ribbon(points, widths, float(route) * 0.27, true, false, true, 0, 0, true)
+	_draw_branch_detail_sprite(4 + route % 2, base - direction * 18.0, Vector2(34.0, 34.0), direction.angle() + PI * 0.5, false)
+
+func _draw_branch_details(route: int, start_y: float, end_y: float) -> void:
+	if qa_support_mask:
+		return
+	var node_y := start_y - 82.0
+	var node_index := 0
+	while node_y > end_y + 32.0:
+		var outside := -1.0 if route == 0 else (1.0 if route == 2 else (-1.0 if node_index % 2 == 0 else 1.0))
+		var stem_x := _branch_visual_x(route, node_y)
+		var leaf_center := Vector2(stem_x + outside * 39.0, node_y)
+		_draw_branch_detail_sprite(node_index % 2, leaf_center, Vector2(40.0, 40.0), 0.0, outside < 0.0)
+		if node_index % 3 == 1:
+			var tendril_center := Vector2(stem_x + outside * 38.0, node_y - 54.0)
+			_draw_branch_detail_sprite(2 + node_index % 2, tendril_center, Vector2(36.0, 36.0), 0.0, outside < 0.0)
+		node_y -= BRANCH_NODE_SPACING
+		node_index += 1
+
+func _draw_branch_detail_sprite(cell: int, center: Vector2, size: Vector2, rotation: float, flip_x: bool) -> void:
+	var cell_size := Vector2(BRANCH_DETAILS_TEXTURE.get_width(), BRANCH_DETAILS_TEXTURE.get_height()) / BRANCH_DETAIL_GRID
+	var column := cell % int(BRANCH_DETAIL_GRID.x)
+	var row := cell / int(BRANCH_DETAIL_GRID.x)
+	var source := Rect2(Vector2(float(column), float(row)) * cell_size, cell_size)
+	draw_set_transform(center, rotation, Vector2(-1.0 if flip_x else 1.0, 1.0))
+	draw_texture_rect_region(BRANCH_DETAILS_TEXTURE, Rect2(-size * 0.5, size), source)
+	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
 func _draw_split_union(stage_bottom: float) -> void:
 	var merged := _split_union_polygon(stage_bottom)
@@ -295,7 +329,7 @@ func _draw_closed_polygon_outline(polygon: PackedVector2Array, color: Color, wid
 			continue
 		draw_line(start, finish, color, width, true)
 
-func _draw_textured_ribbon(points: PackedVector2Array, widths: PackedFloat32Array, texture_phase: float, draw_outline := true, world_locked_v := false, tangent_uv := false, outline_start_trim := 0, outline_end_trim := 0) -> void:
+func _draw_textured_ribbon(points: PackedVector2Array, widths: PackedFloat32Array, texture_phase: float, draw_outline := true, world_locked_v := false, tangent_uv := false, outline_start_trim := 0, outline_end_trim := 0, branch_material := false) -> void:
 	if points.size() < 2:
 		return
 	var distances := PackedFloat32Array([0.0])
@@ -373,7 +407,15 @@ func _draw_textured_ribbon(points: PackedVector2Array, widths: PackedFloat32Arra
 			])
 		var surface_width := maxf(first_half * 2.0, second_half * 2.0)
 		var texture_modulate := Color.WHITE
-		draw_polygon(quad, PackedColorArray([texture_modulate, texture_modulate, texture_modulate, texture_modulate]), uvs, VINE_SURFACE_TEXTURE)
+		var surface_texture: Texture2D = BRANCH_SURFACE_TEXTURE if branch_material else VINE_SURFACE_TEXTURE
+		draw_polygon(quad, PackedColorArray([texture_modulate, texture_modulate, texture_modulate, texture_modulate]), uvs, surface_texture)
+		if branch_material:
+			# Stable asymmetric bands guarantee cylindrical volume even where the
+			# painted spiral fibers cross a narrow 44 px support.
+			var shadow_quad := PackedVector2Array([quad[0], quad[0].lerp(quad[1], 0.22), quad[3].lerp(quad[2], 0.22), quad[3]])
+			var highlight_quad := PackedVector2Array([quad[0].lerp(quad[1], 0.50), quad[0].lerp(quad[1], 0.66), quad[3].lerp(quad[2], 0.66), quad[3].lerp(quad[2], 0.50)])
+			draw_colored_polygon(shadow_quad, Color(0.06, 0.20, 0.16, 0.22))
+			draw_colored_polygon(highlight_quad, Color(0.88, 1.0, 0.55, 0.16))
 		# This glaze is a uniform material treatment for every narrow support. It
 		# never depends on the player position or follows the camera/player.
 		var glaze_alpha := 0.14 if surface_width <= 60.0 else 0.0
@@ -462,7 +504,7 @@ func _draw_transfer_connection(from_branch: int, to_branch: int, world_y: float)
 	var widths := PackedFloat32Array()
 	for step in points.size():
 		widths.append(lerpf(12.0, 15.0, sin(float(step) / float(points.size() - 1) * PI)))
-	_draw_textured_ribbon(points, widths, 0.41, true, false, true, 2, 2)
+	_draw_textured_ribbon(points, widths, 0.41, true, false, true, 2, 2, true)
 
 func sky_color_at(normalized_y: float) -> Color:
 	return SKY_TOP.lerp(SKY_BOTTOM, clampf(normalized_y, 0.0, 1.0))
@@ -503,6 +545,9 @@ func qa_visual_contract() -> Dictionary:
 		"max_leaf_px": MAX_LEAF_SIZE,
 		"outline_px": VISUAL_OUTLINE_WIDTH,
 		"surface_texture": "res://assets/art/world/vine_surface_tile_v3.png",
+		"branch_surface_texture": "res://assets/art/world/bean_branch_surface_v1.png",
+		"branch_detail_atlas": "res://assets/art/world/bean_branch_details_v1.png",
+		"branch_node_spacing_px": BRANCH_NODE_SPACING,
 		"foliage_atlas": "res://assets/art/world/foliage_atlas.png",
 		"procedural_circle_cloud_count": 0,
 		"flat_polygon_leaf_count": 0,
