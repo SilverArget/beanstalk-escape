@@ -1,0 +1,30 @@
+{
+	"$schema": "https://bridge.playgama.com/v2/stable/schema.json",
+	"advertisement": {
+		"interstitial": {
+			"preloadOnStart": "stage_transition",
+			"placementFallback": "stage_transition",
+			"placements": [
+				{"id": "stage_transition"},
+				{"id": "death_screen"}
+			]
+		},
+		"rewarded": {
+			"preloadOnStart": "continue_in_stage",
+			"placementFallback": "continue_in_stage",
+			"placements": [
+				{"id": "continue_in_stage"},
+				{"id": "double_stage_reward"},
+				{"id": "double_treasure"},
+				{"id": "get_more_gold"},
+				{"id": "skip_stage"}
+			]
+		},
+		"minimumDelayBetweenInterstitial": 90,
+		"useBuiltInErrorPopup": true,
+		"backfillId": ""
+	},
+	"payments": [{"id": "remove_ads"}],
+	"leaderboards": [],
+	"sendAnalyticsEvents": true
+}
