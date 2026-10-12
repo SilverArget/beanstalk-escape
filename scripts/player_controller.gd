@@ -10,6 +10,9 @@ var stun_remaining := 0.0
 var bean_penalty_count := 0
 var vertical_blocked := false
 var time_wings_active := false
+var fire_wings_active := false
+var rock_penalty_count := 0
+var knockback_speed := Balance.BEAN_KNOCKBACK_SPEED
 var active_branch := 1
 var transition_from := 1
 var transition_to := 1
@@ -45,15 +48,15 @@ func _physics_process(delta: float) -> void:
 		_update_branch_movement(delta)
 	if movement_mode == MovementMode.TRANSITION:
 		vertical_blocked = false
-		velocity = Vector2(0.0, -Balance.PLAYER_VERTICAL_SPEED)
+		velocity = Vector2(0.0, -climb_speed())
 		return
 	vertical_blocked = not on_support
 	if knockback_remaining > 0.0:
-		velocity.y = Balance.BEAN_KNOCKBACK_SPEED
+		velocity.y = knockback_speed
 	elif stun_remaining > 0.0 or not on_support:
 		velocity.y = 0.0
 	else:
-		velocity.y = -Balance.PLAYER_VERTICAL_SPEED
+		velocity.y = -climb_speed()
 	move_and_slide()
 	if movement_mode == MovementMode.TRUNK:
 		global_position.x = clampf(global_position.x, -Balance.TRUNK_HALF_WIDTH, Balance.TRUNK_HALF_WIDTH)
@@ -102,7 +105,7 @@ func _update_branch_movement(delta: float) -> void:
 		transition_progress = minf(transition_progress + delta / Balance.BRANCH_TRANSITION_SECONDS, 1.0)
 		if transition_progress >= 1.0 - 0.00001:
 			transition_progress = 1.0
-		transition_base_y -= Balance.PLAYER_VERTICAL_SPEED * delta
+		transition_base_y -= climb_speed() * delta
 		global_position = branch_graph.transfer_point(stages, transition_from, transition_to, transition_base_y, transition_progress)
 		on_support = false
 		support_state = SupportState.TRANSFERRING
@@ -229,6 +232,9 @@ func reset_run(at_position: Vector2) -> void:
 	bean_penalty_count = 0
 	vertical_blocked = false
 	time_wings_active = false
+	fire_wings_active = false
+	rock_penalty_count = 0
+	knockback_speed = Balance.BEAN_KNOCKBACK_SPEED
 	active_branch = stages.route_for_x(at_position.x) if stages != null else 1
 	transition_from = active_branch
 	transition_to = active_branch
@@ -251,3 +257,15 @@ func apply_bean_hit() -> void:
 		_begin_falling_recovery()
 	knockback_remaining = Balance.BEAN_KNOCKBACK_SECONDS
 	stun_remaining = Balance.BEAN_STUN_SECONDS
+	knockback_speed = Balance.BEAN_KNOCKBACK_SPEED
+
+func apply_rock_hit(_hit_id: String) -> void:
+	rock_penalty_count += 1
+	if movement_mode == MovementMode.TRANSITION:
+		_begin_falling_recovery()
+	knockback_remaining = Balance.ROCK_KNOCKBACK_SECONDS
+	stun_remaining = Balance.ROCK_STUN_SECONDS
+	knockback_speed = Balance.ROCK_KNOCKBACK_SPEED
+
+func climb_speed() -> float:
+	return Balance.PLAYER_VERTICAL_SPEED * (Balance.FIRE_WINGS_SPEED_SCALE if fire_wings_active else 1.0)

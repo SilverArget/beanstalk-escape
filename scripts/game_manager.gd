@@ -14,6 +14,7 @@ var death_cause := DeathCause.NONE
 @onready var gauge: SpiderDistanceGauge = $HUD/Gauge
 @onready var stages: StageManager = $StageManager
 @onready var beans: BeanSpawner = $BeanSpawner
+@onready var rocks: RockManager = $RockManager
 @onready var audio: BeanstalkAudio = $Audio
 @onready var platform_services: Node = get_node("/root/PlatformServices")
 var total_time := 0.0
@@ -27,6 +28,9 @@ var best_spider_distance := 0.0
 var time_wings_remaining := 0.0
 var time_wings_started_remaining := 0.0
 var time_wings_used_stage := {}
+var fire_wings_remaining := 0.0
+var fire_wings_started_remaining := 0.0
+var fire_wings_used_stage := {}
 var tutorial_remaining := 0.0
 var tutorial_text := ""
 var touch_actions := {}
@@ -59,6 +63,7 @@ var intro_active := false
 var intro_beat := 0
 var intro_t := 0.0
 var debug_start_stage := 1
+var debug_sandbox := ""
 var meta_ui: MetaShopUI
 
 func _ready() -> void:
@@ -76,6 +81,7 @@ func _ready() -> void:
 	golds.name = "GoldManager"
 	add_child(golds)
 	golds.setup(player, stages, economy, audio)
+	rocks.setup(player, stages)
 	stages.prototype_completed.connect(_on_prototype_completed)
 	stages.stage_completed.connect(_on_stage_completed)
 	_ensure_actions()
@@ -114,6 +120,10 @@ func _physics_process(delta: float) -> void:
 		if time_wings_remaining <= 0.0:
 			player.time_wings_active = false
 			player.remove_from_group("time_wings_active")
+	if fire_wings_remaining > 0.0:
+		fire_wings_remaining = maxf(fire_wings_remaining - delta, 0.0)
+		if fire_wings_remaining <= 0.0:
+			player.fire_wings_active = false
 	if tutorial_remaining > 0.0:
 		tutorial_remaining = maxf(tutorial_remaining - delta, 0.0)
 	gauge.update_from_positions(player.global_position.y, spider.global_position.y)
@@ -163,6 +173,8 @@ func _unhandled_input(event: InputEvent) -> void:
 		_resume_game()
 	if event.is_action_pressed("time_wings"):
 		dispatch_command("time_wings", "keyboard")
+	if event.is_action_pressed("fire_wings"):
+		dispatch_command("fire_wings", "keyboard")
 	if event is InputEventScreenTouch:
 		_handle_screen_touch(event)
 
@@ -193,6 +205,11 @@ func _handle_screen_touch(event: InputEventScreenTouch) -> void:
 			touch_actions[event.index] = "time_wings"
 			dispatch_command("time_wings", "mobile")
 			return
+		var fire_button := get_node_or_null("HUD/TouchFire") as Button
+		if fire_button != null and Rect2(fire_button.position, fire_button.size).has_point(event.position):
+			touch_actions[event.index] = "fire_wings"
+			dispatch_command("fire_wings", "mobile")
+			return
 		var action := "move_left" if event.position.x < 172.0 else "move_right"
 		touch_actions[event.index] = action
 		Input.action_press(action)
@@ -200,18 +217,20 @@ func _handle_screen_touch(event: InputEventScreenTouch) -> void:
 	elif touch_actions.has(event.index):
 		var released_action: String = touch_actions[event.index]
 		touch_actions.erase(event.index)
-		if released_action != "time_wings" and not touch_actions.values().has(released_action):
+		if released_action not in ["time_wings", "fire_wings"] and not touch_actions.values().has(released_action):
 			Input.action_release(released_action)
 
 func restart() -> void:
 	_clear_direction_inputs()
 	for child in get_tree().get_nodes_in_group("run_transient"): child.free()
 	beans.reset_run()
+	rocks.reset_run()
 	player.reset_run(Vector2(0, 0))
 	spider.reset_run(Vector2(0, Balance.START_DISTANCE))
 	player.set_physics_process(true)
 	spider.set_physics_process(true)
 	beans.set_physics_process(true)
+	rocks.set_physics_process(true)
 	stages.reset_run()
 	golds.reset_run()
 	golds.visible = true
@@ -234,11 +253,15 @@ func restart() -> void:
 	stage_restart_count = 0
 	stage_restart_start_distance = 0.0
 	time_wings_used_stage.clear()
+	fire_wings_remaining = 0.0
+	fire_wings_started_remaining = 0.0
+	fire_wings_used_stage.clear()
 	death_count_by_stage.clear()
 	continue_used_this_run = false
 	continue_checkpoint = {}
 	completed_since_interstitial = 0
 	player.time_wings_active = false
+	player.fire_wings_active = false
 	player.remove_from_group("time_wings_active")
 	_show_tutorial_for_stage(1)
 	gauge.update_from_positions(player.global_position.y, spider.global_position.y)
@@ -333,11 +356,16 @@ func _finish_intro() -> void:
 	player.reset_run(Vector2.ZERO)
 	spider.reset_run(Vector2(0.0, Balance.START_DISTANCE))
 	beans.reset_run()
+	rocks.reset_run()
 	if debug_start_stage > 1:
 		_start_debug_stage(debug_start_stage)
+	if debug_sandbox == "rocks":
+		_start_debug_stage(3)
+		rocks.start_sandbox()
 	player.set_physics_process(true)
 	spider.set_physics_process(true)
 	beans.set_physics_process(true)
+	rocks.set_physics_process(true)
 	golds.visible = true
 	var camera := player.get_node_or_null("Camera2D") as Camera2D
 	if camera != null:
@@ -369,6 +397,7 @@ func restart_stage() -> void:
 	var start_y := -float(stage_number - 1) * Balance.STAGE_HEIGHT
 	for child in get_tree().get_nodes_in_group("run_transient"): child.free()
 	beans.reset_run()
+	rocks.reset_run()
 	shake_remaining = 0.0
 	close_text_remaining = 0.0
 	danger_pulse_remaining = 0.0
@@ -380,11 +409,16 @@ func restart_stage() -> void:
 	player.set_physics_process(true)
 	spider.set_physics_process(true)
 	beans.set_physics_process(true)
+	rocks.set_physics_process(true)
 	time_wings_remaining = 0.0
 	time_wings_started_remaining = 0.0
 	player.time_wings_active = false
 	player.remove_from_group("time_wings_active")
 	time_wings_used_stage.erase(stage_number)
+	fire_wings_remaining = 0.0
+	fire_wings_started_remaining = 0.0
+	player.fire_wings_active = false
+	fire_wings_used_stage.erase(stage_number)
 	state = State.PLAYING
 	app_state = AppState.PLAYING
 	death_cause = DeathCause.NONE
@@ -418,7 +452,7 @@ func _on_stage_completed(stage_number: int) -> void:
 
 func try_time_wings() -> bool:
 	var stage_number := stages.stage_for_y(player.global_position.y)
-	if app_state != AppState.PLAYING or stage_number < Balance.TIME_WINGS_STAGE or time_wings_used_stage.has(stage_number) or time_wings_remaining > 0.0:
+	if app_state != AppState.PLAYING or stage_number < Balance.TIME_WINGS_STAGE or time_wings_used_stage.has(stage_number) or time_wings_remaining > 0.0 or fire_wings_remaining > 0.0:
 		return false
 	time_wings_used_stage[stage_number] = true
 	time_wings_remaining = Balance.TIME_WINGS_SECONDS
@@ -426,6 +460,20 @@ func try_time_wings() -> bool:
 	player.time_wings_active = true
 	player.add_to_group("time_wings_active")
 	skills_used += 1
+	_update_hud()
+	return true
+
+func try_fire_wings() -> bool:
+	var stage_number := stages.stage_for_y(player.global_position.y)
+	var unlocked := stage_number >= Balance.FIRE_WINGS_STAGE or debug_sandbox == "rocks"
+	if app_state != AppState.PLAYING or not unlocked or fire_wings_used_stage.has(stage_number) or fire_wings_remaining > 0.0 or time_wings_remaining > 0.0:
+		return false
+	fire_wings_used_stage[stage_number] = true
+	fire_wings_remaining = Balance.FIRE_WINGS_SECONDS
+	fire_wings_started_remaining = fire_wings_remaining
+	player.fire_wings_active = true
+	skills_used += 1
+	audio.play_sfx("time_wings")
 	_update_hud()
 	return true
 
@@ -437,6 +485,8 @@ func dispatch_command(command: String, source := "runtime") -> bool:
 	if command == "time_wings":
 		last_time_command_source = source
 		return try_time_wings()
+	if command == "fire_wings":
+		return try_fire_wings()
 	return false
 
 func _die(cause: DeathCause = DeathCause.CAUGHT) -> void:
@@ -452,9 +502,12 @@ func _die(cause: DeathCause = DeathCause.CAUGHT) -> void:
 	confirm_pending = false
 	player.time_wings_active = false
 	player.remove_from_group("time_wings_active")
+	player.fire_wings_active = false
+	fire_wings_remaining = 0.0
 	player.set_physics_process(false)
 	spider.set_physics_process(false)
 	beans.set_physics_process(false)
+	rocks.set_physics_process(false)
 	for bean in get_tree().get_nodes_in_group("beans"):
 		bean.set_physics_process(false)
 	_update_hud()
@@ -561,6 +614,7 @@ func _resume_after_death() -> void:
 	player.set_physics_process(true)
 	spider.set_physics_process(true)
 	beans.set_physics_process(true)
+	rocks.set_physics_process(true)
 	for bean in get_tree().get_nodes_in_group("beans"):
 		bean.set_physics_process(true)
 	gauge.update_from_positions(player.global_position.y, spider.global_position.y)
@@ -695,6 +749,7 @@ func _setup_hud() -> void:
 	_add_label("StageBanner", Vector2(360, 90), "", 20)
 	_add_label("Tutorial", Vector2(360, 130), "", 22)
 	_add_label("TimeWings", Vector2(690, 22), "", 16)
+	_add_label("FireWings", Vector2(690, 44), "", 16)
 	_add_label("GoldStatus", Vector2(690, 62), "GOLD 0", 18)
 	_add_label("XPStatus", Vector2(690, 87), "LV 1 · XP 0/100", 14)
 	var xp_bar := ProgressBar.new()
@@ -739,7 +794,8 @@ func _setup_hud() -> void:
 	_add_reduce_motion_toggle()
 	_add_touch_button("TouchLeft", Rect2(36, 392, 136, 132), "LEFT", "move_left")
 	_add_touch_button("TouchRight", Rect2(180, 392, 136, 132), "RIGHT", "move_right")
-	_add_touch_button("TouchWings", Rect2(760, 392, 150, 132), "TIME WINGS", "time_wings")
+	_add_touch_button("TouchWings", Rect2(640, 392, 145, 132), "TIME", "time_wings")
+	_add_touch_button("TouchFire", Rect2(795, 392, 145, 132), "FIRE", "fire_wings")
 	meta_ui = MetaShopUI.new()
 	meta_ui.name = "MetaShop"
 	meta_ui.visible = false
@@ -773,6 +829,10 @@ func layout_hud_for_viewport(viewport_size: Vector2) -> void:
 	skill.position = Vector2(70.0, 82.0) if portrait else Vector2(width - 380.0, 24.0)
 	skill.size = Vector2(width - 88.0, 30.0) if portrait else Vector2(220.0, 30.0)
 	skill.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+	var fire_skill := $HUD/FireWings as Label
+	fire_skill.position = skill.position + Vector2(0.0, 20.0)
+	fire_skill.size = skill.size
+	fire_skill.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
 	# Keep the meta readout in the gap between the centered banners and the
 	# right-side sound/gauge column. Explicit gaps matter because the HUD
 	# contract treats touching Control edges as overlap.
@@ -825,8 +885,10 @@ func layout_hud_for_viewport(viewport_size: Vector2) -> void:
 	$HUD/TouchLeft.size = Vector2(104.0, 128.0)
 	$HUD/TouchRight.position = Vector2(132.0, touch_y)
 	$HUD/TouchRight.size = Vector2(104.0, 128.0)
-	$HUD/TouchWings.position = Vector2(width - 140.0, touch_y)
-	$HUD/TouchWings.size = Vector2(122.0, 128.0)
+	$HUD/TouchWings.position = Vector2(width - 292.0, touch_y)
+	$HUD/TouchWings.size = Vector2(132.0, 128.0)
+	$HUD/TouchFire.position = Vector2(width - 150.0, touch_y)
+	$HUD/TouchFire.size = Vector2(132.0, 128.0)
 	$HUD/MetaShop.position = Vector2.ZERO
 	$HUD/MetaShop.size = Vector2(width, height)
 
@@ -935,14 +997,14 @@ func _add_touch_button(name: String, rect: Rect2, text: String, action: String) 
 	button.pressed.connect(_request_confirm)
 
 func _on_touch_action_down(action: String) -> void:
-	if action == "time_wings":
-		dispatch_command("time_wings", "mobile")
+	if action in ["time_wings", "fire_wings"]:
+		dispatch_command(action, "mobile")
 	else:
 		Input.action_press(action)
 		player.request_branch_direction(-1 if action == "move_left" else 1)
 
 func _on_touch_action_up(action: String) -> void:
-	if action != "time_wings":
+	if action not in ["time_wings", "fire_wings"]:
 		Input.action_release(action)
 
 func _clear_direction_inputs() -> void:
@@ -971,6 +1033,7 @@ func _update_hud() -> void:
 	$HUD/Tutorial.visible = playing
 	$HUD/TimeWings.visible = playing
 	$HUD/TimeWingsOrb.visible = playing
+	$HUD/FireWings.visible = playing
 	$HUD/GoldStatus.visible = meta_visible
 	$HUD/XPStatus.visible = meta_visible
 	$HUD/XPBar.visible = meta_visible
@@ -991,11 +1054,13 @@ func _update_hud() -> void:
 	$HUD/TouchLeft.visible = playing and DisplayServer.is_touchscreen_available()
 	$HUD/TouchRight.visible = playing and DisplayServer.is_touchscreen_available()
 	$HUD/TouchWings.visible = playing and DisplayServer.is_touchscreen_available()
+	$HUD/TouchFire.visible = playing and DisplayServer.is_touchscreen_available()
 	$HUD/Mute.text = "SOUND OFF" if audio.muted else "SOUND ON"
 	$HUD/StageBanner.text = stages.stage_banner if stages.stage_banner_remaining > 0.0 and app_state == AppState.PLAYING else ""
 	var route_hint_visible := tutorial_text != "CHANGE BRANCH" or stages.branch_targets_visible(player.global_position.y, get_viewport_rect().size.y)
 	$HUD/Tutorial.text = tutorial_text if tutorial_remaining > 0.0 and app_state == AppState.PLAYING and route_hint_visible else ""
 	$HUD/TimeWings.text = _time_wings_status()
+	$HUD/FireWings.text = _fire_wings_status()
 	var meta := economy.snapshot()
 	$HUD/GoldStatus.text = "GOLD %d" % meta.gold
 	$HUD/XPStatus.text = "LV %d · XP %d/%d" % [meta.level, meta.xp, meta.xp_threshold]
@@ -1033,6 +1098,16 @@ func _time_wings_status() -> String:
 	if time_wings_used_stage.has(stage_number):
 		return "F · TIME WINGS USED"
 	return "F · TIME WINGS READY"
+
+func _fire_wings_status() -> String:
+	var stage_number := stages.stage_for_y(player.global_position.y)
+	if stage_number < Balance.FIRE_WINGS_STAGE and debug_sandbox != "rocks":
+		return "H · FIRE WINGS LOCKED"
+	if fire_wings_remaining > 0.0:
+		return "H · FIRE WINGS ACTIVE %.1fs" % fire_wings_remaining
+	if fire_wings_used_stage.has(stage_number):
+		return "H · FIRE WINGS USED"
+	return "H · FIRE WINGS READY"
 
 func _update_time_wings_orb() -> void:
 	var orb := $HUD/TimeWingsOrb as TextureRect
@@ -1095,6 +1170,8 @@ func _readonly_state_snapshot() -> Dictionary:
 		"spider": {"y": spider.global_position.y, "distance": gauge.distance_px, "ratio": spider.speed_ratio, "boost": spider.boost_remaining > 0.0, "boost_remaining": spider.boost_remaining, "catchup_active": spider.catchup_active, "catchup_blend": spider.catchup_blend, "on_screen": spider_visibility.on_screen, "visible_px": spider_visibility.visible_px},
 		"gauge_level": gauge.level,
 		"time_wings": {"unlocked": stages.stage_for_y(player.global_position.y) >= Balance.TIME_WINGS_STAGE, "active": time_wings_remaining > 0.0, "remaining": time_wings_remaining, "started_remaining": time_wings_started_remaining, "used": time_wings_used_stage.has(stages.stage_for_y(player.global_position.y))},
+		"fire_wings": {"unlocked": stages.stage_for_y(player.global_position.y) >= Balance.FIRE_WINGS_STAGE or debug_sandbox == "rocks", "active": fire_wings_remaining > 0.0, "remaining": fire_wings_remaining, "started_remaining": fire_wings_started_remaining, "used": fire_wings_used_stage.has(stages.stage_for_y(player.global_position.y))},
+		"rocks": rocks.snapshot(),
 		"audio_events": audio.audio_event_snapshot(),
 		"gold_fx": golds.active_feedback_snapshot(),
 		"tempo": {"stage_seconds": Balance.STAGE_DURATION_SECONDS, "events_in_stage": stages.pattern_for_stage(stage_number).encounters.size()},
@@ -1122,7 +1199,12 @@ func _apply_debug_meta_overrides() -> void:
 	var raw := str(JavaScriptBridge.eval("new URLSearchParams(window.location.search).toString()", true))
 	for pair in raw.split("&", false):
 		var parts := pair.split("=", true, 1)
-		if parts.size() != 2 or not parts[1].is_valid_int():
+		if parts.size() != 2:
+			continue
+		if parts[0] == "sandbox":
+			debug_sandbox = parts[1] if parts[1] == "rocks" else ""
+			continue
+		if not parts[1].is_valid_int():
 			continue
 		if parts[0] == "gold": economy.gold = maxi(int(parts[1]), 0)
 		if parts[0] == "level": economy.level = maxi(int(parts[1]), 1)
@@ -1139,6 +1221,7 @@ func _start_debug_stage(stage_number: int) -> void:
 
 func _ensure_actions() -> void:
 	_add_key_action("time_wings", [KEY_F])
+	_add_key_action("fire_wings", [KEY_H])
 	_add_key_action("pause", [KEY_ESCAPE, KEY_P])
 	_add_key_action("mute", [KEY_M])
 	_add_key_action("ui_accept", [KEY_ENTER, KEY_KP_ENTER, KEY_SPACE])

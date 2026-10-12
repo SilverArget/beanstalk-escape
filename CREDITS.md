@@ -20,5 +20,6 @@
 
 | `assets/art/cosmetics/*.png` | OpenAI Codex `image_gen`, 2026-10-12 | Proje için üretildi; boyalı mobil oyun kozmetik ikonları, şeffaf arka plan istemi; 1024 px kaynaklardan 192×192 oyun varlığına küçültüldü. |
 | `assets/art/intro/beanstalk_summit_intro.png` | OpenAI Codex `image_gen`, 2026-10-12 | Proje için üretilen 960×540 boyalı intro karesi; SHA-256 `1D60FA586D73C84CBF874C42F3F47D78D52688200004B65F954E17AFA905DA5F` |
+| `assets/art/hazards/rock_fire_atlas.png` | OpenAI Codex built-in `image_gen`, 2026-10-12 | Kaya ailesi ve turuncu Fire Wings için tek şeffaf 3×2 boyalı atlas; SHA-256 `70D2DF95CFA07A836B5976F2F7AAA31CD2E1E75C95E0BB1CB6C44BCEF1A6AA4E`. |
 
 Harici CDN veya brief dışı varlık kullanılmadı.

@@ -3,6 +3,7 @@ extends Node2D
 
 const FRAME_ROOT := "res://assets/art/character_frames"
 const WING_TEXTURE := preload("res://assets/art/character_rig/wing/time_wings.png")
+const ROCK_FIRE_ATLAS := preload("res://assets/art/hazards/rock_fire_atlas.png")
 const FRAME_NAMES := ["climb_left", "climb_right", "climb_reach", "hang"]
 const SKIN_IDS := ["M1", "M2", "M3", "F1", "F2", "F3"]
 const FRAME_RATE := 8.0
@@ -20,6 +21,7 @@ var last_penalty := 0
 var frame_textures: Dictionary = {}
 var sprite: Sprite2D
 var time_wings: Sprite2D
+var fire_wings: Sprite2D
 var flash_material: ShaderMaterial
 var cosmetic_sprites: Dictionary = {}
 var equipped_cosmetics := {"HAT": "", "FACE": "", "TRAIL": "", "OUTFIT": ""}
@@ -38,15 +40,20 @@ func _process(delta: float) -> void:
 	var player := get_parent() as PlayerController
 	if player == null:
 		return
-	if player.bean_penalty_count != last_penalty:
-		last_penalty = player.bean_penalty_count
+	var penalty_count := player.bean_penalty_count + player.rock_penalty_count
+	if penalty_count != last_penalty:
+		last_penalty = penalty_count
 		hurt_remaining = 0.32
 	hurt_remaining = maxf(hurt_remaining - delta, 0.0)
 	celebrate_remaining = maxf(celebrate_remaining - delta, 0.0)
 	time_wings.visible = player.time_wings_active
+	fire_wings.visible = player.fire_wings_active
 	if time_wings.visible:
 		var wing_pulse := sin(Time.get_ticks_msec() * 0.010) * 0.002
 		time_wings.scale = Vector2(0.045 + wing_pulse, 0.045 - wing_pulse * 0.5)
+	if fire_wings.visible:
+		var fire_pulse := sin(Time.get_ticks_msec() * 0.014) * 0.008
+		fire_wings.scale = Vector2(0.22 + fire_pulse, 0.22 - fire_pulse * 0.35)
 	_update_mode(player, delta)
 	flash_material.set_shader_parameter("flash_amount", 0.78 if hurt_remaining > 0.18 else 0.0)
 	_update_cosmetic_anchors()
@@ -224,6 +231,18 @@ func visual_snapshot() -> Dictionary:
 	return {"mode": mode, "frame": frame_name, "skin": skin_id}
 
 func _build_visual() -> void:
+	fire_wings = Sprite2D.new()
+	fire_wings.name = "FireWings"
+	var fire_texture := AtlasTexture.new()
+	fire_texture.atlas = ROCK_FIRE_ATLAS
+	fire_texture.region = Rect2(1024, 512, 512, 512)
+	fire_wings.texture = fire_texture
+	fire_wings.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+	fire_wings.position = Vector2(0.0, -12.0)
+	fire_wings.scale = Vector2.ONE * 0.22
+	fire_wings.z_index = -1
+	fire_wings.visible = false
+	add_child(fire_wings)
 	time_wings = Sprite2D.new()
 	time_wings.name = "TimeWings"
 	time_wings.texture = WING_TEXTURE
