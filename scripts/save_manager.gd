@@ -38,6 +38,7 @@ func load_profile() -> Dictionary:
 	meta["xp"] = maxi(int(meta.get("xp", 0)), 0)
 	meta["level"] = maxi(int(meta.get("level", 1)), 1)
 	profile["meta"] = meta
+	profile["shop"] = _sanitize_shop(profile.get("shop", {}))
 	return profile.duplicate(true)
 
 func write_meta(meta: Dictionary) -> bool:
@@ -78,6 +79,17 @@ func set_remove_ads(value: bool) -> bool:
 	profile["purchases"] = purchases
 	return _write_profile()
 
+func write_shop(shop: Dictionary) -> bool:
+	if profile.is_empty():
+		load_profile()
+	profile["shop"] = _sanitize_shop(shop)
+	return _write_profile()
+
+func shop_snapshot() -> Dictionary:
+	if profile.is_empty():
+		load_profile()
+	return profile.get("shop", _default_shop()).duplicate(true)
+
 func _write_profile() -> bool:
 	if OS.has_feature("web") and platform_service != null:
 		if bridge_loaded:
@@ -100,7 +112,34 @@ func _default_profile() -> Dictionary:
 		"meta": {"gold": 0, "xp": 0, "level": 1},
 		"progression": {"skipped_stages": []},
 		"purchases": {"remove_ads": false},
+		"shop": _default_shop(),
 	}
+
+func _default_shop() -> Dictionary:
+	return {
+		"owned": ["M1", "F1"],
+		"equipped": {"HAT": "", "FACE": "", "TRAIL": "", "OUTFIT": ""},
+		"selected_character": "M1",
+	}
+
+func _sanitize_shop(value: Variant) -> Dictionary:
+	var result := _default_shop()
+	if value is not Dictionary:
+		return result
+	var source := value as Dictionary
+	var owned_value: Variant = source.get("owned", [])
+	if owned_value is Array:
+		for item in owned_value:
+			var item_id := str(item).to_upper() if str(item).length() == 2 else str(item)
+			if not result.owned.has(item_id):
+				result.owned.append(item_id)
+	var equipped_value: Variant = source.get("equipped", {})
+	if equipped_value is Dictionary:
+		for slot in ["HAT", "FACE", "TRAIL", "OUTFIT"]:
+			result.equipped[slot] = str(equipped_value.get(slot, ""))
+	var selected := str(source.get("selected_character", "M1")).to_upper()
+	result.selected_character = selected if result.owned.has(selected) else "M1"
+	return result
 
 func _on_bridge_profile_loaded(success: bool, value: Variant) -> void:
 	bridge_loaded = true
@@ -121,6 +160,7 @@ func _sanitize_profile(value: Dictionary) -> Dictionary:
 		result.progression = value.progression.duplicate(true)
 	if value.get("purchases", {}) is Dictionary:
 		result.purchases = value.purchases.duplicate(true)
+	result.shop = _sanitize_shop(value.get("shop", {}))
 	return result
 
 func _is_qa_process() -> bool:

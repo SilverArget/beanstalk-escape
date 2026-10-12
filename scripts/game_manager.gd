@@ -4,7 +4,7 @@ extends Node2D
 const TIME_WINGS_ORB := preload("res://assets/art/gpt/items/wing_orb.png")
 
 enum State { PLAYING, PLAYER_DEAD, PROTOTYPE_COMPLETE }
-enum AppState { MENU, INTRO, PLAYING, PAUSED, PLAYER_DEAD, GAME_COMPLETE }
+enum AppState { MENU, INTRO, PLAYING, PAUSED, PLAYER_DEAD, GAME_COMPLETE, SHOP, CHARACTER_SELECT }
 enum DeathCause { NONE, FALL, CAUGHT, OBSTACLE }
 var state := State.PLAYING
 var app_state := AppState.MENU
@@ -56,12 +56,14 @@ const CAMERA_PLAY_POSITION := Vector2(0.0, -120.0)
 var intro_active := false
 var intro_beat := 0
 var intro_t := 0.0
+var meta_ui: MetaShopUI
 
 func _ready() -> void:
 	process_physics_priority = 10
 	save_manager.configure_platform(platform_services)
 	if not economy.initialize(save_manager):
 		push_error("Economy config could not be loaded")
+	_apply_debug_meta_overrides()
 	save_manager.profile_loaded.connect(economy.reload_profile)
 	economy.level_up.connect(_on_level_up)
 	platform_services.platform_pause_changed.connect(_on_platform_pause_changed)
@@ -94,7 +96,7 @@ func _physics_process(delta: float) -> void:
 		_update_hud()
 		_publish_readonly_web_state()
 		return
-	if app_state == AppState.PAUSED or app_state == AppState.MENU or app_state == AppState.PLAYER_DEAD or app_state == AppState.GAME_COMPLETE:
+	if app_state in [AppState.PAUSED, AppState.MENU, AppState.PLAYER_DEAD, AppState.GAME_COMPLETE, AppState.SHOP, AppState.CHARACTER_SELECT]:
 		_apply_impact_fx(0.0)
 		_update_hud()
 		_publish_readonly_web_state()
@@ -435,7 +437,7 @@ func _die(cause: DeathCause = DeathCause.CAUGHT) -> void:
 
 func _request_confirm() -> void:
 	if app_state == AppState.MENU:
-		start_game()
+		_show_character_select()
 	elif app_state == AppState.INTRO:
 		_finish_intro()
 	elif app_state == AppState.PLAYER_DEAD:
@@ -477,11 +479,29 @@ func _resume_game() -> void:
 
 func _show_menu() -> void:
 	app_state = AppState.MENU
+	if meta_ui != null:
+		meta_ui.visible = false
 	player.set_physics_process(false)
 	spider.set_physics_process(false)
 	beans.set_physics_process(false)
 	golds.visible = false
 	_update_hud()
+
+func _show_shop() -> void:
+	app_state = AppState.SHOP
+	meta_ui.open_shop()
+	_update_hud()
+
+func _show_character_select() -> void:
+	app_state = AppState.CHARACTER_SELECT
+	meta_ui.open_character_select()
+	_update_hud()
+
+func _close_meta_ui() -> void:
+	_show_menu()
+
+func _start_selected_run() -> void:
+	start_game()
 
 func _continue_with_ad() -> void:
 	if app_state != AppState.PLAYER_DEAD or continue_used_this_run:
@@ -624,7 +644,9 @@ func _setup_hud() -> void:
 	$HUD/Complete.text = ""
 	$HUD/Complete.position = Vector2(300, 170)
 	_add_menu_logo()
-	_add_label("Menu", Vector2(320, 330), "PRESS ENTER / TAP TO START", 28)
+	_add_label("Menu", Vector2(320, 300), "CHOOSE AN OPTION", 22)
+	_add_action_button("NewRun", "NEW RUN", _show_character_select)
+	_add_action_button("Shop", "SHOP", _show_shop)
 	var intro_label := _add_label("IntroText", Vector2(160, 190), "", 34)
 	intro_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	intro_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
@@ -679,6 +701,13 @@ func _setup_hud() -> void:
 	_add_touch_button("TouchLeft", Rect2(36, 392, 136, 132), "LEFT", "move_left")
 	_add_touch_button("TouchRight", Rect2(180, 392, 136, 132), "RIGHT", "move_right")
 	_add_touch_button("TouchWings", Rect2(760, 392, 150, 132), "TIME WINGS", "time_wings")
+	meta_ui = MetaShopUI.new()
+	meta_ui.name = "MetaShop"
+	meta_ui.visible = false
+	$HUD.add_child(meta_ui)
+	meta_ui.setup(economy, player.get_node("Body") as PlayerVisual)
+	meta_ui.closed.connect(_close_meta_ui)
+	meta_ui.run_started.connect(_start_selected_run)
 
 func layout_hud_for_viewport(viewport_size: Vector2) -> void:
 	var width := maxf(viewport_size.x, 320.0)
@@ -686,7 +715,7 @@ func layout_hud_for_viewport(viewport_size: Vector2) -> void:
 	var portrait := width < height
 	var menu_action_y := height - 60.0
 	var logo_y := 84.0 if portrait else 20.0
-	var logo_max_height := maxf(menu_action_y - logo_y - 62.0, 80.0)
+	var logo_max_height := maxf(height - 140.0 - logo_y - 62.0, 80.0)
 	var logo_width := minf(minf(width * 0.68, 620.0), logo_max_height * 1.5)
 	var logo_height := logo_width / 1.5
 	var logo := $HUD/MenuLogo as TextureRect
@@ -732,6 +761,11 @@ func layout_hud_for_viewport(viewport_size: Vector2) -> void:
 	$HUD/GetMoreGold.size = Vector2(270.0, 52.0)
 	$HUD/RemoveAds.position = Vector2(width - 288.0, menu_action_y)
 	$HUD/RemoveAds.size = Vector2(270.0, 52.0)
+	var menu_width := minf(250.0, width * 0.34)
+	$HUD/NewRun.position = Vector2((width - menu_width) * 0.5, height - 126.0)
+	$HUD/NewRun.size = Vector2(menu_width, 48.0)
+	$HUD/Shop.position = Vector2((width - menu_width) * 0.5, height - 72.0)
+	$HUD/Shop.size = Vector2(menu_width, 48.0)
 	_layout_centered_label($HUD/RewardToast, width, 154.0, 30.0, 190.0)
 	_layout_centered_label($HUD/LevelUpCard, width, 198.0, 42.0, 190.0)
 	_layout_centered_label($HUD/StageBanner, width, 124.0 if portrait else 86.0, 30.0, 82.0 if portrait else 300.0)
@@ -754,6 +788,8 @@ func layout_hud_for_viewport(viewport_size: Vector2) -> void:
 	$HUD/TouchRight.size = Vector2(104.0, 128.0)
 	$HUD/TouchWings.position = Vector2(width - 140.0, touch_y)
 	$HUD/TouchWings.size = Vector2(122.0, 128.0)
+	$HUD/MetaShop.position = Vector2.ZERO
+	$HUD/MetaShop.size = Vector2(width, height)
 
 func _layout_centered_label(label: Label, width: float, y: float, height: float, side_margin: float) -> void:
 	label.position = Vector2(side_margin, y)
@@ -880,6 +916,8 @@ func _update_hud() -> void:
 	$HUD/Stats.visible = app_state == AppState.GAME_COMPLETE
 	$HUD/Replay.visible = app_state == AppState.GAME_COMPLETE
 	$HUD/MenuLogo.visible = app_state == AppState.MENU
+	$HUD/NewRun.visible = app_state == AppState.MENU
+	$HUD/Shop.visible = app_state == AppState.MENU
 	$HUD/IntroText.visible = app_state == AppState.INTRO
 	$HUD/ReduceMotion.visible = app_state == AppState.PAUSED
 	$HUD/Gauge.visible = playing
@@ -977,10 +1015,9 @@ func _publish_readonly_web_state() -> void:
 	JavaScriptBridge.eval("window.beanstalkState = %s;" % JSON.stringify(_readonly_state_snapshot()), true)
 
 func _debug_state_enabled() -> bool:
-	if OS.is_debug_build():
-		return true
-	var host := str(JavaScriptBridge.eval("window.location.hostname", true))
-	return host == "localhost" or host == "127.0.0.1"
+	if OS.has_feature("web"):
+		return "debug" in str(JavaScriptBridge.eval("window.location.hash", true)).to_lower()
+	return OS.is_debug_build()
 
 func _readonly_state_snapshot() -> Dictionary:
 	var stage_number := stages.stage_for_y(player.global_position.y)
@@ -1028,7 +1065,22 @@ func _readonly_state_snapshot() -> Dictionary:
 		"on_support": player.on_support,
 		"stats": {"time": total_time, "bean_hits": beans.hit_count, "close_calls": close_calls, "skills_used": skills_used, "best_distance": best_spider_distance},
 		"restart": {"count": stage_restart_count, "start_distance": stage_restart_start_distance},
+		"shop": economy.shop_snapshot(),
 	}
+
+func _apply_debug_meta_overrides() -> void:
+	if not OS.has_feature("web"):
+		return
+	var hash := str(JavaScriptBridge.eval("window.location.hash", true))
+	if "debug" not in hash.to_lower():
+		return
+	var raw := str(JavaScriptBridge.eval("new URLSearchParams(window.location.search).toString()", true))
+	for pair in raw.split("&", false):
+		var parts := pair.split("=", true, 1)
+		if parts.size() != 2 or not parts[1].is_valid_int():
+			continue
+		if parts[0] == "gold": economy.gold = maxi(int(parts[1]), 0)
+		if parts[0] == "level": economy.level = maxi(int(parts[1]), 1)
 
 func _ensure_actions() -> void:
 	_add_key_action("time_wings", [KEY_F])

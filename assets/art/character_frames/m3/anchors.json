@@ -1,0 +1,68 @@
+{
+  "frames": {
+    "climb_left": {
+      "head_center": [
+        178,
+        91
+      ],
+      "head_width": 72,
+      "face_view": "back"
+    },
+    "climb_right": {
+      "head_center": [
+        181,
+        91
+      ],
+      "head_width": 72,
+      "face_view": "back"
+    },
+    "climb_reach": {
+      "head_center": [
+        178,
+        98
+      ],
+      "head_width": 72,
+      "face_view": "back"
+    },
+    "jump": {
+      "head_center": [
+        180,
+        103
+      ],
+      "head_width": 72,
+      "face_view": "back"
+    },
+    "hurt": {
+      "head_center": [
+        180,
+        103
+      ],
+      "head_width": 72,
+      "face_view": "front"
+    },
+    "fall": {
+      "head_center": [
+        180,
+        112
+      ],
+      "head_width": 72,
+      "face_view": "back"
+    },
+    "cheer": {
+      "head_center": [
+        174,
+        103
+      ],
+      "head_width": 72,
+      "face_view": "front"
+    },
+    "hang": {
+      "head_center": [
+        181,
+        100
+      ],
+      "head_width": 72,
+      "face_view": "back"
+    }
+  }
+}
