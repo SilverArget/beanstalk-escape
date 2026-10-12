@@ -192,7 +192,7 @@ void fragment() {
 	non_hair_material = cutout_material.duplicate() as ShaderMaterial
 	non_hair_material.set_shader_parameter("suppress_stray_red", true)
 	# Compatibility-safe silhouette copies sit behind every textured part. Their
-	# 27 atlas-texel dilation renders as a consistent 2-4 px outer rim at the
+	# 20 atlas-texel dilation renders as a consistent 1-2 px outer rim at the
 	# production rig scale; original sprites cover joins and interior fill.
 	outline_material = ShaderMaterial.new()
 	var outline_shader := Shader.new()
@@ -206,9 +206,9 @@ uniform vec2 region_min = vec2(0.0);
 uniform vec2 region_max = vec2(1.0);
 void fragment() {
 	float neighbour_alpha = 0.0;
-	for (int y = -27; y <= 27; y++) {
-		for (int x = -27; x <= 27; x++) {
-			if (x * x + y * y <= 729) {
+	for (int y = -20; y <= 20; y++) {
+		for (int x = -20; x <= 20; x++) {
+			if (x * x + y * y <= 400) {
 				vec2 sample_uv = UV + vec2(float(x), float(y)) * TEXTURE_PIXEL_SIZE;
 				if (any(lessThan(sample_uv, region_min)) || any(greaterThanEqual(sample_uv, region_max))) { continue; }
 				vec4 neighbour = texture(TEXTURE, sample_uv);
@@ -295,7 +295,7 @@ func _add_part(part_name: String, parent: Node2D, part_index: int, z: int) -> Sp
 		Vector2(CELL_WIDTH - CELL_CLIP_MARGIN.x * 2.0, CELL_HEIGHT - CELL_CLIP_MARGIN.y * 2.0)
 	)
 	sprite.region_filter_clip_enabled = true
-	sprite.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
+	sprite.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
 	sprite.material = cutout_material if part_name in ["head_neutral", "head_hurt", "hair_back", "hair_front"] else non_hair_material
 	sprite.scale = Vector2.ONE * ART_SCALE
 	# Reserve a global band below every textured part for the silhouette copies.
@@ -307,7 +307,7 @@ func _add_part(part_name: String, parent: Node2D, part_index: int, z: int) -> Sp
 	outline.region_enabled = true
 	outline.region_rect = sprite.region_rect
 	outline.region_filter_clip_enabled = true
-	outline.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
+	outline.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
 	var part_outline_material := (outline_material if part_name in ["head_neutral", "head_hurt", "hair_back", "hair_front"] else outline_non_hair_material).duplicate() as ShaderMaterial
 	part_outline_material.set_shader_parameter("region_min", cell_origin / Vector2(1254.0, 1254.0))
 	part_outline_material.set_shader_parameter("region_max", (cell_origin + Vector2(CELL_WIDTH, CELL_HEIGHT)) / Vector2(1254.0, 1254.0))
@@ -356,7 +356,7 @@ func _build_time_wings(anchor: Node2D) -> void:
 	time_wings = Sprite2D.new()
 	time_wings.name = "time_wings"
 	time_wings.texture = load(WING_TEXTURE) as Texture2D
-	time_wings.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
+	time_wings.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
 	time_wings.material = cutout_material
 	time_wings.z_index = -8
 	time_wings.scale = Vector2.ONE * 0.001
@@ -365,7 +365,7 @@ func _build_time_wings(anchor: Node2D) -> void:
 	var wing_outline := Sprite2D.new()
 	wing_outline.name = "time_wings_outline"
 	wing_outline.texture = time_wings.texture
-	wing_outline.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
+	wing_outline.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
 	wing_outline.material = outline_material
 	wing_outline.z_index = -1
 	time_wings.add_child(wing_outline)

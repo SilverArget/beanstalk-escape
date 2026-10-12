@@ -27,7 +27,7 @@ var qa_support_mask_include_outline := false
 var qa_sky_only := false
 
 func _ready() -> void:
-	texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
+	texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
 	texture_repeat = CanvasItem.TEXTURE_REPEAT_ENABLED
 	queue_redraw()
 	set_process(true)
