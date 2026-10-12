@@ -25,9 +25,9 @@
   "cosmetic_prices": {"COMMON": 150, "RARE": 400, "EPIC": 900},
   "cosmetic_levels": {"COMMON": 1, "RARE": 3, "EPIC": 5},
   "cosmetics": [
-    {"id": "hat_leaf", "slot": "HAT", "name": "LEAF CAP", "rarity": "COMMON", "image": "leaf_cap.png"},
-    {"id": "hat_sky", "slot": "HAT", "name": "SKY CIRCLET", "rarity": "RARE", "image": "sky_circlet.png"},
-    {"id": "hat_crown", "slot": "HAT", "name": "VINE CROWN", "rarity": "EPIC", "image": "vine_crown.png", "source": "MAP TREASURE"},
+    {"id": "hair_dark", "slot": "HAIR", "name": "DARK", "rarity": "COMMON", "image": "hair_dark.png", "tint": "241b18"},
+    {"id": "hair_blonde", "slot": "HAIR", "name": "BLONDE", "rarity": "RARE", "image": "hair_blonde.png", "tint": "d5a83f"},
+    {"id": "hair_silver", "slot": "HAIR", "name": "SILVER", "rarity": "EPIC", "image": "hair_silver.png", "tint": "b9c3ca", "source": "MAP TREASURE"},
     {"id": "face_leaf", "slot": "FACE", "name": "LEAF MARKS", "rarity": "COMMON", "image": "leaf_marks.png"},
     {"id": "face_goggles", "slot": "FACE", "name": "SCOUT GOGGLES", "rarity": "RARE", "image": "scout_goggles.png"},
     {"id": "face_mask", "slot": "FACE", "name": "VINE MASK", "rarity": "EPIC", "image": "vine_mask.png"},

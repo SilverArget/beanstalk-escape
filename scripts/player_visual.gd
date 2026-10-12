@@ -22,10 +22,11 @@ var sprite: Sprite2D
 var time_wings: Sprite2D
 var flash_material: ShaderMaterial
 var cosmetic_sprites: Dictionary = {}
-var equipped_cosmetics := {"HAT": "", "FACE": "", "TRAIL": "", "OUTFIT": ""}
+var equipped_cosmetics := {"HAIR": "", "FACE": "", "TRAIL": "", "OUTFIT": ""}
 var cosmetic_data: Dictionary = {}
 var anchor_data: Dictionary = {}
 var outfit_masks: Dictionary = {}
+var hair_masks: Dictionary = {}
 var face_strap: Line2D
 var face_knot: Polygon2D
 
@@ -100,6 +101,7 @@ func _set_frame(requested_frame: String) -> void:
 	frame_name = requested_frame
 	sprite.texture = frame_textures.get(requested_frame) as Texture2D
 	flash_material.set_shader_parameter("outfit_mask_texture", outfit_masks.get(requested_frame))
+	flash_material.set_shader_parameter("hair_mask_texture", hair_masks.get(requested_frame))
 	_update_cosmetic_anchors()
 
 func set_skin(requested_skin: String) -> bool:
@@ -114,11 +116,15 @@ func _load_skin(requested_skin: String) -> void:
 	skin_id = normalized if normalized in SKIN_IDS and _skin_exists(normalized) else "M1"
 	frame_textures.clear()
 	outfit_masks.clear()
+	hair_masks.clear()
 	for requested_frame in ["climb_left", "climb_right", "climb_reach", "jump", "hurt", "fall", "cheer", "hang"]:
 		frame_textures[requested_frame] = load("%s/%s/%s.png" % [FRAME_ROOT, skin_id.to_lower(), requested_frame])
 		var mask_path := "%s/%s/%s_outfit_mask.png" % [FRAME_ROOT, skin_id.to_lower(), requested_frame]
 		if ResourceLoader.exists(mask_path):
 			outfit_masks[requested_frame] = load(mask_path)
+		var hair_mask_path := "%s/%s/%s_hair_mask.png" % [FRAME_ROOT, skin_id.to_lower(), requested_frame]
+		if ResourceLoader.exists(hair_mask_path):
+			hair_masks[requested_frame] = load(hair_mask_path)
 	_load_anchors()
 	var current := frame_name
 	frame_name = ""
@@ -142,7 +148,7 @@ func set_cosmetics(equipped: Dictionary, catalog: Array) -> void:
 	cosmetic_data.clear()
 	for item in catalog:
 		cosmetic_data[str(item.get("id", ""))] = item
-	for slot in ["HAT", "FACE", "TRAIL"]:
+	for slot in ["FACE", "TRAIL"]:
 		var item_id := str(equipped_cosmetics.get(slot, ""))
 		var layer := cosmetic_sprites.get(slot) as Sprite2D
 		if layer == null:
@@ -155,6 +161,11 @@ func set_cosmetics(equipped: Dictionary, catalog: Array) -> void:
 	flash_material.set_shader_parameter("outfit_enabled", 1.0 if outfit_enabled else 0.0)
 	if outfit_enabled:
 		flash_material.set_shader_parameter("outfit_color", Color(str(cosmetic_data[outfit_id].get("tint", "ffffff"))))
+	var hair_id := str(equipped_cosmetics.get("HAIR", ""))
+	var hair_enabled := not hair_id.is_empty() and cosmetic_data.has(hair_id)
+	flash_material.set_shader_parameter("hair_enabled", 1.0 if hair_enabled else 0.0)
+	if hair_enabled:
+		flash_material.set_shader_parameter("hair_color", Color(str(cosmetic_data[hair_id].get("tint", "ffffff"))))
 
 func preview_cosmetic(item: Dictionary) -> void:
 	var preview := equipped_cosmetics.duplicate(true)
@@ -178,15 +189,10 @@ func _update_cosmetic_anchors() -> void:
 	var head_width := float(frame_anchor.get("head_width", float(used.size.x) * 0.42))
 	var source_to_local := func(source_point: Vector2) -> Vector2:
 		return sprite.position + (source_point - texture_size * 0.5) * ART_SCALE
-	var hat := cosmetic_sprites.get("HAT") as Sprite2D
 	var face := cosmetic_sprites.get("FACE") as Sprite2D
 	var trail := cosmetic_sprites.get("TRAIL") as Sprite2D
-	hat.position = source_to_local.call(head_center - Vector2(0.0, head_width * 0.56))
 	face.position = source_to_local.call(head_center + Vector2(0.0, head_width * 0.04))
 	trail.position = source_to_local.call(Vector2(head_center.x, float(used.end.y) - float(used.size.y) * 0.08))
-	if hat.texture != null:
-		var hat_scale := head_width * ART_SCALE * 1.45 / maxf(float(hat.texture.get_width()), 1.0)
-		hat.scale = Vector2.ONE * hat_scale
 	if face.texture != null:
 		var face_scale := head_width * ART_SCALE * 0.92 / maxf(float(face.texture.get_width()), 1.0)
 		face.scale = Vector2.ONE * face_scale
@@ -246,6 +252,9 @@ uniform float flash_amount : hint_range(0.0, 1.0) = 0.0;
 uniform float outfit_enabled : hint_range(0.0, 1.0) = 0.0;
 uniform vec4 outfit_color : source_color = vec4(1.0);
 uniform sampler2D outfit_mask_texture : filter_linear;
+uniform float hair_enabled : hint_range(0.0, 1.0) = 0.0;
+uniform vec4 hair_color : source_color = vec4(1.0);
+uniform sampler2D hair_mask_texture : filter_linear;
 uniform vec4 outline_color : source_color = vec4(0.035, 0.043, 0.071, 1.0);
 uniform float outline_source_px = 4.1;
 uniform vec2 shadow_source_offset = vec2(0.0, 7.0);
@@ -279,14 +288,18 @@ void fragment() {
 	float luminance = dot(pixel.rgb, vec3(0.299, 0.587, 0.114));
 	vec3 dyed = outfit_color.rgb * mix(0.42, 1.34, luminance);
 	vec3 outfitted_rgb = mix(pixel.rgb, dyed, cloth_mask * 0.72);
-	vec3 flashed_rgb = mix(outfitted_rgb, vec3(1.0), flash_amount);
+	// Preserve the source hair luminance so painted highlights and shadows stay intact.
+	float hair_mask = texture(hair_mask_texture, UV).a * hair_enabled * pixel.a;
+	vec3 dyed_hair = hair_color.rgb * mix(0.38, 1.42, luminance);
+	vec3 recolored_rgb = mix(outfitted_rgb, dyed_hair, hair_mask * 0.88);
+	vec3 flashed_rgb = mix(recolored_rgb, vec3(1.0), flash_amount);
 	COLOR = vec4(mix(backdrop_color, flashed_rgb, pixel.a), max(pixel.a, backdrop_alpha));
 }
 """
 	flash_material.shader = shader
 	sprite.material = flash_material
 	add_child(sprite)
-	for slot in ["TRAIL", "HAT", "FACE"]:
+	for slot in ["TRAIL", "FACE"]:
 		var layer := Sprite2D.new()
 		layer.name = "%sCosmetic" % slot.capitalize()
 		layer.centered = true

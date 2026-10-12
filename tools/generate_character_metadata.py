@@ -1,4 +1,4 @@
-"""Generate per-frame cosmetic anchors and conservative garment masks.
+"""Generate per-frame cosmetic anchors, garment masks and hair masks.
 
 The character sheets share pose alignment, but hands frequently extend above the
 head.  Anchors therefore use a pose-specific anatomical band instead of the
@@ -15,6 +15,7 @@ from pathlib import Path
 
 import numpy as np
 from PIL import Image
+from PIL import ImageDraw
 
 
 ROOT = Path(__file__).resolve().parents[1] / "assets" / "art" / "character_frames"
@@ -98,6 +99,85 @@ def garment_mask(rgba: np.ndarray, anchor: tuple[int, int, int]) -> Image.Image:
     return Image.fromarray(result, "RGBA")
 
 
+def hair_palette(rgba: np.ndarray, anchor: tuple[int, int, int], outfit: np.ndarray) -> list[tuple[float, float, float]]:
+    """Learn this character's hair colours from the compact crown/neck region."""
+    center_x, head_y, head_width = anchor
+    height, width = rgba.shape[:2]
+    x0 = max(0, int(center_x - head_width * 0.46))
+    x1 = min(width, int(center_x + head_width * 0.46))
+    y0 = max(0, int(head_y - head_width * 0.70))
+    y1 = min(height, int(head_y + head_width * 0.28))
+    bins: Counter[tuple[int, int, int]] = Counter()
+    for y in range(y0, y1):
+        for x in range(x0, x1):
+            red, green, blue, alpha = (int(value) for value in rgba[y, x])
+            if alpha < 96 or outfit[y, x, 3] > 16 or skin_like(red, green, blue):
+                continue
+            hue, saturation, value = colorsys.rgb_to_hsv(red / 255.0, green / 255.0, blue / 255.0)
+            if value < 0.12 or saturation < 0.16:
+                continue
+            bins[(int(hue * 24.0) % 24, int(saturation * 4.0), int(value * 5.0))] += 1
+    if not bins:
+        return []
+    # Several bins preserve the painted highlight/shadow family without
+    # admitting unrelated brown gloves, boots or bags outside the head region.
+    selected = [entry[0] for entry in bins.most_common(5)]
+    return [((hue_bin + 0.5) / 24.0, (sat_bin + 0.5) / 4.0, (val_bin + 0.5) / 5.0) for hue_bin, sat_bin, val_bin in selected]
+
+
+def hair_mask(
+    rgba: np.ndarray,
+    anchor: tuple[int, int, int],
+    outfit: np.ndarray,
+    palette: list[tuple[float, float, float]],
+) -> Image.Image:
+    center_x, head_y, head_width = anchor
+    height, width = rgba.shape[:2]
+    result = np.zeros((height, width, 4), dtype=np.uint8)
+    x0 = max(0, int(center_x - head_width * 0.60))
+    x1 = min(width, int(center_x + head_width * 0.60))
+    y0 = max(0, int(head_y - head_width * 0.82))
+    y1 = min(height, int(head_y + head_width * 0.55))
+    for y in range(y0, y1):
+        for x in range(x0, x1):
+            red, green, blue, alpha = (int(value) for value in rgba[y, x])
+            if alpha < 64 or outfit[y, x, 3] > 16 or skin_like(red, green, blue):
+                continue
+            dx = (x - center_x) / max(head_width * 0.58, 1.0)
+            dy = (y - (head_y - head_width * 0.10)) / max(head_width * 0.70, 1.0)
+            if dx * dx + dy * dy > 1.0:
+                continue
+            hue, saturation, value = colorsys.rgb_to_hsv(red / 255.0, green / 255.0, blue / 255.0)
+            if value < 0.09 or saturation < 0.10:
+                continue
+            matches = any(
+                hue_distance(hue, sample_hue) <= 0.075
+                and abs(saturation - sample_saturation) <= 0.34
+                and abs(value - sample_value) <= 0.34
+                for sample_hue, sample_saturation, sample_value in palette
+            )
+            if matches:
+                result[y, x] = (255, 255, 255, alpha)
+    return Image.fromarray(result, "RGBA")
+
+
+def paint_hair_icon(path: Path, base: tuple[int, int, int]) -> None:
+    """Draw a compact painted swatch; no character-specific silhouette needed."""
+    image = Image.new("RGBA", (192, 192), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(image)
+    dark = tuple(max(0, int(channel * 0.48)) for channel in base) + (255,)
+    mid = base + (255,)
+    light = tuple(min(255, int(channel * 1.28 + 12)) for channel in base) + (235,)
+    outline = (24, 22, 27, 255)
+    silhouette = [(35, 129), (44, 76), (72, 42), (92, 68), (112, 34), (151, 61), (161, 126), (139, 150), (55, 150)]
+    draw.polygon(silhouette, fill=outline)
+    draw.polygon([(42, 126), (50, 80), (73, 52), (92, 78), (112, 44), (144, 67), (153, 124), (135, 141), (58, 141)], fill=dark)
+    draw.polygon([(55, 116), (61, 80), (76, 61), (92, 88), (111, 55), (132, 72), (141, 111), (126, 123), (69, 126)], fill=mid)
+    draw.line([(66, 91), (77, 72), (91, 99)], fill=light, width=8)
+    draw.line([(110, 68), (126, 82), (132, 104)], fill=light, width=7)
+    image.save(path, optimize=True)
+
+
 def main() -> None:
     for skin in SKINS:
         anchors: dict[str, dict[str, object]] = {}
@@ -110,10 +190,22 @@ def main() -> None:
                 "head_width": anchor[2],
                 "face_view": "front" if frame in FRONT_FRAMES else "back",
             }
-            garment_mask(rgba, anchor).save(ROOT / skin / f"{frame}_outfit_mask.png", optimize=True)
+            outfit_image = garment_mask(rgba, anchor)
+            outfit_image.save(ROOT / skin / f"{frame}_outfit_mask.png", optimize=True)
+            outfit = np.asarray(outfit_image)
+            palette_source = rgba if frame == "hang" else np.asarray(Image.open(ROOT / skin / "hang.png").convert("RGBA"))
+            hang_anchor = head_anchor(palette_source, "hang")
+            hang_outfit = np.asarray(garment_mask(palette_source, hang_anchor))
+            palette = hair_palette(palette_source, hang_anchor, hang_outfit)
+            hair_mask(rgba, anchor, outfit, palette).save(ROOT / skin / f"{frame}_hair_mask.png", optimize=True)
         (ROOT / skin / "anchors.json").write_text(
             json.dumps({"frames": anchors}, indent=2) + "\n", encoding="utf-8"
         )
+
+    icon_root = ROOT.parent / "cosmetics"
+    paint_hair_icon(icon_root / "hair_dark.png", (48, 35, 29))
+    paint_hair_icon(icon_root / "hair_blonde.png", (205, 158, 55))
+    paint_hair_icon(icon_root / "hair_silver.png", (176, 190, 200))
 
 
 if __name__ == "__main__":

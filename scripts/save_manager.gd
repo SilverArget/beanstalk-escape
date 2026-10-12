@@ -118,7 +118,7 @@ func _default_profile() -> Dictionary:
 func _default_shop() -> Dictionary:
 	return {
 		"owned": ["M1", "F1"],
-		"equipped": {"HAT": "", "FACE": "", "TRAIL": "", "OUTFIT": ""},
+		"equipped": {"HAIR": "", "FACE": "", "TRAIL": "", "OUTFIT": ""},
 		"selected_character": "M1",
 	}
 
@@ -135,7 +135,9 @@ func _sanitize_shop(value: Variant) -> Dictionary:
 				result.owned.append(item_id)
 	var equipped_value: Variant = source.get("equipped", {})
 	if equipped_value is Dictionary:
-		for slot in ["HAT", "FACE", "TRAIL", "OUTFIT"]:
+		# HAT was retired in M3. Old ownership remains harmless in `owned`, while
+		# an equipped HAT is deliberately ignored during profile migration.
+		for slot in ["HAIR", "FACE", "TRAIL", "OUTFIT"]:
 			result.equipped[slot] = str(equipped_value.get(slot, ""))
 	var selected := str(source.get("selected_character", "M1")).to_upper()
 	result.selected_character = selected if result.owned.has(selected) else "M1"
