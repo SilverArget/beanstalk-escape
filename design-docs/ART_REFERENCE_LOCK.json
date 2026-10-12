@@ -22,6 +22,35 @@
     ],
     "animations": ["idle", "climb_loop", "branch_takeoff", "branch_midair", "branch_landing", "hurt", "skill_time"]
   },
+  "flipbook_override": {
+    "date": "2026-10-12",
+    "authority": "owner override: single-piece full-body frames replace the shared multi-part rig",
+    "scene": "res://scenes/player_visual.tscn",
+    "script": "res://scripts/player_visual.gd",
+    "frame_canvas": [360, 300],
+    "target_opaque_height_px": 240,
+    "runtime_scale": 0.45,
+    "runtime_height_world_units": 108,
+    "layout": [4, 2],
+    "frame_order": ["climb_left", "climb_right", "jump", "climb_reach", "hurt", "fall", "cheer", "hang"],
+    "mipmaps": true,
+    "sources": [
+      {
+        "skin": "F1",
+        "path": "E:/oyunlar/BeanstalkEscape/arastirma/gpt-sprites/raw/02-poz-sayfasi.png",
+        "date": "2026-10-09",
+        "sha256": "9b264540e64194549dc654fc7a3718723e9b66ddb21c75d3489184797629992f",
+        "provenance": "owner-approved F1 pose sheet; original left unchanged"
+      },
+      {
+        "skin": "M1",
+        "path": "res://assets/art/character_frames/source/m1_pose_sheet_imagegen_2026-10-12.png",
+        "date": "2026-10-12",
+        "sha256": "fc62069052acbe3e336fbed089371aaea80ee92c819081498dea4b1325709963",
+        "provenance": "Codex built-in image_gen; F1 sheet used as pose/style reference and M1 parts sheet used as identity/costume reference"
+      }
+    ]
+  },
   "files": [
     {
       "skin": "M1",
