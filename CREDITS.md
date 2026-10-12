@@ -13,4 +13,6 @@
 | `assets/audio/spider_scream.ogg`, `time_wings.ogg`, `game_complete.ogg`, `bean_fall_whoosh.ogg`, `wind_loop.ogg`, `death_bass_down.ogg`, `branch_swoosh.ogg` | Sonniss GDC 2026 (ayrıntı `arastirma/ses-hazir/MANIFEST.md`) | Oyunda ticari kullanım serbest; ham paket dağıtımı yasak; loudnorm/kırpma kaynak hazırlığında |
 | `assets/ui/beanstalk-escape-logo-v1.png` | Yönetici tarafından sağlandı | Köken bilinmiyor — HUMAN REVIEW REQUIRED (Playgama katalog riski); değiştirilmedi/kırpılmadı |
 
-Harici CDN, yeni AI görseli veya brief dışı varlık kullanılmadı.
+| `assets/art/intro/beanstalk_summit_intro.png` | OpenAI Codex `image_gen`, 2026-10-12 | Proje için üretilen 960×540 boyalı intro karesi; SHA-256 `1D60FA586D73C84CBF874C42F3F47D78D52688200004B65F954E17AFA905DA5F` |
+
+Harici CDN veya brief dışı varlık kullanılmadı.
