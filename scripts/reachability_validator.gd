@@ -14,9 +14,9 @@ static func solve_stages_1_to_5(variant: String) -> Dictionary:
 	var transition_count := 0
 	var minimum_gap := INF
 	for stage: Dictionary in stages:
-		if int(stage.number) < 3:
-			continue
 		for encounter: Dictionary in stage.encounters:
+			if int(stage.number) < 3 and String(encounter.recipe.kind) != "BEAN":
+				continue
 			var target := int(encounter.witness)
 			var warning_world_height := float(int(stage.number) - 1) * Balance.STAGE_HEIGHT + float(encounter.warning_height)
 			var reaction_tick := int(round((warning_world_height / Balance.PLAYER_VERTICAL_SPEED + REACTION_SECONDS) * PHYSICS_HZ))
@@ -25,12 +25,12 @@ static func solve_stages_1_to_5(variant: String) -> Dictionary:
 			while cursor_route != target:
 				var issue_tick := reaction_tick if issue_ticks.is_empty() else issue_ticks[-1] + int(round(COMMAND_GAP_SECONDS * PHYSICS_HZ))
 				var next_route := cursor_route + signi(target - cursor_route)
-				while not _routes_connected_at_tick(stage, cursor_route, next_route, issue_tick):
+				while int(stage.number) >= 3 and not _routes_connected_at_tick(stage, cursor_route, next_route, issue_tick):
 					issue_tick += 1
 				issue_ticks.append(issue_tick)
 				cursor_route = next_route
 				transition_count += 1
-			var settle_ticks := int(round(Balance.BRANCH_TRANSITION_SECONDS * PHYSICS_HZ)) + 2
+			var settle_ticks := int(round((Balance.BRANCH_TRANSITION_SECONDS if int(stage.number) >= 3 else 0.20) * PHYSICS_HZ)) + 2
 			var checkpoint_tick := reaction_tick if issue_ticks.is_empty() else issue_ticks[-1] + settle_ticks
 			var checkpoint := {
 				"stage": int(stage.number),
@@ -44,6 +44,7 @@ static func solve_stages_1_to_5(variant: String) -> Dictionary:
 				"encounter": String(encounter.id),
 				"stage": int(stage.number),
 				"target": target,
+				"trunk_target_x": float(ScaleLock.TRUNK_SAFE_WORLD_X[target]) if int(stage.number) < 3 else NAN,
 				"warning_tick": int(round(warning_world_height / Balance.PLAYER_VERTICAL_SPEED * PHYSICS_HZ)),
 				"issue_ticks": issue_ticks,
 				"checkpoint_tick": checkpoint_tick,
@@ -54,8 +55,9 @@ static func solve_stages_1_to_5(variant: String) -> Dictionary:
 			route = target
 	var expected_commands := 0
 	for stage: Dictionary in stages:
-		if int(stage.number) >= 3:
-			expected_commands += stage.encounters.size()
+		for encounter: Dictionary in stage.encounters:
+			if int(stage.number) >= 3 or String(encounter.recipe.kind) == "BEAN":
+				expected_commands += 1
 	return {
 		"valid": commands.size() == expected_commands,
 		"variant": variant,

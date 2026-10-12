@@ -13,10 +13,10 @@ var release_requested := false
 const WARNING_SCREEN_TOP_PX := 150.0
 const WARNING_SCREEN_BOTTOM_PX := 285.0
 
-func setup(route: int, at_y: float) -> void:
+func setup(route: int, at_y: float, world_x := NAN) -> void:
 	blocked_route = route
 	landing_y = at_y
-	position = Vector2(Balance.ROUTE_X[route], at_y)
+	position = Vector2(Balance.ROUTE_X[route] if is_nan(world_x) else world_x, at_y)
 	warning_started_msec = Time.get_ticks_msec()
 	$Warning.visible = true
 	$Body.visible = false

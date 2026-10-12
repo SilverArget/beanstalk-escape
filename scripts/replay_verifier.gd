@@ -11,6 +11,11 @@ static func run_stages_1_to_5(game: GameManager, commands: Array, expected_hashe
 	var actions_by_tick := {}
 	var checkpoints_by_tick := {}
 	for command: Dictionary in commands:
+		if int(command.stage) < 3:
+			var trunk_issue_tick := int(command.issue_ticks[0]) if not command.issue_ticks.is_empty() else int(command.warning_tick) + int(round(ReachabilityValidator.REACTION_SECONDS * PHYSICS_HZ))
+			actions_by_tick[trunk_issue_tick] = {"trunk_target_x": float(command.trunk_target_x)}
+			checkpoints_by_tick[int(command.checkpoint_tick)] = command
+			continue
 		var target := int(command.target)
 		var route_cursor := _route_before(commands, command)
 		for issue_tick_value in command.issue_ticks:
@@ -22,10 +27,26 @@ static func run_stages_1_to_5(game: GameManager, commands: Array, expected_hashe
 	var hashes: Array = []
 	var expected_from_solution: Array = []
 	var minimum_gap := INF
+	var trunk_target_x := NAN
 	var last_tick := int(ceil(5.0 * Balance.STAGE_HEIGHT / Balance.PLAYER_VERTICAL_SPEED * PHYSICS_HZ)) + PHYSICS_HZ
 	for tick in last_tick:
 		if actions_by_tick.has(tick):
-			game.dispatch_command(String(actions_by_tick[tick]), "replay")
+			var action: Variant = actions_by_tick[tick]
+			if action is Dictionary:
+				trunk_target_x = float(action.trunk_target_x)
+			else:
+				Input.action_release("move_left")
+				Input.action_release("move_right")
+				game.dispatch_command(String(action), "replay")
+		if game.stages.stage_for_y(game.player.global_position.y) <= 2 and not is_nan(trunk_target_x):
+			var delta_x := trunk_target_x - game.player.global_position.x
+			Input.action_release("move_left")
+			Input.action_release("move_right")
+			if absf(delta_x) > 2.0:
+				Input.action_press("move_right" if delta_x > 0.0 else "move_left")
+		else:
+			Input.action_release("move_left")
+			Input.action_release("move_right")
 		_tick_real_scene(game)
 		minimum_gap = minf(minimum_gap, game.spider.distance_to_player())
 		if checkpoints_by_tick.has(tick):
@@ -35,6 +56,8 @@ static func run_stages_1_to_5(game: GameManager, commands: Array, expected_hashe
 		if game.app_state == GameManager.AppState.PLAYER_DEAD or game.app_state == GameManager.AppState.GAME_COMPLETE:
 			break
 	var comparison := expected_hashes if not expected_hashes.is_empty() else expected_from_solution
+	Input.action_release("move_left")
+	Input.action_release("move_right")
 	return {
 		"completed": game.app_state == GameManager.AppState.GAME_COMPLETE,
 		"bean_hits": game.beans.hit_count,

@@ -36,6 +36,9 @@ func test_deterministic_anti_cheese() -> void:
 			if bool(result.completed):
 				failures_found.append("%s:%s" % [variant, agent])
 	check(failures_found.is_empty(), "T14-deterministic", "runs=10 completed=%s" % str(failures_found))
+	var no_input := AntiCheeseHarness.run_deterministic("no_input", StageDatabase.CANONICAL_VARIANT, 1)
+	var stopped_in_stage_1: bool = not bool(no_input.completed) and int(no_input.failed_stage) == 1 and float(no_input.hit_seconds) > 3.0
+	check(stopped_in_stage_1, "T14-no-input-stage1", "encounter=%s hit_seconds=%.3f completed=%s" % [no_input.encounter, no_input.hit_seconds, str(no_input.completed)])
 
 func test_random_experiment() -> void:
 	var experiment := AntiCheeseHarness.run_random_experiment(1500, 5)

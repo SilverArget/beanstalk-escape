@@ -104,7 +104,12 @@ static func _paced_encounters(stage: Dictionary) -> Array:
 		if int(stage.number) == 3 and not use_bean and index > 0:
 			template["witness"] = int((result[-1] as Dictionary).witness)
 		if use_bean:
-			var blocked: int = (0 if index % 4 < 2 else 2) if int(stage.number) <= 2 else (index + int(stage.number)) % 3
+			# Trunk beans cycle across center, left and right. The first Stage 1
+			# bean targets the no-input center lane; the first three cover every
+			# fixed-position strategy while leaving two reachable safe lanes.
+			var trunk_bean_index := int(index / 2) - 1 if int(stage.number) == 1 else int((index - 1) / 2)
+			var trunk_cycle := [1, 0, 2]
+			var blocked: int = int(trunk_cycle[trunk_bean_index % trunk_cycle.size()]) if int(stage.number) <= 2 else (index + int(stage.number)) % 3
 			if int(stage.number) == 3:
 				var preceding_supports: Array = (result[-1] as Dictionary).recipe.supports
 				template["witness"] = int(preceding_supports[0])

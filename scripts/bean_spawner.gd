@@ -44,7 +44,9 @@ func spawn_bean(route: int, target_y: float, key := "forced") -> BeanProjectile:
 	bean.add_to_group("run_transient")
 	add_child(bean)
 	# The top of the collider begins at A+120 and stays world-fixed through warning.
-	bean.setup(route, target_y - 120.0)
+	var stage_number := stages.stage_for_y(target_y)
+	var target_x := float(ScaleLock.TRUNK_SAFE_WORLD_X[route]) if stage_number <= 2 else float(Balance.ROUTE_X[route])
+	bean.setup(route, target_y - 120.0, target_x)
 	bean.set_meta("encounter_key", key)
 	spawned_keys[key] = bean.get_path()
 	warning_count += 1

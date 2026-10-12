@@ -139,7 +139,7 @@ func pattern_for_stage(stage_number: int) -> Dictionary:
 func route_for_x(x: float) -> int:
 	var best := 0
 	for route in 3:
-		if absf(Balance.ROUTE_X[route] - x) < absf(Balance.ROUTE_X[best] - x):
+		if absf(ScaleLock.TRUNK_SAFE_WORLD_X[route] - x) < absf(ScaleLock.TRUNK_SAFE_WORLD_X[best] - x):
 			best = route
 	return best
 

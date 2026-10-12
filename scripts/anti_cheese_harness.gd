@@ -14,11 +14,11 @@ static func run_deterministic(agent: String, variant: String, final_stage: int) 
 	for stage: Dictionary in StageDatabase.stages_for_variant(variant):
 		if int(stage.number) > final_stage:
 			break
-		if int(stage.number) < 3:
-			continue
 		for encounter: Dictionary in stage.encounters:
 			if not _route_survives(encounter, route):
-				return {"completed": false, "failed_stage": stage.number, "encounter": encounter.id, "route": route}
+				var closing_speed := Balance.BEAN_FALL_SPEED + Balance.PLAYER_VERTICAL_SPEED
+				var contact_delay := (120.0 - Balance.BEAN_HIT_RADIUS) / closing_speed
+				return {"completed": false, "failed_stage": stage.number, "encounter": encounter.id, "route": route, "hit_seconds": (float(int(stage.number) - 1) * Balance.STAGE_HEIGHT + float(encounter.anchor)) / Balance.PLAYER_VERTICAL_SPEED + contact_delay}
 	return {"completed": true, "failed_stage": 0, "encounter": "", "route": route}
 
 static func run_random_experiment(attempts_per_variant: int, final_stage: int) -> Dictionary:
@@ -89,7 +89,7 @@ static func _run_random(policy_seed: int, variant: String, final_stage: int) -> 
 static func _hazard_events(variant: String, final_stage: int) -> Array:
 	var events: Array = []
 	for stage: Dictionary in StageDatabase.stages_for_variant(variant):
-		if int(stage.number) < 3 or int(stage.number) > final_stage:
+		if int(stage.number) > final_stage:
 			continue
 		for encounter: Dictionary in stage.encounters:
 			var height := float(int(stage.number) - 1) * Balance.STAGE_HEIGHT + float(encounter.anchor)
