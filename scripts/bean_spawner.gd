@@ -4,6 +4,7 @@ extends Node2D
 var spawned_keys: Dictionary = {}
 var hit_count := 0
 var warning_count := 0
+var sandbox_mode := false
 @onready var player: PlayerController = get_parent().get_node("Player")
 @onready var spider: SpiderController = get_parent().get_node("Spider")
 @onready var stages: StageManager = get_parent().get_node("StageManager")
@@ -11,7 +12,7 @@ var warning_count := 0
 const BEAN_SCENE := preload("res://scenes/bean_projectile.tscn")
 
 func _physics_process(_delta: float) -> void:
-	for stage_pattern: Dictionary in stages.patterns:
+	for stage_pattern: Dictionary in ([] if sandbox_mode else stages.patterns):
 		for slot_index in stage_pattern.bean_slots.size():
 			var slot: Dictionary = stage_pattern.bean_slots[slot_index]
 			var warning_y: float = -(float(stage_pattern.stage - 1) * Balance.STAGE_HEIGHT + float(slot.warning_height))

@@ -37,6 +37,16 @@ var danger_was_active := false
 var played_roles := {}
 var audio_events: Array = []
 
+func announce_storm_role(role: String) -> void:
+	# Storm mechanics reuse the compact existing palette; the distinct role is
+	# still recorded for debug/QA even when it maps to an existing sound.
+	var stream_by_role := {"storm_wind": "wind_loop", "branch_crack": "bean_warning_creak", "branch_break": "branch_swoosh", "web_shot": "spider_scream"}
+	played_roles[role] = true
+	_record_event(role)
+	var stream_name := String(stream_by_role.get(role, "branch_swoosh"))
+	if stream_name != "wind_loop":
+		play_sfx(stream_name)
+
 func _ready() -> void:
 	for player in [music, wind, sfx, heartbeat]:
 		add_child(player)

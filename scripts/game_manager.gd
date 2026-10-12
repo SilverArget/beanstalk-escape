@@ -15,6 +15,7 @@ var death_cause := DeathCause.NONE
 @onready var stages: StageManager = $StageManager
 @onready var beans: BeanSpawner = $BeanSpawner
 @onready var audio: BeanstalkAudio = $Audio
+@onready var storm: StormMechanics = $StormMechanics
 @onready var platform_services: Node = get_node("/root/PlatformServices")
 var total_time := 0.0
 var close_calls := 0
@@ -59,6 +60,7 @@ var intro_active := false
 var intro_beat := 0
 var intro_t := 0.0
 var debug_start_stage := 1
+var debug_storm_sandbox := false
 var meta_ui: MetaShopUI
 
 func _ready() -> void:
@@ -207,6 +209,7 @@ func restart() -> void:
 	_clear_direction_inputs()
 	for child in get_tree().get_nodes_in_group("run_transient"): child.free()
 	beans.reset_run()
+	storm.reset_run()
 	player.reset_run(Vector2(0, 0))
 	spider.reset_run(Vector2(0, Balance.START_DISTANCE))
 	player.set_physics_process(true)
@@ -335,6 +338,9 @@ func _finish_intro() -> void:
 	beans.reset_run()
 	if debug_start_stage > 1:
 		_start_debug_stage(debug_start_stage)
+	if debug_storm_sandbox:
+		_start_debug_stage(3)
+		storm.configure_sandbox(3)
 	player.set_physics_process(true)
 	spider.set_physics_process(true)
 	beans.set_physics_process(true)
@@ -369,6 +375,7 @@ func restart_stage() -> void:
 	var start_y := -float(stage_number - 1) * Balance.STAGE_HEIGHT
 	for child in get_tree().get_nodes_in_group("run_transient"): child.free()
 	beans.reset_run()
+	storm.reset_run()
 	shake_remaining = 0.0
 	close_text_remaining = 0.0
 	danger_pulse_remaining = 0.0
@@ -1100,6 +1107,7 @@ func _readonly_state_snapshot() -> Dictionary:
 		"tempo": {"stage_seconds": Balance.STAGE_DURATION_SECONDS, "events_in_stage": stages.pattern_for_stage(stage_number).encounters.size()},
 		"fx": {"shake": shake_remaining, "close_text": close_text_remaining},
 		"beans": state_beans,
+		"storm": storm.snapshot(),
 		"next_dead_end": {"route": dead_end_route, "distance_px": null if is_inf(dead_end_distance) else dead_end_distance},
 		"open_routes_at_player": stages.open_routes_at(player.global_position.y),
 		"active_branch": player.active_branch,
@@ -1122,7 +1130,13 @@ func _apply_debug_meta_overrides() -> void:
 	var raw := str(JavaScriptBridge.eval("new URLSearchParams(window.location.search).toString()", true))
 	for pair in raw.split("&", false):
 		var parts := pair.split("=", true, 1)
-		if parts.size() != 2 or not parts[1].is_valid_int():
+		if parts.size() != 2:
+			continue
+		if parts[0] == "sandbox" and parts[1].to_lower() == "storm":
+			debug_storm_sandbox = true
+			debug_start_stage = 3
+			continue
+		if not parts[1].is_valid_int():
 			continue
 		if parts[0] == "gold": economy.gold = maxi(int(parts[1]), 0)
 		if parts[0] == "level": economy.level = maxi(int(parts[1]), 1)
