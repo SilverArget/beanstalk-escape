@@ -21,6 +21,9 @@ const BRANCH_NODE_SPACING := 150.0
 const STAGE_3_ENTRY_HEIGHT := 350.0
 const SIDE_VINE_ENTRY_DEPTH := 240.0
 const SIDE_VINE_OFFSCREEN_X := 560.0
+const SURFACE_CACHE_SCROLL_PX := 192.0
+const SURFACE_CACHE_MARGIN_PX := 384.0
+const SKY_VISUAL := preload("res://scripts/world_sky_visual.gd")
 
 @onready var player: PlayerController = get_parent().get_node_or_null("Player") as PlayerController
 @onready var stages: StageManager = get_parent().get_node_or_null("StageManager") as StageManager
@@ -32,25 +35,39 @@ var qa_storm_background := false
 var qa_support_mask := false
 var qa_support_mask_include_outline := false
 var qa_sky_only := false
+var cached_camera_top := INF
+var sky_visual: Node2D
 
 func _ready() -> void:
 	texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
 	texture_repeat = CanvasItem.TEXTURE_REPEAT_ENABLED
+	sky_visual = SKY_VISUAL.new()
+	sky_visual.name = "Sky"
+	sky_visual.z_index = -100
+	sky_visual.setup(player, stages)
+	add_child(sky_visual)
+	cached_camera_top = _camera_top()
 	queue_redraw()
 	set_process(true)
 
 func _process(_delta: float) -> void:
-	queue_redraw()
+	var current_camera_top := _camera_top()
+	if absf(current_camera_top - cached_camera_top) >= SURFACE_CACHE_SCROLL_PX:
+		cached_camera_top = current_camera_top
+		queue_redraw()
+
+func _camera_top() -> float:
+	var result := player.global_position.y - ScaleLock.CHARACTER_REFERENCE_Y if player != null else -270.0
+	if player != null:
+		var camera := player.get_node_or_null("Camera2D") as Camera2D
+		if camera != null:
+			result = camera.get_screen_center_position().y - get_viewport_rect().size.y * 0.5
+	return result
 
 func _draw() -> void:
 	redraw_count += 1
 	branch_point_count = 0
-	var camera_top := player.global_position.y - ScaleLock.CHARACTER_REFERENCE_Y if player != null else -270.0
-	if player != null:
-		var camera := player.get_node_or_null("Camera2D") as Camera2D
-		if camera != null:
-			camera_top = camera.get_screen_center_position().y - get_viewport_rect().size.y * 0.5
-	_draw_sky(camera_top)
+	var camera_top := cached_camera_top if not is_inf(cached_camera_top) else _camera_top()
 	if qa_sky_only:
 		return
 	_draw_trunk(camera_top)
@@ -133,8 +150,8 @@ func _draw_trunk(camera_top: float) -> void:
 	# One continuous ribbon becomes the middle Stage 3 vine. Because the width,
 	# centerline, UV and glaze all live in this draw call, there is no fork seam.
 	var transition_top_y := -Balance.STAGE_HEIGHT * 2.0 - STAGE_3_ENTRY_HEIGHT
-	var visible_top := maxf(transition_top_y, camera_top - 64.0)
-	var visible_bottom := minf(740.0, camera_top + 620.0)
+	var visible_top := maxf(transition_top_y, camera_top - 64.0 - SURFACE_CACHE_MARGIN_PX)
+	var visible_bottom := minf(740.0, camera_top + 620.0 + SURFACE_CACHE_MARGIN_PX)
 	if visible_bottom <= visible_top:
 		return
 	var centers := PackedVector2Array()
@@ -179,10 +196,10 @@ func _draw_stage_branches(stage_number: int, camera_top: float) -> void:
 	var stage_length := stages.stage_length(stage_number)
 	var stage_top := stage_bottom - stage_length
 	var camera_bottom := camera_top + 556.0
-	if stage_bottom < camera_top - 120.0 or stage_top > camera_bottom + 120.0:
+	if stage_bottom < camera_top - 120.0 - SURFACE_CACHE_MARGIN_PX or stage_top > camera_bottom + 120.0 + SURFACE_CACHE_MARGIN_PX:
 		return
-	var visible_start := clampf((stage_bottom - (camera_bottom + 160.0)) / stage_length, 0.0, 1.0)
-	var visible_end := clampf((stage_bottom - (camera_top - 160.0)) / stage_length, 0.0, 1.0)
+	var visible_start := clampf((stage_bottom - (camera_bottom + 160.0 + SURFACE_CACHE_MARGIN_PX)) / stage_length, 0.0, 1.0)
+	var visible_end := clampf((stage_bottom - (camera_top - 160.0 - SURFACE_CACHE_MARGIN_PX)) / stage_length, 0.0, 1.0)
 	for route in 3:
 		for segment: Array in stages.support_segments(stage_number, route):
 			var authored_start := float(segment[0])
