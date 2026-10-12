@@ -34,6 +34,7 @@
     "layout": [4, 2],
     "frame_order": ["climb_left", "climb_right", "jump", "climb_reach", "hurt", "fall", "cheer", "hang"],
     "mipmaps": true,
+    "wardrobe_revision": "2026-10-12: both skins regenerated with a longer tunic and dark full-length belted pants; no pale lower garment in jump or fall",
     "sources": [
       {
         "skin": "F1",
@@ -43,11 +44,18 @@
         "provenance": "owner-approved F1 pose sheet; original left unchanged"
       },
       {
-        "skin": "M1",
-        "path": "res://assets/art/character_frames/source/m1_pose_sheet_imagegen_2026-10-12.png",
+        "skin": "F1",
+        "path": "res://assets/art/character_frames/source/f1_pose_sheet_imagegen_pants_2026-10-12.png",
         "date": "2026-10-12",
-        "sha256": "fc62069052acbe3e336fbed089371aaea80ee92c819081498dea4b1325709963",
-        "provenance": "Codex built-in image_gen; F1 sheet used as pose/style reference and M1 parts sheet used as identity/costume reference"
+        "sha256": "c5f46fa159e190b3cba2c2b8ebd1c8798c40c05070e89d8c66dfd1a9cb5cf536",
+        "provenance": "Codex built-in image_gen; owner-approved F1 sheet used as identity, pose, and style reference; regenerated with dark full-length pants and longer tunic"
+      },
+      {
+        "skin": "M1",
+        "path": "res://assets/art/character_frames/source/m1_pose_sheet_imagegen_pants_2026-10-12.png",
+        "date": "2026-10-12",
+        "sha256": "ace25d11f3aedeed2fec8ec15e48f3b3accbaa2002efaccab60c90ca42c67a86",
+        "provenance": "Codex built-in image_gen; prior M1 pose sheet and M1 parts sheet used as pose, identity, style, and costume references; regenerated with dark full-length pants and longer tunic"
       }
     ]
   },
