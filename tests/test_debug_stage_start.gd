@@ -27,6 +27,7 @@ func _run() -> void:
 		game._start_debug_stage(stage_number)
 		var spawn_stage := game.stages.stage_for_y(game.player.global_position.y)
 		var start_gap := game.spider.distance_to_player()
+		var expected_gap := SpiderController.stage_start_gap(stage_number)
 		var death_tick := -1
 		for tick in int(SURVIVAL_SECONDS * PHYSICS_HZ):
 			await physics_frame
@@ -37,7 +38,7 @@ func _run() -> void:
 		if spawn_stage != stage_number or not alive:
 			failed_stages.append(stage_number)
 		_check(
-			spawn_stage == stage_number and alive and is_equal_approx(start_gap, Balance.START_DISTANCE),
+			spawn_stage == stage_number and alive and is_equal_approx(start_gap, expected_gap),
 			"DEBUG-STAGE-%02d" % stage_number,
 			"spawn=%d after_3s=%d alive=%s death_tick=%d gap=%.1f rock_hits=%d" % [spawn_stage, current_stage, alive, death_tick, start_gap, game.rocks.hit_count]
 		)

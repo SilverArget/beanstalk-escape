@@ -53,7 +53,19 @@ static func pressure_profile(stage_number: int) -> Dictionary:
 	return {"g_lo": 156.0, "pressure": 12.0}
 
 static func retry_gap_for_stage(stage_number: int) -> float:
-	return 240.0 if stage_number <= 24 else 180.0
+	return stage_start_gap(stage_number)
+
+static func stage_start_gap(stage_number: int) -> float:
+	if stage_number <= 1:
+		return Balance.START_DISTANCE
+	var profile := pressure_profile(stage_number)
+	var equilibrium_c := clampf(
+		(1.0 - Balance.SPIDER_SPEED_RATIO) * Balance.PLAYER_VERTICAL_SPEED
+		/ (Balance.PLAYER_VERTICAL_SPEED * 0.12 + float(profile.pressure)),
+		0.0,
+		1.0
+	)
+	return float(profile.g_lo) + Balance.SPIDER_RAMP_SPAN * equilibrium_c
 
 static func pressure_equilibrium_table() -> Array:
 	var result: Array = []

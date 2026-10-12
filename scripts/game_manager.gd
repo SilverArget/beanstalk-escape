@@ -201,7 +201,7 @@ func _debug_evidence_stage(stage_number: int) -> void:
 	if not _debug_state_enabled() or stage_number < 1 or stage_number > Balance.STAGE_COUNT:
 		return
 	player.global_position = Vector2(0, -(stages.stage_start_height(stage_number) + stages.stage_length(stage_number) * 0.35))
-	spider.global_position = player.global_position + Vector2(0, Balance.START_DISTANCE)
+	spider.global_position = player.global_position + Vector2(0, SpiderController.stage_start_gap(stage_number))
 	player._sync_stage_mode()
 	stages.update_progress(player.global_position.y)
 
@@ -1340,7 +1340,7 @@ func _start_debug_stage(stage_number: int) -> void:
 		return
 	var start_y := stages.stage_bottom_y(stage_number)
 	player.reset_run(Vector2(0.0, start_y))
-	spider.reset_run(Vector2(0.0, start_y + Balance.START_DISTANCE))
+	spider.reset_run(Vector2(0.0, start_y + SpiderController.stage_start_gap(stage_number)))
 	rocks.sync_after_player_teleport()
 	golds.refresh_active_window(true)
 	stages.update_progress(start_y)
