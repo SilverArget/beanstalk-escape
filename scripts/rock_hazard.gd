@@ -94,4 +94,4 @@ func _draw() -> void:
 			draw_circle(Vector2(-34.0 - index * 10.0, 24.0 + index * 3.0), 5.0 - index, Color(0.72, 0.62, 0.42, 0.45))
 
 func snapshot() -> Dictionary:
-	return {"id": hazard_id, "kind": kind, "routes": routes.duplicate(), "anchor_y": anchor_y, "released": released, "position": global_position, "threat_time": threat_time}
+	return {"id": hazard_id, "kind": kind, "routes": routes.duplicate(), "anchor_y": anchor_y, "released": released, "position": {"x": global_position.x, "y": global_position.y}, "threat_time": threat_time}

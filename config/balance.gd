@@ -20,12 +20,12 @@ const SPIDER_CATCHUP_BLEND_SECONDS := 0.50
 const SPIDER_CATCHUP_ORIGIN := 360.0
 const SPIDER_CATCHUP_SPAN := 180.0
 const SPIDER_PRESSURE_BANDS := [
-	{"from": 1, "to": 14, "g_lo": 180.0, "pressure": 0.0},
-	{"from": 15, "to": 19, "g_lo": 180.0, "pressure": 4.0},
-	{"from": 20, "to": 24, "g_lo": 180.0, "pressure": 12.0},
-	{"from": 25, "to": 28, "g_lo": 156.0, "pressure": 12.0},
-	{"from": 29, "to": 29, "g_lo": 108.0, "pressure": 12.0},
-	{"from": 30, "to": 30, "g_lo": 156.0, "pressure": 12.0},
+	{"from": 1, "to": 14, "g_lo": 240.0, "pressure": 0.0},
+	{"from": 15, "to": 19, "g_lo": 252.0, "pressure": 4.0},
+	{"from": 20, "to": 24, "g_lo": 264.0, "pressure": 12.0},
+	{"from": 25, "to": 28, "g_lo": 264.0, "pressure": 12.0},
+	{"from": 29, "to": 29, "g_lo": 264.0, "pressure": 12.0},
+	{"from": 30, "to": 30, "g_lo": 264.0, "pressure": 12.0},
 ]
 const ROUTE_X := [-150.0, 0.0, 150.0]
 const STAGE_DURATION_SECONDS := 22.4

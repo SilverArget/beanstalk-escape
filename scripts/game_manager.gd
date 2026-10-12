@@ -966,7 +966,9 @@ func layout_hud_for_viewport(viewport_size: Vector2) -> void:
 	$HUD/Shop.position = Vector2((width - menu_width) * 0.5, height - 72.0)
 	$HUD/Shop.size = Vector2(menu_width, 48.0)
 	_layout_centered_label($HUD/RewardToast, width, 154.0, 30.0, 190.0)
-	_layout_centered_label($HUD/LevelUpCard, width, 198.0, 42.0, 190.0)
+	# Stage completion can show this together with the 188..240 double-reward
+	# button. Keep the level reward in its own readable row below that action.
+	_layout_centered_label($HUD/LevelUpCard, width, 248.0, 42.0, 190.0)
 	_layout_centered_label($HUD/StageBanner, width, 124.0 if portrait else 86.0, 30.0, 82.0 if portrait else 300.0)
 	$HUD/StageCounter.position = Vector2(8.0 if portrait else 14.0, 172.0 if portrait else 58.0)
 	$HUD/StageCounter.size = Vector2(112.0, 22.0)
@@ -1305,7 +1307,7 @@ func _readonly_state_snapshot() -> Dictionary:
 		"branch_target": player.transition_to,
 		"branch_transition_count": player.branch_transition_count,
 		"on_support": player.on_support,
-		"stats": {"time": total_time, "bean_hits": beans.hit_count, "close_calls": close_calls, "skills_used": skills_used, "best_distance": best_spider_distance},
+		"stats": {"time": total_time, "bean_hits": beans.hit_count, "rock_hits": rocks.hit_count, "close_calls": close_calls, "skills_used": skills_used, "best_distance": best_spider_distance},
 		"restart": {"count": stage_restart_count, "start_distance": stage_restart_start_distance},
 		"shop": economy.shop_snapshot(),
 	}
