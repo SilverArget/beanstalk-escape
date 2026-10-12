@@ -10,7 +10,9 @@ const REQUIRED_KEYS := [
 	"gold_per_collectible",
 	"stage_completion_gold_base", "stage_completion_gold_per_stage",
 	"xp_per_stage", "xp_per_gold", "level_threshold_base",
-	"level_threshold_per_level", "level_up_gold",
+	"level_threshold_per_level", "level_up_gold", "get_more_gold_reward",
+	"skip_stage_death_count", "interstitial_min_stage",
+	"interstitial_completed_stage_interval", "interstitial_min_delay_seconds",
 ]
 
 var config: Dictionary = {}
@@ -55,6 +57,19 @@ func complete_stage(stage_number: int) -> Dictionary:
 	var levels := _add_xp(value("xp_per_stage"))
 	_persist_and_emit()
 	return {"gold": reward, "xp": value("xp_per_stage"), "level_ups": levels}
+
+func grant_gold(amount: int) -> int:
+	var reward := maxi(amount, 0)
+	gold += reward
+	_persist_and_emit()
+	return reward
+
+func reload_profile(profile: Dictionary) -> void:
+	var meta: Dictionary = profile.get("meta", {})
+	gold = maxi(int(meta.get("gold", gold)), 0)
+	xp = maxi(int(meta.get("xp", xp)), 0)
+	level = maxi(int(meta.get("level", level)), 1)
+	changed.emit(snapshot())
 
 func threshold_for(current_level := level) -> int:
 	return value("level_threshold_base") + value("level_threshold_per_level") * (current_level - 1)

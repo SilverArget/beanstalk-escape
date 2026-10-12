@@ -23,6 +23,7 @@ var sfx := AudioStreamPlayer.new()
 var heartbeat := AudioStreamPlayer.new()
 var game_music_prewarm := AudioStreamPlayer.new()
 var muted := false
+var platform_audio_enabled := true
 var last_app_state := -1
 var last_stage := 1
 var last_transition_count := 0
@@ -165,7 +166,14 @@ func audio_event_snapshot() -> Array:
 
 func toggle_mute() -> void:
 	muted = not muted
-	AudioServer.set_bus_mute(AudioServer.get_bus_index("Master"), muted)
+	_apply_master_mute()
+
+func set_platform_audio_enabled(value: bool) -> void:
+	platform_audio_enabled = value
+	_apply_master_mute()
+
+func _apply_master_mute() -> void:
+	AudioServer.set_bus_mute(AudioServer.get_bus_index("Master"), muted or not platform_audio_enabled)
 
 func _set_paused(value: bool) -> void:
 	for player in [music, wind, sfx, heartbeat]:

@@ -2,6 +2,10 @@
 config/name="Beanstalk Escape"
 run/main_scene="res://scenes/main.tscn"
 
+[autoload]
+Bridge="*res://addons/playgama_bridge/bridge.gd"
+PlatformServices="*res://scripts/platform_services.gd"
+
 [display]
 window/size/viewport_width=960
 window/size/viewport_height=540
@@ -13,6 +17,9 @@ move_right={"deadzone":0.2,"events":[Object(InputEventKey,"physical_keycode":68)
 time_wings={"deadzone":0.2,"events":[Object(InputEventKey,"physical_keycode":70)]}
 pause={"deadzone":0.2,"events":[Object(InputEventKey,"physical_keycode":4194305),Object(InputEventKey,"physical_keycode":80)]}
 mute={"deadzone":0.2,"events":[Object(InputEventKey,"physical_keycode":77)]}
+
+[editor_plugins]
+enabled=PackedStringArray("res://addons/playgama_bridge/plugin.cfg")
 
 [rendering]
 renderer/rendering_method="gl_compatibility"

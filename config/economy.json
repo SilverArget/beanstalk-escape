@@ -8,5 +8,10 @@
   "xp_per_gold": 1,
   "level_threshold_base": 100,
   "level_threshold_per_level": 25,
-  "level_up_gold": 50
+  "level_up_gold": 50,
+  "get_more_gold_reward": 100,
+  "skip_stage_death_count": 3,
+  "interstitial_min_stage": 3,
+  "interstitial_completed_stage_interval": 2,
+  "interstitial_min_delay_seconds": 90
 }

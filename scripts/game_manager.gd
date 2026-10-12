@@ -15,6 +15,7 @@ var death_cause := DeathCause.NONE
 @onready var stages: StageManager = $StageManager
 @onready var beans: BeanSpawner = $BeanSpawner
 @onready var audio: BeanstalkAudio = $Audio
+@onready var platform_services: Node = get_node("/root/PlatformServices")
 var total_time := 0.0
 var close_calls := 0
 var danger_was_active := false
@@ -38,12 +39,25 @@ var economy := EconomyManager.new()
 var golds := GoldManager.new()
 var reward_toast_remaining := 0.0
 var level_up_remaining := 0.0
+var double_reward_remaining := 0.0
+var last_stage_gold_reward := 0
+var death_count_by_stage := {}
+var continue_used_this_run := false
+var completed_since_interstitial := 0
+var platform_pause_active := false
+var paused_by_platform := false
 
 func _ready() -> void:
 	process_physics_priority = 10
+	save_manager.configure_platform(platform_services)
 	if not economy.initialize(save_manager):
 		push_error("Economy config could not be loaded")
+	save_manager.profile_loaded.connect(economy.reload_profile)
 	economy.level_up.connect(_on_level_up)
+	platform_services.platform_pause_changed.connect(_on_platform_pause_changed)
+	platform_services.platform_audio_changed.connect(audio.set_platform_audio_enabled)
+	platform_services.ownership_changed.connect(_on_remove_ads_ownership_changed)
+	audio.set_platform_audio_enabled(platform_services.is_platform_audio_enabled())
 	golds.name = "GoldManager"
 	add_child(golds)
 	golds.setup(player, stages, economy, audio)
@@ -58,6 +72,7 @@ func _ready() -> void:
 func _physics_process(delta: float) -> void:
 	reward_toast_remaining = maxf(reward_toast_remaining - delta, 0.0)
 	level_up_remaining = maxf(level_up_remaining - delta, 0.0)
+	double_reward_remaining = maxf(double_reward_remaining - delta, 0.0)
 	if dead_restart_delay > 0.0:
 		dead_restart_delay = maxf(dead_restart_delay - delta, 0.0)
 		if dead_restart_delay <= 0.0 and confirm_pending and app_state == AppState.PLAYER_DEAD:
@@ -181,6 +196,9 @@ func restart() -> void:
 	stage_restart_count = 0
 	stage_restart_start_distance = 0.0
 	time_wings_used_stage.clear()
+	death_count_by_stage.clear()
+	continue_used_this_run = false
+	completed_since_interstitial = 0
 	player.time_wings_active = false
 	player.remove_from_group("time_wings_active")
 	_show_tutorial_for_stage(1)
@@ -227,8 +245,14 @@ func _on_prototype_completed() -> void:
 
 func _on_stage_completed(stage_number: int) -> void:
 	var reward := economy.complete_stage(stage_number)
+	last_stage_gold_reward = int(reward.gold)
 	reward_toast_remaining = 2.0
+	double_reward_remaining = 2.0 if platform_services.is_rewarded_supported() else 0.0
 	$HUD/RewardToast.text = "+%d GOLD  +%d XP" % [reward.gold, reward.xp]
+	completed_since_interstitial += 1
+	if stage_number >= economy.value("interstitial_min_stage") and completed_since_interstitial >= economy.value("interstitial_completed_stage_interval"):
+		if platform_services.show_interstitial("stage_transition"):
+			completed_since_interstitial = 0
 	if stage_number < Balance.STAGE_COUNT:
 		_show_tutorial_for_stage(stage_number + 1)
 
@@ -261,6 +285,8 @@ func _die(cause: DeathCause = DeathCause.CAUGHT) -> void:
 	state = State.PLAYER_DEAD
 	app_state = AppState.PLAYER_DEAD
 	death_cause = cause
+	var dead_stage := stages.stage_for_y(player.global_position.y)
+	death_count_by_stage[dead_stage] = int(death_count_by_stage.get(dead_stage, 0)) + 1
 	dead_restart_delay = 0.25
 	confirm_pending = false
 	player.time_wings_active = false
@@ -271,6 +297,7 @@ func _die(cause: DeathCause = DeathCause.CAUGHT) -> void:
 	for bean in get_tree().get_nodes_in_group("beans"):
 		bean.set_physics_process(false)
 	_update_hud()
+	call_deferred("_focus_default_death_action")
 	_publish_readonly_web_state()
 
 func _request_confirm() -> void:
@@ -300,6 +327,8 @@ func _pause_game() -> void:
 	_update_hud()
 
 func _resume_game() -> void:
+	if platform_pause_active:
+		return
 	audio.play_sfx("ui_click")
 	app_state = AppState.PLAYING
 	player.set_physics_process(true)
@@ -315,6 +344,87 @@ func _show_menu() -> void:
 	spider.set_physics_process(false)
 	beans.set_physics_process(false)
 	golds.visible = false
+	_update_hud()
+
+func _continue_with_ad() -> void:
+	if app_state != AppState.PLAYER_DEAD or continue_used_this_run:
+		return
+	platform_services.show_rewarded("continue_in_stage", _continue_after_reward)
+
+func _continue_after_reward() -> void:
+	if app_state != AppState.PLAYER_DEAD:
+		return
+	continue_used_this_run = true
+	spider.global_position = player.global_position + Vector2(0, SpiderController.retry_gap_for_stage(stages.current_stage))
+	_resume_after_death()
+
+func _resume_after_death() -> void:
+	state = State.PLAYING
+	app_state = AppState.PLAYING
+	death_cause = DeathCause.NONE
+	dead_restart_delay = 0.0
+	confirm_pending = false
+	player.set_physics_process(true)
+	spider.set_physics_process(true)
+	beans.set_physics_process(true)
+	for bean in get_tree().get_nodes_in_group("beans"):
+		bean.set_physics_process(true)
+	gauge.update_from_positions(player.global_position.y, spider.global_position.y)
+	_update_hud()
+
+func _restart_run_from_death() -> void:
+	if app_state == AppState.PLAYER_DEAD:
+		restart()
+
+func _menu_from_death() -> void:
+	if app_state == AppState.PLAYER_DEAD:
+		_show_menu()
+
+func _focus_default_death_action() -> void:
+	if app_state != AppState.PLAYER_DEAD:
+		return
+	var target := $HUD/ContinueAd as Button if $HUD/ContinueAd.visible else $HUD/RetryStage as Button
+	target.grab_focus()
+
+func _skip_stage_with_ad() -> void:
+	if app_state != AppState.PLAYER_DEAD:
+		return
+	var stage_number := stages.stage_for_y(player.global_position.y)
+	if int(death_count_by_stage.get(stage_number, 0)) < economy.value("skip_stage_death_count"):
+		return
+	platform_services.show_rewarded("skip_stage", _skip_stage_after_reward.bind(stage_number))
+
+func _skip_stage_after_reward(stage_number: int) -> void:
+	if app_state != AppState.PLAYER_DEAD or stage_number >= Balance.STAGE_COUNT:
+		return
+	save_manager.mark_stage_skipped(stage_number)
+	stages.current_stage = stage_number + 1
+	var next_y := -float(stage_number) * Balance.STAGE_HEIGHT
+	player.reset_run(Vector2(0, next_y))
+	spider.reset_run(Vector2(0, next_y + SpiderController.retry_gap_for_stage(stage_number + 1)))
+	golds.reset_run()
+	_resume_after_death()
+
+func _double_stage_reward_with_ad() -> void:
+	if double_reward_remaining <= 0.0 or last_stage_gold_reward <= 0:
+		return
+	double_reward_remaining = 0.0
+	platform_services.show_rewarded("double_stage_reward", func(): economy.grant_gold(last_stage_gold_reward))
+
+func _get_more_gold_with_ad() -> void:
+	platform_services.show_rewarded("get_more_gold", func(): economy.grant_gold(economy.value("get_more_gold_reward")))
+
+func _on_platform_pause_changed(value: bool) -> void:
+	platform_pause_active = value
+	if value and app_state == AppState.PLAYING:
+		paused_by_platform = true
+		_pause_game()
+	elif not value and paused_by_platform and app_state == AppState.PAUSED:
+		paused_by_platform = false
+		_resume_game()
+
+func _on_remove_ads_ownership_changed(value: bool) -> void:
+	save_manager.set_remove_ads(value)
 	_update_hud()
 
 func _show_tutorial_for_stage(stage_number: int) -> void:
@@ -349,6 +459,14 @@ func _setup_hud() -> void:
 	$HUD.add_child(xp_bar)
 	_add_label("RewardToast", Vector2(300, 152), "", 20)
 	_add_label("LevelUpCard", Vector2(300, 202), "", 28)
+	_add_action_button("ContinueAd", "CONTINUE (AD)", _continue_with_ad)
+	_add_action_button("RetryStage", "RETRY STAGE", restart_stage)
+	_add_action_button("RestartRun", "RESTART RUN", _restart_run_from_death)
+	_add_action_button("DeathMenu", "MENU", _menu_from_death)
+	_add_action_button("SkipStageAd", "SKIP STAGE (AD)", _skip_stage_with_ad)
+	_add_action_button("DoubleStageReward", "DOUBLE +0 (AD)", _double_stage_reward_with_ad)
+	_add_action_button("GetMoreGold", "GET 100 GOLD (AD)", _get_more_gold_with_ad)
+	_add_action_button("RemoveAds", "REMOVE ADS", platform_services.purchase_remove_ads)
 	var wings_orb := TextureRect.new()
 	wings_orb.name = "TimeWingsOrb"
 	wings_orb.texture = TIME_WINGS_ORB
@@ -380,7 +498,7 @@ func _setup_hud() -> void:
 
 func layout_hud_for_viewport(viewport_size: Vector2) -> void:
 	var width := maxf(viewport_size.x, 320.0)
-	var height := maxf(viewport_size.y, 480.0)
+	var height := maxf(viewport_size.y, 320.0)
 	var portrait := width < height
 	var logo_width := minf(width * 0.68, 620.0)
 	var logo_height := logo_width / 1.5
@@ -411,6 +529,22 @@ func layout_hud_for_viewport(viewport_size: Vector2) -> void:
 	$HUD/XPStatus.size = Vector2(meta_width, 18.0)
 	$HUD/XPBar.position = Vector2(meta_x, 106.0)
 	$HUD/XPBar.size = Vector2(meta_width, 9.0)
+	var death_width := minf(230.0, (width - 30.0) * 0.5)
+	var death_gap := 10.0
+	var death_total := death_width * 2.0 + death_gap
+	var death_x := maxf((width - death_total) * 0.5, 8.0)
+	for index in 4:
+		var death_button: Button = [$HUD/ContinueAd, $HUD/RetryStage, $HUD/RestartRun, $HUD/DeathMenu][index]
+		death_button.position = Vector2(death_x + (index % 2) * (death_width + death_gap), height * 0.40 + (index / 2) * 58.0)
+		death_button.size = Vector2(death_width, 52.0)
+	$HUD/SkipStageAd.position = Vector2((width - death_width) * 0.5, height * 0.40 + 116.0)
+	$HUD/SkipStageAd.size = Vector2(death_width, 52.0)
+	$HUD/DoubleStageReward.position = Vector2((width - 230.0) * 0.5, 188.0)
+	$HUD/DoubleStageReward.size = Vector2(230.0, 52.0)
+	$HUD/GetMoreGold.position = Vector2((width - 270.0) * 0.5, height - 126.0)
+	$HUD/GetMoreGold.size = Vector2(270.0, 52.0)
+	$HUD/RemoveAds.position = Vector2((width - 270.0) * 0.5, height - 66.0)
+	$HUD/RemoveAds.size = Vector2(270.0, 52.0)
 	_layout_centered_label($HUD/RewardToast, width, 154.0, 30.0, 190.0)
 	_layout_centered_label($HUD/LevelUpCard, width, 198.0, 42.0, 190.0)
 	_layout_centered_label($HUD/StageBanner, width, 124.0 if portrait else 86.0, 30.0, 82.0 if portrait else 300.0)
@@ -448,6 +582,17 @@ func _add_label(name: String, pos: Vector2, text: String, font_size: int) -> Lab
 	label.theme = ui_theme
 	$HUD.add_child(label)
 	return label
+
+func _add_action_button(name: String, text: String, callback: Callable) -> Button:
+	var button := Button.new()
+	button.name = name
+	button.text = text
+	button.theme = ui_theme
+	button.custom_minimum_size = Vector2(0, 48)
+	button.focus_mode = Control.FOCUS_ALL
+	button.pressed.connect(callback)
+	$HUD.add_child(button)
+	return button
 
 func _apply_theme() -> void:
 	var theme := Theme.new()
@@ -559,6 +704,18 @@ func _update_hud() -> void:
 	$HUD/XPBar.visible = meta_visible
 	$HUD/RewardToast.visible = meta_visible and reward_toast_remaining > 0.0
 	$HUD/LevelUpCard.visible = meta_visible and level_up_remaining > 0.0
+	var death_visible := app_state == AppState.PLAYER_DEAD
+	$HUD/ContinueAd.visible = death_visible and not continue_used_this_run and platform_services.is_rewarded_supported()
+	$HUD/RetryStage.visible = death_visible
+	$HUD/RestartRun.visible = death_visible
+	$HUD/DeathMenu.visible = death_visible
+	var dead_stage := stages.stage_for_y(player.global_position.y)
+	$HUD/SkipStageAd.visible = death_visible and dead_stage < Balance.STAGE_COUNT and int(death_count_by_stage.get(dead_stage, 0)) >= economy.value("skip_stage_death_count") and platform_services.is_rewarded_supported()
+	$HUD/DoubleStageReward.visible = meta_visible and double_reward_remaining > 0.0 and platform_services.is_rewarded_supported()
+	$HUD/DoubleStageReward.text = "DOUBLE +%d (AD)" % last_stage_gold_reward
+	$HUD/GetMoreGold.visible = app_state == AppState.MENU and platform_services.is_rewarded_supported()
+	$HUD/GetMoreGold.text = "GET %d GOLD (AD)" % economy.value("get_more_gold_reward")
+	$HUD/RemoveAds.visible = app_state == AppState.MENU and platform_services.is_payments_supported() and not platform_services.remove_ads_owned
 	$HUD/TouchLeft.visible = playing and DisplayServer.is_touchscreen_available()
 	$HUD/TouchRight.visible = playing and DisplayServer.is_touchscreen_available()
 	$HUD/TouchWings.visible = playing and DisplayServer.is_touchscreen_available()
@@ -589,11 +746,11 @@ func _on_level_up(new_level: int, gold_reward: int) -> void:
 func _death_text() -> String:
 	match death_cause:
 		DeathCause.FALL:
-			return "FELL FROM THE BEANSTALK\nENTER / TAP TO RETRY"
+			return "FELL FROM THE BEANSTALK"
 		DeathCause.OBSTACLE:
-			return "STRUCK BY AN OBSTACLE\nENTER / TAP TO RETRY"
+			return "STRUCK BY AN OBSTACLE"
 		_:
-			return "CAUGHT BY THE SPIDER\nENTER / TAP TO RETRY"
+			return "CAUGHT BY THE SPIDER"
 
 func _time_wings_status() -> String:
 	var stage_number := stages.stage_for_y(player.global_position.y)
