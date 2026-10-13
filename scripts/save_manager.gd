@@ -39,6 +39,8 @@ func load_profile() -> Dictionary:
 	meta["level"] = maxi(int(meta.get("level", 1)), 1)
 	profile["meta"] = meta
 	profile["shop"] = _sanitize_shop(profile.get("shop", {}))
+	profile["progression"] = _sanitize_progression(profile.get("progression", {}))
+	profile["daily"] = _sanitize_daily(profile.get("daily", {}))
 	return profile.duplicate(true)
 
 func write_meta(meta: Dictionary) -> bool:
@@ -70,6 +72,43 @@ func mark_stage_skipped(stage_number: int) -> bool:
 	progression["skipped_stages"] = skipped
 	profile["progression"] = progression
 	return _write_profile()
+
+func mark_stage_completed(stage_number: int) -> bool:
+	if profile.is_empty():
+		load_profile()
+	var progression := _sanitize_progression(profile.get("progression", {}))
+	if not progression.completed_stages.has(stage_number):
+		progression.completed_stages.append(stage_number)
+		progression.completed_stages.sort()
+	profile["progression"] = progression
+	return _write_profile()
+
+func mark_treasure_claimed(stage_number: int) -> bool:
+	if profile.is_empty():
+		load_profile()
+	var progression := _sanitize_progression(profile.get("progression", {}))
+	if progression.treasures_claimed.has(stage_number):
+		return false
+	progression.treasures_claimed.append(stage_number)
+	progression.treasures_claimed.sort()
+	profile["progression"] = progression
+	return _write_profile()
+
+func progression_snapshot() -> Dictionary:
+	if profile.is_empty():
+		load_profile()
+	return _sanitize_progression(profile.get("progression", {}))
+
+func write_daily(daily: Dictionary) -> bool:
+	if profile.is_empty():
+		load_profile()
+	profile["daily"] = _sanitize_daily(daily)
+	return _write_profile()
+
+func daily_snapshot() -> Dictionary:
+	if profile.is_empty():
+		load_profile()
+	return _sanitize_daily(profile.get("daily", {}))
 
 func set_remove_ads(value: bool) -> bool:
 	if profile.is_empty():
@@ -110,7 +149,8 @@ func _default_profile() -> Dictionary:
 	return {
 		"version": SAVE_VERSION,
 		"meta": {"gold": 0, "xp": 0, "level": 1},
-		"progression": {"skipped_stages": []},
+		"progression": {"completed_stages": [], "skipped_stages": [], "treasures_claimed": []},
+		"daily": {"day_index": 0, "last_claim_date": ""},
 		"purchases": {"remove_ads": false},
 		"shop": _default_shop(),
 	}
@@ -143,6 +183,28 @@ func _sanitize_shop(value: Variant) -> Dictionary:
 	result.selected_character = selected if result.owned.has(selected) else "M1"
 	return result
 
+func _sanitize_progression(value: Variant) -> Dictionary:
+	var result := {"completed_stages": [], "skipped_stages": [], "treasures_claimed": []}
+	if value is not Dictionary:
+		return result
+	for key in result:
+		var source: Variant = value.get(key, [])
+		if source is Array:
+			for raw_stage in source:
+				var stage := int(raw_stage)
+				if stage >= 1 and stage <= 30 and not result[key].has(stage):
+					result[key].append(stage)
+			result[key].sort()
+	return result
+
+func _sanitize_daily(value: Variant) -> Dictionary:
+	if value is not Dictionary:
+		return {"day_index": 0, "last_claim_date": ""}
+	return {
+		"day_index": clampi(int(value.get("day_index", 0)), 0, 7),
+		"last_claim_date": str(value.get("last_claim_date", "")),
+	}
+
 func _on_bridge_profile_loaded(success: bool, value: Variant) -> void:
 	bridge_loaded = true
 	if success and value is Dictionary:
@@ -159,7 +221,8 @@ func _sanitize_profile(value: Dictionary) -> Dictionary:
 	result.meta.xp = maxi(int(meta.get("xp", 0)), 0)
 	result.meta.level = maxi(int(meta.get("level", 1)), 1)
 	if value.get("progression", {}) is Dictionary:
-		result.progression = value.progression.duplicate(true)
+		result.progression = _sanitize_progression(value.progression)
+	result.daily = _sanitize_daily(value.get("daily", {}))
 	if value.get("purchases", {}) is Dictionary:
 		result.purchases = value.purchases.duplicate(true)
 	result.shop = _sanitize_shop(value.get("shop", {}))

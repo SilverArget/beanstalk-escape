@@ -4,7 +4,7 @@ extends Node2D
 const TIME_WINGS_ORB := preload("res://assets/art/gpt/items/wing_orb.png")
 
 enum State { PLAYING, PLAYER_DEAD, PROTOTYPE_COMPLETE }
-enum AppState { MENU, INTRO, PLAYING, PAUSED, PLAYER_DEAD, FINAL_CINEMATIC, GAME_COMPLETE, SHOP, CHARACTER_SELECT }
+enum AppState { MENU, INTRO, PLAYING, PAUSED, PLAYER_DEAD, FINAL_CINEMATIC, GAME_COMPLETE, SHOP, CHARACTER_SELECT, MAP }
 enum DeathCause { NONE, FALL, CAUGHT, OBSTACLE }
 var state := State.PLAYING
 var app_state := AppState.MENU
@@ -66,6 +66,9 @@ var intro_t := 0.0
 var debug_start_stage := 1
 var debug_sandbox := ""
 var meta_ui: MetaShopUI
+var daily_card: PanelContainer
+var daily_reward_label: Label
+var daily_claim_button: Button
 const FINAL_CINEMATIC_SECONDS := 8.0
 var final_t := 0.0
 var final_character: Sprite2D
@@ -117,7 +120,7 @@ func _physics_process(delta: float) -> void:
 		_update_hud()
 		_publish_readonly_web_state()
 		return
-	if app_state in [AppState.PAUSED, AppState.MENU, AppState.PLAYER_DEAD, AppState.GAME_COMPLETE, AppState.SHOP, AppState.CHARACTER_SELECT]:
+	if app_state in [AppState.PAUSED, AppState.MENU, AppState.PLAYER_DEAD, AppState.GAME_COMPLETE, AppState.SHOP, AppState.CHARACTER_SELECT, AppState.MAP]:
 		_apply_impact_fx(0.0)
 		_update_hud()
 		_publish_readonly_web_state()
@@ -522,6 +525,7 @@ func _on_stage_completed(stage_number: int) -> void:
 	if player_body != null and player_body.has_method("play_celebration"):
 		player_body.play_celebration()
 	var reward := economy.complete_stage(stage_number)
+	economy.mark_stage_completed(stage_number)
 	last_stage_gold_reward = int(reward.gold)
 	reward_toast_remaining = 2.0
 	double_reward_remaining = 2.0 if platform_services.is_rewarded_supported() else 0.0
@@ -599,7 +603,11 @@ func _die(cause: DeathCause = DeathCause.CAUGHT) -> void:
 
 func _request_confirm() -> void:
 	if app_state == AppState.MENU:
-		_show_character_select()
+		var focused := get_viewport().gui_get_focus_owner() as Button
+		if focused != null and focused.visible and not focused.disabled:
+			focused.pressed.emit()
+		else:
+			_show_character_select()
 	elif app_state == AppState.INTRO:
 		_finish_intro()
 	elif app_state == AppState.PLAYER_DEAD:
@@ -655,6 +663,11 @@ func _show_menu() -> void:
 func _show_shop() -> void:
 	app_state = AppState.SHOP
 	meta_ui.open_shop()
+	_update_hud()
+
+func _show_map() -> void:
+	app_state = AppState.MAP
+	meta_ui.open_map()
 	_update_hud()
 
 func _show_character_select() -> void:
@@ -813,6 +826,8 @@ func _setup_hud() -> void:
 	_add_label("Menu", Vector2(320, 300), "CHOOSE AN OPTION", 22)
 	_add_action_button("NewRun", "NEW RUN", _show_character_select)
 	_add_action_button("Shop", "SHOP", _show_shop)
+	_add_action_button("Map", "MAP", _show_map)
+	_build_daily_card()
 	var intro_label := $HUD/IntroText as Label
 	intro_label.theme = ui_theme
 	intro_label.add_theme_font_size_override("font_size", 34)
@@ -900,9 +915,55 @@ func _setup_hud() -> void:
 	meta_ui.name = "MetaShop"
 	meta_ui.visible = false
 	$HUD.add_child(meta_ui)
-	meta_ui.setup(economy, player.get_node("Body") as PlayerVisual)
+	meta_ui.setup(economy, player.get_node("Body") as PlayerVisual, platform_services)
 	meta_ui.closed.connect(_close_meta_ui)
 	meta_ui.run_started.connect(_start_selected_run)
+	economy.changed.connect(func(_snapshot): _refresh_daily_card())
+	_refresh_daily_card()
+
+func _build_daily_card() -> void:
+	daily_card = PanelContainer.new()
+	daily_card.name = "DailyCard"
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color("173a31")
+	style.border_color = Color("e0ba4c")
+	style.set_border_width_all(2)
+	style.set_corner_radius_all(10)
+	style.content_margin_left = 12.0
+	style.content_margin_right = 12.0
+	style.content_margin_top = 8.0
+	style.content_margin_bottom = 8.0
+	daily_card.add_theme_stylebox_override("panel", style)
+	var body := VBoxContainer.new()
+	daily_card.add_child(body)
+	var title := Label.new()
+	title.text = "DAILY BONUS"
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title.add_theme_font_size_override("font_size", 18)
+	body.add_child(title)
+	daily_reward_label = Label.new()
+	daily_reward_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	body.add_child(daily_reward_label)
+	daily_claim_button = Button.new()
+	daily_claim_button.custom_minimum_size.y = 36
+	daily_claim_button.pressed.connect(_claim_daily_bonus)
+	body.add_child(daily_claim_button)
+	$HUD.add_child(daily_card)
+
+func _refresh_daily_card() -> void:
+	if daily_card == null:
+		return
+	var daily := economy.daily_snapshot()
+	var day_index := int(daily.day_index)
+	daily_reward_label.text = "DAY 7 · RARE OUTFIT" if day_index == 7 else "DAY %d · %d GOLD" % [day_index, int(economy.config.daily_login_gold[day_index - 1])]
+	daily_claim_button.text = "CLAIMED TODAY" if daily.claimed_today else "CLAIM"
+	daily_claim_button.disabled = bool(daily.claimed_today)
+
+func _claim_daily_bonus() -> void:
+	var reward := economy.claim_daily_bonus()
+	if reward.is_empty():
+		return
+	_refresh_daily_card()
 
 func layout_hud_for_viewport(viewport_size: Vector2) -> void:
 	var width := maxf(viewport_size.x, 320.0)
@@ -961,10 +1022,17 @@ func layout_hud_for_viewport(viewport_size: Vector2) -> void:
 	$HUD/RemoveAds.position = Vector2(width - 288.0, menu_action_y)
 	$HUD/RemoveAds.size = Vector2(270.0, 52.0)
 	var menu_width := minf(250.0, width * 0.34)
-	$HUD/NewRun.position = Vector2((width - menu_width) * 0.5, height - 126.0)
-	$HUD/NewRun.size = Vector2(menu_width, 48.0)
-	$HUD/Shop.position = Vector2((width - menu_width) * 0.5, height - 72.0)
-	$HUD/Shop.size = Vector2(menu_width, 48.0)
+	var menu_gap := 8.0
+	menu_width = minf(menu_width, (width - 32.0 - menu_gap * 2.0) / 3.0)
+	var menu_row_width := menu_width * 3.0 + menu_gap * 2.0
+	var menu_x := (width - menu_row_width) * 0.5
+	for index in 3:
+		var menu_button: Button = [$HUD/NewRun, $HUD/Shop, $HUD/Map][index]
+		menu_button.position = Vector2(menu_x + index * (menu_width + menu_gap), height - 126.0)
+		menu_button.size = Vector2(menu_width, 48.0)
+	if daily_card != null:
+		daily_card.position = Vector2(18.0, clampf(height * 0.31, 86.0, height - 250.0))
+		daily_card.size = Vector2(minf(260.0, width * 0.31), 112.0)
 	_layout_centered_label($HUD/RewardToast, width, 154.0, 30.0, 190.0)
 	# Stage completion can show this together with the 188..240 double-reward
 	# button. Keep the level reward in its own readable row below that action.
@@ -1136,6 +1204,8 @@ func _update_hud() -> void:
 	$HUD/MenuLogo.visible = app_state == AppState.MENU
 	$HUD/NewRun.visible = app_state == AppState.MENU
 	$HUD/Shop.visible = app_state == AppState.MENU
+	$HUD/Map.visible = app_state == AppState.MENU
+	daily_card.visible = app_state == AppState.MENU
 	$HUD/IntroText.visible = app_state in [AppState.INTRO, AppState.FINAL_CINEMATIC]
 	$HUD/ReduceMotion.visible = app_state == AppState.PAUSED
 	$HUD/Gauge.visible = playing
@@ -1310,6 +1380,12 @@ func _readonly_state_snapshot() -> Dictionary:
 		"stats": {"time": total_time, "bean_hits": beans.hit_count, "rock_hits": rocks.hit_count, "close_calls": close_calls, "skills_used": skills_used, "best_distance": best_spider_distance},
 		"restart": {"count": stage_restart_count, "start_distance": stage_restart_start_distance},
 		"shop": economy.shop_snapshot(),
+		"daily": economy.daily_snapshot(),
+		"map": {
+			"completed": economy.progression_snapshot().completed_stages,
+			"skipped": economy.progression_snapshot().skipped_stages,
+			"treasures_claimed": economy.progression_snapshot().treasures_claimed,
+		},
 	}
 
 func _apply_debug_meta_overrides() -> void:
