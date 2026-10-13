@@ -8,6 +8,8 @@ var catchup_active := false
 var catchup_blend := 0.0
 @onready var player: PlayerController = get_parent().get_node_or_null("Player") as PlayerController
 @onready var stages: StageManager = get_parent().get_node_or_null("StageManager") as StageManager
+@onready var game: GameManager = get_parent() as GameManager
+var nightmare_modifiers := StageDatabase.nightmare_modifiers()
 
 func _physics_process(delta: float) -> void:
 	advance_active_clocks(delta)
@@ -17,6 +19,11 @@ func _physics_process(delta: float) -> void:
 	catchup_blend = float(catchup.blend)
 	var stage_number := stages.stage_for_y(player.global_position.y) if stages != null and player != null else 1
 	var speed := speed_for_state(gap, stage_number, catchup_blend, boost_remaining > 0.0, player != null and player.time_wings_active)
+	if game != null and game.is_nightmare_mode():
+		var profile := pressure_profile(stage_number)
+		var pressure_c := clampf((gap - float(profile.g_lo)) / Balance.SPIDER_RAMP_SPAN, 0.0, 1.0)
+		var time_scale := Balance.TIME_WINGS_SLOW_SCALE if player != null and player.time_wings_active else 1.0
+		speed += float(profile.pressure) * pressure_c * (float(nightmare_modifiers.get("spider_pressure_scale", 1.0)) - 1.0) * time_scale
 	speed_ratio = speed / Balance.PLAYER_VERTICAL_SPEED
 	velocity = Vector2(0.0, -speed)
 	move_and_slide()

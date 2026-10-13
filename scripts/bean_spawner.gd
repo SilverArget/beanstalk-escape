@@ -10,6 +10,7 @@ var sandbox_mode := false
 @onready var stages: StageManager = get_parent().get_node("StageManager")
 @onready var game: GameManager = get_parent() as GameManager
 const BEAN_SCENE := preload("res://scenes/bean_projectile.tscn")
+var nightmare_modifiers := StageDatabase.nightmare_modifiers()
 
 func _physics_process(_delta: float) -> void:
 	var nearby_patterns: Array = []
@@ -22,8 +23,15 @@ func _physics_process(_delta: float) -> void:
 			var slot: Dictionary = stage_pattern.bean_slots[slot_index]
 			var stage_bottom_y := stages.stage_bottom_y(int(stage_pattern.stage))
 			var warning_y: float = stage_bottom_y - float(slot.warning_height)
-			for volley_index in int(slot.get("count", 1)):
-				var target_y: float = stage_bottom_y - float(slot.anchor) - float(volley_index) * 70.0
+			var volley_count := int(slot.get("count", 1))
+			var volley_gap := 70.0
+			if game != null and game.is_nightmare_mode():
+				var extra_every := maxi(int(nightmare_modifiers.get("bean_extra_volley_every", 3)), 1)
+				if slot_index % extra_every == extra_every - 1:
+					volley_count += 1
+				volley_gap *= float(nightmare_modifiers.get("bean_volley_gap_scale", 1.0))
+			for volley_index in volley_count:
+				var target_y: float = stage_bottom_y - float(slot.anchor) - float(volley_index) * volley_gap
 				var key := "%d:%d:%d" % [stage_pattern.stage, slot_index, volley_index]
 				if not spawned_keys.has(key) and player.global_position.y <= warning_y:
 					if game != null:

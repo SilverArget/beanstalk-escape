@@ -30,6 +30,7 @@ var active_center_stage := -1
 var redraw_count := 0
 var redraw_elapsed := 0.0
 var visual_was_active := false
+var nightmare_modifiers := StageDatabase.nightmare_modifiers()
 
 func _ready() -> void:
 	process_physics_priority = -5
@@ -132,6 +133,10 @@ func refresh_active_window(force := false) -> void:
 func threat_scale(time_active: bool) -> float:
 	return Balance.TIME_WINGS_SLOW_SCALE if time_active else 1.0
 
+func nightmare_scale(key: String) -> float:
+	var game := get_parent() as GameManager
+	return float(nightmare_modifiers.get(key, 1.0)) if game != null and game.is_nightmare_mode() else 1.0
+
 func wind_envelope(climbed: float) -> float:
 	var local := climbed - float(wind.anchor)
 	if local < 0.0 or local > float(wind.length):
@@ -156,9 +161,9 @@ func wind_force_at(world_y: float, time_active: bool) -> float:
 			var edge := minf(40.0, length * 0.25)
 			var envelope := minf(minf(local / edge, (length - local) / edge), 1.0)
 			force += float(slot.direction) * WIND_ACCELERATION * float(slot.gain) * maxf(envelope, 0.0)
-		return force * threat_scale(time_active)
+		return force * threat_scale(time_active) * nightmare_scale("wind_force_scale")
 	var climbed := stage_bottom_y - world_y
-	return float(wind.direction) * WIND_ACCELERATION * float(wind.gain) * wind_envelope(climbed) * threat_scale(time_active)
+	return float(wind.direction) * WIND_ACCELERATION * float(wind.gain) * wind_envelope(climbed) * threat_scale(time_active) * nightmare_scale("wind_force_scale")
 
 func step_support_wind(offset: float, offset_velocity: float, world_y: float, delta: float, time_active: bool) -> Vector2:
 	var acceleration := wind_force_at(world_y, time_active) - 16.0 * offset - 8.0 * offset_velocity
@@ -193,7 +198,7 @@ func _update_breakable(delta: float, climbed: float) -> void:
 				audio.announce_storm_role("branch_crack")
 	if not bool(breakable.touched):
 		return
-	breakable.clock = minf(float(breakable.clock) + delta * threat_scale(player.time_wings_active), BREAK_SECONDS)
+	breakable.clock = minf(float(breakable.clock) + delta * threat_scale(player.time_wings_active) * nightmare_scale("break_clock_scale"), BREAK_SECONDS)
 	if float(breakable.clock) >= BREAK_SECONDS:
 		breakable.broken = true
 		stages.set_runtime_break(stage_number, int(breakable.lane), float(breakable.anchor), float(breakable.anchor) + float(breakable.length), true)
@@ -206,7 +211,7 @@ func _update_web(delta: float, climbed: float) -> void:
 	if climbed >= float(web.anchor) and not bool(web.fired):
 		web.fired = true
 		web.active = true
-		web.clock = WEB_SECONDS
+		web.clock = WEB_SECONDS * nightmare_scale("web_duration_scale")
 		stages.set_runtime_web(stage_number, int(web.lane), float(web.anchor), float(web.anchor) + float(web.length), true)
 		if not web_audio_announced:
 			web_audio_announced = true
@@ -400,7 +405,7 @@ func _update_campaign(delta: float) -> void:
 			if inside and player.active_branch == int(slot.lane) and player.support_state == PlayerController.SupportState.SUPPORTED:
 				slot.touched = true
 			if bool(slot.touched):
-				slot.clock = minf(float(slot.clock) + delta * threat_scale(player.time_wings_active), BREAK_SECONDS)
+				slot.clock = minf(float(slot.clock) + delta * threat_scale(player.time_wings_active) * nightmare_scale("break_clock_scale"), BREAK_SECONDS)
 				slot.active = true
 				if float(slot.clock) >= BREAK_SECONDS:
 					slot.finished = true
@@ -409,7 +414,7 @@ func _update_campaign(delta: float) -> void:
 		elif kind == "WEB":
 			if climbed >= anchor and not bool(slot.active):
 				slot.active = true
-				slot.clock = WEB_SECONDS
+				slot.clock = WEB_SECONDS * nightmare_scale("web_duration_scale")
 				stages.set_runtime_web(int(slot.stage), int(slot.lane), anchor, end_height, true)
 			if bool(slot.active):
 				slot.clock = maxf(float(slot.clock) - delta * threat_scale(player.time_wings_active), 0.0)

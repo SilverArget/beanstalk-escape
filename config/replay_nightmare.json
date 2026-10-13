@@ -1,0 +1,20 @@
+{
+	"challenges": [
+		"NO BEAN HIT",
+		"NO ROCK HIT",
+		"NO DAMAGE",
+		"UNDER 12 MINUTES",
+		"NO SKILLS",
+		"ZERO SPIDER RED ZONE"
+	],
+	"nightmare": {
+		"bean_extra_volley_every": 3,
+		"bean_volley_gap_scale": 0.72,
+		"rock_clock_scale": 1.22,
+		"spider_pressure_scale": 1.12,
+		"spider_start_gap_scale": 0.92,
+		"wind_force_scale": 1.18,
+		"break_clock_scale": 1.18,
+		"web_duration_scale": 1.30
+	}
+}
