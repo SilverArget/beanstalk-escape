@@ -7,6 +7,7 @@ const WING_TEXTURE := preload("res://assets/art/character_rig/wing/time_wings.pn
 const TRANSFER_LEAF_TEXTURE := preload("res://assets/art/fx/transfer_leaf.png")
 const ROCK_FIRE_ATLAS := preload("res://assets/art/hazards/rock_fire_atlas.png")
 const FAIRY_EFFECT := preload("res://scripts/fairy_effect.gd")
+const TRAIL_EFFECT := preload("res://scripts/trail_effect.gd")
 const FRAME_NAMES := ["climb_left", "climb_right", "climb_reach", "hang"]
 const SKIN_IDS := ["M1", "M2", "M3", "F1", "F2", "F3"]
 const FRAME_RATE := 8.0
@@ -42,6 +43,7 @@ var hair_masks: Dictionary = {}
 var hair_luma_data: Dictionary = {}
 var frame_metrics: Dictionary = {}
 var fairy_effect: FairyEffect
+var trail_effect: TrailEffect
 var pet_preview_time := 0.0
 var pet_preview_scale := Vector2.ONE
 var _was_transferring := false
@@ -89,6 +91,11 @@ func _process(delta: float) -> void:
 		for index in fire_trails.size():
 			fire_trails[index].modulate.a = 0.55 + 0.18 * sin(Time.get_ticks_msec() * 0.018 + float(index) * PI)
 	_update_mode(player, delta)
+	var game := player.get_parent()
+	var app_state := int(game.get("app_state")) if game != null else GameManager.AppState.MENU
+	var transferring := player.support_state == PlayerController.SupportState.TRANSFERRING
+	var trail_moving := app_state == GameManager.AppState.PLAYING and (transferring or player.velocity.length_squared() > 1.0)
+	trail_effect.update_trail(to_global(Vector2(0.0, 24.0)), trail_moving, transferring, delta)
 	flash_material.set_shader_parameter("flash_amount", 0.78 if hurt_remaining > 0.18 else 0.0)
 	_update_cosmetic_anchors()
 
@@ -232,7 +239,7 @@ func set_cosmetics(equipped: Dictionary, catalog: Array) -> void:
 	cosmetic_data.clear()
 	for item in catalog:
 		cosmetic_data[str(item.get("id", ""))] = item
-	for slot in ["EMBLEM", "PET", "TRAIL"]:
+	for slot in ["EMBLEM", "PET"]:
 		var item_id := str(equipped_cosmetics.get(slot, ""))
 		var layer := cosmetic_sprites.get(slot) as Sprite2D
 		if layer == null:
@@ -250,6 +257,9 @@ func set_cosmetics(equipped: Dictionary, catalog: Array) -> void:
 	if fairy_effect != null:
 		var pet_id := str(equipped_cosmetics.get("PET", ""))
 		fairy_effect.configure(cosmetic_data.get(pet_id, {}))
+	if trail_effect != null:
+		var trail_id := str(equipped_cosmetics.get("TRAIL", ""))
+		trail_effect.configure(cosmetic_data.get(trail_id, {}))
 	_update_cosmetic_anchors()
 	var outfit_id := str(equipped_cosmetics.get("OUTFIT", ""))
 	var outfit_enabled := not outfit_id.is_empty() and cosmetic_data.has(outfit_id)
@@ -288,10 +298,8 @@ func _update_cosmetic_anchors() -> void:
 		return sprite.position + (source_point - texture_size * 0.5) * ART_SCALE
 	var emblem := cosmetic_sprites.get("EMBLEM") as Sprite2D
 	var pet := cosmetic_sprites.get("PET") as Sprite2D
-	var trail := cosmetic_sprites.get("TRAIL") as Sprite2D
 	var emblem_data: Array = frame_anchor.get("emblem_center", [head_center.x, head_center.y + head_width * 1.65])
 	emblem.position = source_to_local.call(Vector2(float(emblem_data[0]), float(emblem_data[1])))
-	trail.position = source_to_local.call(Vector2(head_center.x, float(used.end.y) - float(used.size.y) * 0.08))
 	var pet_data: Array = frame_anchor.get("pet_anchor", [])
 	if frame_name == "front" and pet_data.size() == 2 and pet.texture != null:
 		var pet_bottom_left: Vector2 = source_to_local.call(Vector2(float(pet_data[0]), float(pet_data[1])))
@@ -317,6 +325,10 @@ func play_celebration() -> void:
 func preview_tick(delta: float) -> void:
 	pet_preview_time += delta
 	show_front_preview()
+	var preview_bob := sin(pet_preview_time * 3.2) * 5.0
+	sprite.position.y += preview_bob
+	_update_cosmetic_anchors()
+	trail_effect.update_trail(to_global(Vector2(0.0, 24.0 + preview_bob)), true, false, delta)
 	var pet := cosmetic_sprites.get("PET") as Sprite2D
 	if pet != null and pet.visible:
 		var bob := sin(pet_preview_time * 4.8) * 2.5
@@ -333,7 +345,13 @@ func show_front_preview() -> void:
 func visual_snapshot() -> Dictionary:
 	return {"mode": mode, "frame": frame_name, "skin": skin_id}
 
+func trail_snapshot() -> Dictionary:
+	return trail_effect.snapshot() if trail_effect != null else {"id": "", "points": 0, "visible": false}
+
 func _build_visual() -> void:
+	trail_effect = TRAIL_EFFECT.new()
+	trail_effect.name = "TrailEffect"
+	add_child(trail_effect)
 	takeoff_particles = CPUParticles2D.new()
 	takeoff_particles.name = "TransferTakeoffTrail"
 	takeoff_particles.amount = 7
@@ -458,14 +476,13 @@ void fragment() {
 	flash_material.shader = shader
 	sprite.material = flash_material
 	add_child(sprite)
-	for slot in ["TRAIL", "EMBLEM", "PET"]:
+	for slot in ["EMBLEM", "PET"]:
 		var layer := Sprite2D.new()
 		layer.name = "%sCosmetic" % slot.capitalize()
 		layer.centered = true
 		layer.scale = Vector2.ONE * (0.13 if slot == "EMBLEM" else 0.17)
 		layer.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
-		layer.z_index = -2 if slot == "TRAIL" else 2
-		layer.modulate.a = 0.68 if slot == "TRAIL" else 1.0
+		layer.z_index = 2
 		layer.visible = false
 		add_child(layer)
 		cosmetic_sprites[slot] = layer

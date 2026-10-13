@@ -1965,9 +1965,12 @@ func _readonly_state_snapshot() -> Dictionary:
 	if spider_visual != null and spider_visual.has_method("visibility_snapshot"):
 		spider_visibility = spider_visual.visibility_snapshot()
 	var player_visual := {"mode": "unknown", "frame": "unknown", "skin": "unknown"}
+	var trail_state := {"id": "", "points": 0, "visible": false}
 	var player_body := player.get_node_or_null("Body")
 	if player_body != null and player_body.has_method("visual_snapshot"):
 		player_visual = player_body.visual_snapshot()
+	if player_body != null and player_body.has_method("trail_snapshot"):
+		trail_state = player_body.trail_snapshot()
 	var pet_state := {"id": "", "visible": false, "x": player.global_position.x, "y": player.global_position.y}
 	if pet_follower != null:
 		pet_state = pet_follower.snapshot()
@@ -1996,6 +1999,7 @@ func _readonly_state_snapshot() -> Dictionary:
 		"stage": stages.stage_for_y(player.global_position.y),
 		"player": {"x": player.global_position.x, "y": player.global_position.y, "vy": player.velocity.y},
 		"player_visual": player_visual,
+		"trail": trail_state,
 		"pet": pet_state,
 		"spider": {"x": spider.global_position.x, "target_x": spider.target_x, "y": spider.global_position.y, "distance": gauge.distance_px, "ratio": spider.speed_ratio, "boost": spider.boost_remaining > 0.0, "boost_remaining": spider.boost_remaining, "catchup_active": spider.catchup_active, "catchup_blend": spider.catchup_blend, "on_screen": spider_visibility.on_screen, "visible_px": spider_visibility.visible_px},
 		"gauge_level": gauge.level,

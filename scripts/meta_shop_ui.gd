@@ -366,7 +366,10 @@ func _character_card(character_id: String, data: Dictionary) -> Control:
 func _cosmetic_card(item: Dictionary) -> Control:
 	var source := str(item.get("source", ""))
 	var is_pet := str(item.get("slot", "")) == "PET"
-	var subtitle := "%s\nLV %d · %d GOLD" % [str(item.get("effect_name", "")), int(item.level), int(item.price)] if is_pet else (source if not source.is_empty() else "%s · LV %d" % [item.rarity, int(item.level)])
+	var is_trail := str(item.get("slot", "")) == "TRAIL"
+	var subtitle := "%s\nLV %d · %d GOLD" % [str(item.get("effect_name", "")), int(item.level), int(item.price)] if is_pet or is_trail else (source if not source.is_empty() else "%s · LV %d" % [item.rarity, int(item.level)])
+	if is_trail and not source.is_empty():
+		subtitle += "\n%s" % source
 	var card := _base_card(str(item.name), subtitle)
 	var body := _card_body(card)
 	var icon := TextureRect.new()
