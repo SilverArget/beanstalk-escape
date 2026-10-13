@@ -177,7 +177,7 @@ func set_cosmetics(equipped: Dictionary, catalog: Array) -> void:
 			var art_folder := "pets" if slot == "PET" else "cosmetics"
 			layer.texture = load("res://assets/art/%s/%s" % [art_folder, str(cosmetic_data[item_id].get("image", ""))])
 			if slot == "PET" and layer.texture != null:
-				var pet_scale := 48.0 / maxf(float(layer.texture.get_height()), 1.0)
+				var pet_scale := 68.0 / maxf(float(layer.texture.get_height()), 1.0)
 				layer.scale = Vector2.ONE * pet_scale
 	_update_cosmetic_anchors()
 	var outfit_id := str(equipped_cosmetics.get("OUTFIT", ""))
@@ -214,13 +214,13 @@ func _update_cosmetic_anchors() -> void:
 	var emblem := cosmetic_sprites.get("EMBLEM") as Sprite2D
 	var pet := cosmetic_sprites.get("PET") as Sprite2D
 	var trail := cosmetic_sprites.get("TRAIL") as Sprite2D
-	var emblem_y := 0.46 if frame_name == "front" else 0.43
-	emblem.position = source_to_local.call(Vector2(head_center.x, float(used.position.y) + float(used.size.y) * emblem_y))
+	var emblem_source_y := head_center.y + head_width * 1.65 if frame_name == "front" else float(used.position.y) + float(used.size.y) * 0.43
+	emblem.position = source_to_local.call(Vector2(head_center.x, emblem_source_y))
 	trail.position = source_to_local.call(Vector2(head_center.x, float(used.end.y) - float(used.size.y) * 0.08))
-	pet.position = source_to_local.call(Vector2(float(used.end.x) + head_width * 0.34, float(used.end.y) - float(used.size.y) * 0.12))
+	pet.position = source_to_local.call(Vector2(head_center.x + head_width * 1.65, head_center.y + head_width * 1.75))
 	pet.visible = pet.texture != null and not str(equipped_cosmetics.get("PET", "")).is_empty() and frame_name == "front"
 	if emblem.texture != null:
-		var emblem_scale := head_width * ART_SCALE * 0.42 / maxf(float(emblem.texture.get_width()), 1.0)
+		var emblem_scale := head_width * ART_SCALE * 0.85 / maxf(float(emblem.texture.get_width()), 1.0)
 		emblem.scale = Vector2.ONE * emblem_scale
 
 func play_celebration() -> void:
@@ -316,7 +316,7 @@ void fragment() {
 	float cloth_mask = texture(outfit_mask_texture, UV).a * outfit_enabled * pixel.a;
 	float luminance = dot(pixel.rgb, vec3(0.299, 0.587, 0.114));
 	vec3 dyed = outfit_color.rgb * mix(0.42, 1.34, luminance);
-	vec3 outfitted_rgb = mix(pixel.rgb, dyed, cloth_mask * 0.72);
+	vec3 outfitted_rgb = mix(pixel.rgb, dyed, cloth_mask * 0.90);
 	// Replace the source hue completely, while retaining its painted light/dark pattern.
 	float hair_mask = texture(hair_mask_texture, UV).a * hair_enabled * pixel.a;
 	float hair_value = mix(0.35, 1.10, smoothstep(0.05, 0.75, luminance));

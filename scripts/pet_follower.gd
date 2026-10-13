@@ -1,9 +1,9 @@
 class_name PetFollower
 extends Node2D
 
-const FOLLOW_OFFSET := Vector2(46.0, -12.0)
+const FOLLOW_OFFSET := Vector2(52.0, -10.0)
 const FOLLOW_SPEED := 9.0
-const TARGET_HEIGHT := 48.0
+const TARGET_HEIGHT := 68.0
 
 var target: PlayerController
 var cinematic_anchor: Sprite2D

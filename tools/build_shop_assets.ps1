@@ -26,14 +26,27 @@ foreach ($skin in @('m1','m2','m3','f1','f2','f3')) {
     $g.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
     $g.DrawImage($source,[System.Drawing.Rectangle]::new($x0,$y0,$w,$h),$bounds,[System.Drawing.GraphicsUnit]::Pixel)
     $g.Dispose(); $source.Dispose()
+    # Normalize mask geometry to the rendered opaque silhouette. Imagegen source
+    # canvases may contain faint alpha outside the character, so the crop used to
+    # draw the sprite is not a reliable anatomical coordinate system.
+    $bodyMinX = 512; $bodyMinY = 512; $bodyMaxX = 0; $bodyMaxY = 0
+    for ($y = 0; $y -lt 512; $y++) { for ($x = 0; $x -lt 512; $x++) {
+        if ($front.GetPixel($x,$y).A -gt 64) {
+            $bodyMinX=[Math]::Min($bodyMinX,$x); $bodyMinY=[Math]::Min($bodyMinY,$y)
+            $bodyMaxX=[Math]::Max($bodyMaxX,$x); $bodyMaxY=[Math]::Max($bodyMaxY,$y)
+        }
+    }}
+    $bodyW = [Math]::Max(1,$bodyMaxX-$bodyMinX+1); $bodyH = [Math]::Max(1,$bodyMaxY-$bodyMinY+1)
     $hair = [System.Drawing.Bitmap]::new(512,512,[System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
     $outfit = [System.Drawing.Bitmap]::new(512,512,[System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
     for ($y=0; $y -lt 512; $y++) { for ($x=0; $x -lt 512; $x++) {
         $c=$front.GetPixel($x,$y); if ($c.A -le 16) { continue }
-        $nx=($x-$x0)/[double]$w; $ny=($y-$y0)/[double]$h; $skinPixel=Is-Skin $c
-        $isHair=($ny -lt 0.29 -and -not $skinPixel -and ($ny -lt 0.18 -or $nx -lt 0.38 -or $nx -gt 0.62))
-        $isTorso=($ny -ge 0.30 -and $ny -le 0.60 -and $nx -ge 0.27 -and $nx -le 0.73)
-        $isLegs=($ny -gt 0.60 -and $ny -le 0.80 -and $nx -ge 0.32 -and $nx -le 0.68)
+        $nx=($x-$bodyMinX)/[double]$bodyW; $ny=($y-$bodyMinY)/[double]$bodyH; $skinPixel=Is-Skin $c
+        $brightness=0.299*$c.R + 0.587*$c.G + 0.114*$c.B
+        $isFace=($nx -ge 0.32 -and $nx -le 0.68 -and $ny -ge 0.15 -and $ny -le 0.34)
+        $isHair=($ny -lt 0.30 -and $brightness -ge 48 -and -not $skinPixel -and -not $isFace)
+        $isTorso=($ny -ge 0.31 -and $ny -le 0.62 -and $nx -ge 0.16 -and $nx -le 0.84)
+        $isLegs=($ny -gt 0.58 -and $ny -le 0.84 -and $nx -ge 0.25 -and $nx -le 0.75)
         if ($isHair) { $hair.SetPixel($x,$y,[System.Drawing.Color]::White) }
         if (($isTorso -or $isLegs) -and -not $skinPixel) { $outfit.SetPixel($x,$y,[System.Drawing.Color]::White) }
     }}

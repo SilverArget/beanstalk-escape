@@ -66,10 +66,10 @@
     },
     "front": {
       "head_center": [
-        212,
+        174,
         91
       ],
-      "head_width": 69,
+      "head_width": 63,
       "face_view": "front"
     }
   }

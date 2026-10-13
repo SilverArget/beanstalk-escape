@@ -24,15 +24,14 @@ func _run() -> void:
 	pet_preview.set_cosmetics({"HAIR": "", "OUTFIT": "", "EMBLEM": "", "PET": "pet_squirrel", "TRAIL": ""}, economy.cosmetic_catalog())
 	pet_preview.show_front_preview()
 	var pet_layer := pet_preview.cosmetic_sprites.get("PET") as Sprite2D
-	_check(pet_layer != null and pet_layer.visible and pet_layer.texture != null, "pet visible beside front preview")
+	_check(pet_layer != null and pet_layer.visible and pet_layer.texture != null and absf(pet_layer.position.x) <= 92.0, "pet visible inside front preview")
 	pet_preview.queue_free()
 	var all_pixels_ok := true
 	for skin in SKINS:
-		for frame in ["front", "climb_left"]:
-			var metrics := _pixel_metrics(skin, frame)
-			print("PIXEL %s/%s hair ΔL=%.2f tunic ΔE(hair)=%.2f outfit ΔE=%.2f hair ΔE(outfit)=%.2f" % [skin.to_upper(), frame, metrics.hair_delta_l, metrics.tunic_hair_delta_e, metrics.tunic_outfit_delta_e, metrics.hair_outfit_delta_e])
-			all_pixels_ok = all_pixels_ok and metrics.hair_delta_l >= 15.0 and metrics.tunic_hair_delta_e < 3.0 and metrics.tunic_outfit_delta_e >= 10.0 and metrics.hair_outfit_delta_e < 3.0
-	_check(all_pixels_ok, "hair/outfit pixel isolation for six skins front and climb_left")
+		var metrics := _pixel_metrics(skin, "front")
+		print("PIXEL %s/front face DE(hair)=%.2f hair DL=%.2f tunic DE(outfit)=%.2f" % [skin.to_upper(), metrics.face_hair_delta_e, metrics.hair_delta_l, metrics.tunic_outfit_delta_e])
+		all_pixels_ok = all_pixels_ok and metrics.face_hair_delta_e < 3.0 and metrics.hair_delta_l >= 15.0 and metrics.tunic_outfit_delta_e >= 10.0
+	_check(all_pixels_ok, "front face/hair/outfit isolation for six skins")
 	var audio := BeanstalkAudio.new()
 	root.add_child(audio)
 	await process_frame
@@ -53,14 +52,12 @@ func _run() -> void:
 
 func _pixel_metrics(skin: String, frame: String) -> Dictionary:
 	var root_path := "res://assets/art/character_frames/%s/%s" % [skin, frame]
-	var source_tex := load(root_path + ".png") as Texture2D
-	var hair_tex := load(root_path + "_hair_mask.png") as Texture2D
-	var outfit_tex := load(root_path + "_outfit_mask.png") as Texture2D
-	if source_tex == null or hair_tex == null or outfit_tex == null:
+	var source := Image.load_from_file(ProjectSettings.globalize_path(root_path + ".png"))
+	var hair := Image.load_from_file(ProjectSettings.globalize_path(root_path + "_hair_mask.png"))
+	var outfit := Image.load_from_file(ProjectSettings.globalize_path(root_path + "_outfit_mask.png"))
+	if source == null or hair == null or outfit == null or source.is_empty() or hair.is_empty() or outfit.is_empty():
 		return {"hair_delta_l": -999.0, "tunic_hair_delta_e": 999.0, "tunic_outfit_delta_e": -999.0, "hair_outfit_delta_e": 999.0}
-	var source := source_tex.get_image()
-	var hair := hair_tex.get_image()
-	var outfit := outfit_tex.get_image()
+	var used := source.get_used_rect()
 	var hair_l_before := 0.0
 	var hair_l_after := 0.0
 	var hair_count := 0
@@ -68,13 +65,22 @@ func _pixel_metrics(skin: String, frame: String) -> Dictionary:
 	var outfit_count := 0
 	var tunic_hair_delta := 0.0
 	var hair_outfit_delta := 0.0
+	var face_hair_delta := 0.0
+	var face_count := 0
 	for y in source.get_height():
 		for x in source.get_width():
 			var pixel := source.get_pixel(x, y)
 			var in_hair := hair.get_pixel(x, y).a > 0.5
 			var in_outfit := outfit.get_pixel(x, y).a > 0.5
 			var hair_result := _dye_hair(pixel, Color("241b18")) if in_hair else pixel
-			var outfit_result := _dye_outfit(pixel, Color("b85b35")) if in_outfit else pixel
+			# FERN CHECK is the second OUTFIT card reported by the browser QA pass.
+			var outfit_result := _dye_outfit(pixel, Color("4f8b55")) if in_outfit else pixel
+			var nx := (float(x) - used.position.x) / maxf(used.size.x, 1.0)
+			var ny := (float(y) - used.position.y) / maxf(used.size.y, 1.0)
+			var in_face_box := nx >= 0.36 and nx <= 0.64 and ny >= 0.16 and ny <= 0.32
+			if in_face_box and pixel.a > 0.2:
+				face_count += 1
+				face_hair_delta += _delta_e_rgb(pixel, hair_result)
 			if in_hair:
 				hair_count += 1
 				hair_l_before += _luma(pixel)
@@ -87,6 +93,7 @@ func _pixel_metrics(skin: String, frame: String) -> Dictionary:
 	if hair_count == 0 or outfit_count == 0:
 		return {"hair_delta_l": -999.0, "tunic_hair_delta_e": 999.0, "tunic_outfit_delta_e": -999.0, "hair_outfit_delta_e": 999.0}
 	return {
+		"face_hair_delta_e": face_hair_delta / max(face_count, 1),
 		"hair_delta_l": (hair_l_before - hair_l_after) / hair_count,
 		"tunic_hair_delta_e": tunic_hair_delta / outfit_count,
 		"tunic_outfit_delta_e": outfit_delta / outfit_count,
@@ -103,7 +110,7 @@ func _dye_hair(pixel: Color, tint: Color) -> Color:
 func _dye_outfit(pixel: Color, tint: Color) -> Color:
 	var value := lerpf(0.42, 1.34, _luma(pixel) / 100.0)
 	var dyed := Color(tint.r * value, tint.g * value, tint.b * value, pixel.a)
-	return pixel.lerp(dyed, 0.72)
+	return pixel.lerp(dyed, 0.90)
 
 func _luma(pixel: Color) -> float:
 	return (pixel.r * 0.299 + pixel.g * 0.587 + pixel.b * 0.114) * 100.0

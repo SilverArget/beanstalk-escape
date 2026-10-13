@@ -210,7 +210,8 @@ func _rebuild_tabs() -> void:
 			button.text = slot
 			button.toggle_mode = true
 			button.button_pressed = active_tab == slot
-			button.custom_minimum_size = Vector2(104, 36)
+			button.custom_minimum_size = Vector2(92, 36)
+			button.add_theme_font_size_override("font_size", 12)
 			button.pressed.connect(func(): active_tab = slot; refresh())
 			tabs.add_child(button)
 
@@ -310,7 +311,9 @@ func _base_card(title: String, subtitle: String) -> PanelContainer:
 	name_label.text = title
 	name_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	name_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	name_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	name_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_WORD_ELLIPSIS
+	name_label.max_lines_visible = 2
+	name_label.add_theme_font_size_override("font_size", 12)
 	name_label.custom_minimum_size.y = 40
 	body.add_child(name_label)
 	var sub := Label.new()
