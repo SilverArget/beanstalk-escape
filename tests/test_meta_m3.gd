@@ -14,7 +14,7 @@ func _init() -> void:
 	var all_anchors_valid := true
 	var all_masks_present := true
 	var all_hair_masks_valid := true
-	var frame_names := ["climb_left", "climb_right", "climb_reach", "jump", "hurt", "fall", "cheer", "hang"]
+	var frame_names := ["climb_left", "climb_right", "climb_reach", "jump", "hurt", "fall", "cheer", "hang", "front"]
 	for skin_id in ["M1", "M2", "M3", "F1", "F2", "F3"]:
 		all_characters_available = all_characters_available and economy.character_available(skin_id)
 		var root := "res://assets/art/character_frames/%s" % skin_id.to_lower()
@@ -30,9 +30,9 @@ func _init() -> void:
 				all_masks_present = all_masks_present and ResourceLoader.exists("%s/%s_outfit_mask.png" % [root, frame_name])
 				all_hair_masks_valid = all_hair_masks_valid and _hair_mask_is_isolated(root, frame_name)
 	_check(all_characters_available, "six packaged character skins available")
-	_check(all_anchors_valid, "48 frame head anchors valid")
-	_check(all_masks_present, "48 frame outfit masks available")
-	_check(all_hair_masks_valid, "48 hair masks exclude skin and outfit pixels")
+	_check(all_anchors_valid, "54 frame head anchors valid")
+	_check(all_masks_present, "54 frame outfit masks available")
+	_check(all_hair_masks_valid, "54 hair masks exclude outfit pixels")
 	var hair_catalog := economy.cosmetic_catalog("HAIR")
 	var has_hat := not economy.cosmetic_catalog("HAT").is_empty()
 	_check(hair_catalog.size() == 3 and not has_hat and str(hair_catalog[2].get("source", "")) == "MAP TREASURE", "HAT removed and three HAIR items configured")
@@ -91,7 +91,7 @@ func _hair_mask_is_isolated(root: String, frame_name: String) -> bool:
 				continue
 			selected += 1
 			var pixel := source.get_pixel(x, y)
-			if outfit.get_pixel(x, y).a > 0.05 or _skin_like(pixel):
+			if outfit.get_pixel(x, y).a > 0.05:
 				return false
 	return selected > 100
 

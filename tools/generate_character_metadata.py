@@ -20,7 +20,7 @@ from PIL import ImageDraw
 
 ROOT = Path(__file__).resolve().parents[1] / "assets" / "art" / "character_frames"
 SKINS = ("m1", "m2", "m3", "f1", "f2", "f3")
-FRAMES = ("climb_left", "climb_right", "climb_reach", "jump", "hurt", "fall", "cheer", "hang")
+FRAMES = ("climb_left", "climb_right", "climb_reach", "jump", "hurt", "fall", "cheer", "hang", "front")
 HEAD_Y = {
     "climb_left": 91,
     "climb_right": 91,
@@ -30,8 +30,9 @@ HEAD_Y = {
     "fall": 112,
     "cheer": 103,
     "hang": 100,
+    "front": 91,
 }
-FRONT_FRAMES = {"cheer", "hurt"}
+FRONT_FRAMES = {"cheer", "hurt", "front"}
 
 
 def hue_distance(a: float, b: float) -> float:
@@ -100,21 +101,21 @@ def garment_mask(rgba: np.ndarray, anchor: tuple[int, int, int]) -> Image.Image:
 
 
 def hair_palette(rgba: np.ndarray, anchor: tuple[int, int, int], outfit: np.ndarray) -> list[tuple[float, float, float]]:
-    """Learn this character's hair colours from the compact crown/neck region."""
+    """Learn hair colours from the crown, where skin and tunic cannot seed the palette."""
     center_x, head_y, head_width = anchor
     height, width = rgba.shape[:2]
     x0 = max(0, int(center_x - head_width * 0.46))
     x1 = min(width, int(center_x + head_width * 0.46))
-    y0 = max(0, int(head_y - head_width * 0.70))
-    y1 = min(height, int(head_y + head_width * 0.28))
+    y0 = max(0, int(head_y - head_width * 0.78))
+    y1 = min(height, int(head_y - head_width * 0.12))
     bins: Counter[tuple[int, int, int]] = Counter()
     for y in range(y0, y1):
         for x in range(x0, x1):
             red, green, blue, alpha = (int(value) for value in rgba[y, x])
-            if alpha < 96 or outfit[y, x, 3] > 16 or skin_like(red, green, blue):
+            if alpha < 96 or outfit[y, x, 3] > 16:
                 continue
             hue, saturation, value = colorsys.rgb_to_hsv(red / 255.0, green / 255.0, blue / 255.0)
-            if value < 0.12 or saturation < 0.16:
+            if value < 0.08 or saturation < 0.10:
                 continue
             bins[(int(hue * 24.0) % 24, int(saturation * 4.0), int(value * 5.0))] += 1
     if not bins:
@@ -130,6 +131,7 @@ def hair_mask(
     anchor: tuple[int, int, int],
     outfit: np.ndarray,
     palette: list[tuple[float, float, float]],
+    frame: str,
 ) -> Image.Image:
     center_x, head_y, head_width = anchor
     height, width = rgba.shape[:2]
@@ -141,11 +143,15 @@ def hair_mask(
     for y in range(y0, y1):
         for x in range(x0, x1):
             red, green, blue, alpha = (int(value) for value in rgba[y, x])
-            if alpha < 64 or outfit[y, x, 3] > 16 or skin_like(red, green, blue):
+            if alpha < 64 or outfit[y, x, 3] > 16:
                 continue
             dx = (x - center_x) / max(head_width * 0.58, 1.0)
             dy = (y - (head_y - head_width * 0.10)) / max(head_width * 0.70, 1.0)
             if dx * dx + dy * dy > 1.0:
+                continue
+            # A front-facing face occupies the central lower head oval. Hair
+            # may frame it at the sides, but must never dye eyes/cheeks.
+            if frame in FRONT_FRAMES and y >= head_y - head_width * 0.12 and abs(x - center_x) < head_width * 0.25:
                 continue
             hue, saturation, value = colorsys.rgb_to_hsv(red / 255.0, green / 255.0, blue / 255.0)
             if value < 0.09 or saturation < 0.10:
@@ -190,14 +196,18 @@ def main() -> None:
                 "head_width": anchor[2],
                 "face_view": "front" if frame in FRONT_FRAMES else "back",
             }
-            outfit_image = garment_mask(rgba, anchor)
-            outfit_image.save(ROOT / skin / f"{frame}_outfit_mask.png", optimize=True)
+            outfit_path = ROOT / skin / f"{frame}_outfit_mask.png"
+            # Existing gameplay outfit masks are art-reviewed product assets;
+            # only synthesize the newly introduced front mask here.
+            outfit_image = garment_mask(rgba, anchor) if frame == "front" else Image.open(outfit_path).convert("RGBA")
+            if frame == "front":
+                outfit_image.save(outfit_path, optimize=True)
             outfit = np.asarray(outfit_image)
             palette_source = rgba if frame == "hang" else np.asarray(Image.open(ROOT / skin / "hang.png").convert("RGBA"))
             hang_anchor = head_anchor(palette_source, "hang")
             hang_outfit = np.asarray(garment_mask(palette_source, hang_anchor))
             palette = hair_palette(palette_source, hang_anchor, hang_outfit)
-            hair_mask(rgba, anchor, outfit, palette).save(ROOT / skin / f"{frame}_hair_mask.png", optimize=True)
+            hair_mask(rgba, anchor, outfit, palette, frame).save(ROOT / skin / f"{frame}_hair_mask.png", optimize=True)
         (ROOT / skin / "anchors.json").write_text(
             json.dumps({"frames": anchors}, indent=2) + "\n", encoding="utf-8"
         )

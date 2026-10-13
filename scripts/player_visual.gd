@@ -25,13 +25,12 @@ var fire_wings: Sprite2D
 var fire_trails: Array[Polygon2D] = []
 var flash_material: ShaderMaterial
 var cosmetic_sprites: Dictionary = {}
-var equipped_cosmetics := {"HAIR": "", "FACE": "", "TRAIL": "", "OUTFIT": ""}
+var equipped_cosmetics := {"HAIR": "", "OUTFIT": "", "EMBLEM": "", "PET": "", "TRAIL": ""}
 var cosmetic_data: Dictionary = {}
 var anchor_data: Dictionary = {}
 var outfit_masks: Dictionary = {}
 var hair_masks: Dictionary = {}
 var frame_metrics: Dictionary = {}
-var face_knot: Polygon2D
 
 func _ready() -> void:
 	_build_visual()
@@ -129,7 +128,7 @@ func _load_skin(requested_skin: String) -> void:
 	frame_metrics.clear()
 	outfit_masks.clear()
 	hair_masks.clear()
-	for requested_frame in ["climb_left", "climb_right", "climb_reach", "jump", "hurt", "fall", "cheer", "hang"]:
+	for requested_frame in ["climb_left", "climb_right", "climb_reach", "jump", "hurt", "fall", "cheer", "hang", "front"]:
 		var frame_texture := load("%s/%s/%s.png" % [FRAME_ROOT, skin_id.to_lower(), requested_frame]) as Texture2D
 		frame_textures[requested_frame] = frame_texture
 		# Keep the WebGL path GPU-only: texture readback emits INVALID_OPERATION on
@@ -168,7 +167,7 @@ func set_cosmetics(equipped: Dictionary, catalog: Array) -> void:
 	cosmetic_data.clear()
 	for item in catalog:
 		cosmetic_data[str(item.get("id", ""))] = item
-	for slot in ["FACE", "TRAIL"]:
+	for slot in ["EMBLEM", "TRAIL"]:
 		var item_id := str(equipped_cosmetics.get(slot, ""))
 		var layer := cosmetic_sprites.get(slot) as Sprite2D
 		if layer == null:
@@ -207,30 +206,24 @@ func _update_cosmetic_anchors() -> void:
 	var head_width := float(frame_anchor.get("head_width", float(used.size.x) * 0.42))
 	var source_to_local := func(source_point: Vector2) -> Vector2:
 		return sprite.position + (source_point - texture_size * 0.5) * ART_SCALE
-	var face := cosmetic_sprites.get("FACE") as Sprite2D
+	var emblem := cosmetic_sprites.get("EMBLEM") as Sprite2D
 	var trail := cosmetic_sprites.get("TRAIL") as Sprite2D
-	face.position = source_to_local.call(head_center + Vector2(0.0, head_width * 0.04))
+	var emblem_y := 0.46 if frame_name == "front" else 0.43
+	emblem.position = source_to_local.call(Vector2(head_center.x, float(used.position.y) + float(used.size.y) * emblem_y))
 	trail.position = source_to_local.call(Vector2(head_center.x, float(used.end.y) - float(used.size.y) * 0.08))
-	if face.texture != null:
-		var face_scale := head_width * ART_SCALE * 0.92 / maxf(float(face.texture.get_width()), 1.0)
-		face.scale = Vector2.ONE * face_scale
-	var face_equipped := not str(equipped_cosmetics.get("FACE", "")).is_empty()
-	var face_front := str(frame_anchor.get("face_view", "back")) == "front"
-	face.visible = face_equipped and face_front
-	face_knot.visible = face_equipped and not face_front
-	if face_knot.visible:
-		var local_head_width := head_width * ART_SCALE
-		face_knot.position = source_to_local.call(head_center + Vector2(head_width * 0.44, head_width * 0.18))
-		var knot_size := maxf(3.2, local_head_width * 0.14)
-		face_knot.scale = Vector2.ONE * knot_size
+	if emblem.texture != null:
+		var emblem_scale := head_width * ART_SCALE * 0.42 / maxf(float(emblem.texture.get_width()), 1.0)
+		emblem.scale = Vector2.ONE * emblem_scale
 
 func play_celebration() -> void:
 	celebrate_remaining = 0.75
 
 func preview_tick(delta: float) -> void:
-	climb_time += delta * FRAME_RATE
-	_set_frame(FRAME_NAMES[int(floor(climb_time)) % FRAME_NAMES.size()])
-	sprite.position = Vector2(0.0, BASE_Y - 3.5 * absf(sin(climb_time * PI * 0.5)))
+	show_front_preview()
+
+func show_front_preview() -> void:
+	_set_frame("front")
+	sprite.position = Vector2(0.0, BASE_Y)
 	_update_cosmetic_anchors()
 
 func visual_snapshot() -> Dictionary:
@@ -318,8 +311,12 @@ void fragment() {
 	vec3 outfitted_rgb = mix(pixel.rgb, dyed, cloth_mask * 0.72);
 	// Replace the source hue completely, while retaining its painted light/dark pattern.
 	float hair_mask = texture(hair_mask_texture, UV).a * hair_enabled * pixel.a;
-	float hair_value = mix(0.55, 1.55, smoothstep(0.05, 0.75, luminance));
+	float hair_value = mix(0.35, 1.10, smoothstep(0.05, 0.75, luminance));
 	vec3 dyed_hair = hair_color.rgb * hair_value;
+	// DARK must remain visibly darker even on naturally near-black hair.
+	if (dot(hair_color.rgb, vec3(0.299, 0.587, 0.114)) < 0.18) {
+		dyed_hair *= 0.18;
+	}
 	vec3 recolored_rgb = mix(outfitted_rgb, dyed_hair, hair_mask);
 	vec3 flashed_rgb = mix(recolored_rgb, vec3(1.0), flash_amount);
 	COLOR = vec4(mix(backdrop_color, flashed_rgb, pixel.a), max(pixel.a, backdrop_alpha));
@@ -328,28 +325,14 @@ void fragment() {
 	flash_material.shader = shader
 	sprite.material = flash_material
 	add_child(sprite)
-	for slot in ["TRAIL", "FACE"]:
+	for slot in ["TRAIL", "EMBLEM"]:
 		var layer := Sprite2D.new()
 		layer.name = "%sCosmetic" % slot.capitalize()
 		layer.centered = true
-		layer.scale = Vector2.ONE * (0.13 if slot == "FACE" else 0.17)
+		layer.scale = Vector2.ONE * (0.13 if slot == "EMBLEM" else 0.17)
 		layer.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
 		layer.z_index = -2 if slot == "TRAIL" else 2
 		layer.modulate.a = 0.68 if slot == "TRAIL" else 1.0
 		layer.visible = false
 		add_child(layer)
 		cosmetic_sprites[slot] = layer
-	face_knot = Polygon2D.new()
-	face_knot.name = "FaceBackBandanaKnot"
-	face_knot.color = Color("284a38")
-	face_knot.polygon = PackedVector2Array([
-		Vector2(-1.25, -0.55),
-		Vector2.ZERO,
-		Vector2(-1.05, 0.75),
-		Vector2(0.95, 1.55),
-		Vector2(0.55, 0.15),
-		Vector2(1.35, -0.75),
-	])
-	face_knot.z_index = 2
-	face_knot.visible = false
-	add_child(face_knot)

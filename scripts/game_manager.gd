@@ -799,8 +799,8 @@ func _save_meta_settings() -> void:
 func _refresh_settings_text() -> void:
 	if not has_node("HUD/SettingsSound"):
 		return
-	$HUD/SettingsSound.text = "SOUND: ON" if bool(meta_settings.sound) else "SOUND: OFF"
-	$HUD/SettingsMusic.text = "MUSIC: ON" if bool(meta_settings.music) else "MUSIC: OFF"
+	$HUD/SettingsSound.text = "SOUND ON" if bool(meta_settings.sound) else "SOUND OFF"
+	$HUD/SettingsMusic.text = "MUSIC ON" if bool(meta_settings.music) else "MUSIC OFF"
 	$HUD/SettingsGhost.text = "GHOST: ON" if bool(meta_settings.ghost) else "GHOST: OFF"
 
 func _show_shop() -> void:

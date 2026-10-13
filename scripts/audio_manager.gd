@@ -188,14 +188,14 @@ func set_sound_enabled(value: bool) -> void:
 
 func set_music_enabled(value: bool) -> void:
 	music_enabled = value
-	music.volume_db = VOLUME_DB.music if value else -80.0
+	_apply_master_mute()
 
 func set_platform_audio_enabled(value: bool) -> void:
 	platform_audio_enabled = value
 	_apply_master_mute()
 
 func _apply_master_mute() -> void:
-	AudioServer.set_bus_mute(AudioServer.get_bus_index("Master"), not platform_audio_enabled)
+	AudioServer.set_bus_mute(AudioServer.get_bus_index("Master"), not platform_audio_enabled or not sound_enabled)
 	music.volume_db = VOLUME_DB.music if music_enabled else -80.0
 	wind.volume_db = VOLUME_DB.ambience if sound_enabled else -80.0
 	sfx.volume_db = VOLUME_DB.sfx if sound_enabled else -80.0

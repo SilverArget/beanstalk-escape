@@ -4,13 +4,15 @@ extends Control
 signal closed
 signal run_started
 
-const SLOTS := ["HAIR", "FACE", "TRAIL", "OUTFIT"]
+const SLOTS := ["CHARACTERS", "HAIR", "OUTFIT", "EMBLEM", "PET", "TRAIL"]
 
 var economy: EconomyManager
 var platform_services: Node
 var player_visual: PlayerVisual
 var mode := "SHOP"
-var active_tab := "HAIR"
+var active_tab := "CHARACTERS"
+var preview_character_id := ""
+var preview_item: Dictionary = {}
 var active_gender := "MALE"
 var panel: Panel
 var title_label: Label
@@ -35,7 +37,9 @@ func setup(manager: EconomyManager, gameplay_visual: PlayerVisual, services: Nod
 
 func open_shop() -> void:
 	mode = "SHOP"
-	active_tab = "HAIR"
+	active_tab = "CHARACTERS"
+	preview_character_id = ""
+	preview_item = {}
 	visible = true
 	refresh()
 
@@ -54,6 +58,9 @@ func open_map() -> void:
 	call_deferred("_focus_first_map_action")
 
 func close() -> void:
+	preview_character_id = ""
+	preview_item = {}
+	_apply_preview()
 	visible = false
 	closed.emit()
 
@@ -203,7 +210,7 @@ func _rebuild_tabs() -> void:
 			button.text = slot
 			button.toggle_mode = true
 			button.button_pressed = active_tab == slot
-			button.custom_minimum_size = Vector2(118, 36)
+			button.custom_minimum_size = Vector2(104, 36)
 			button.pressed.connect(func(): active_tab = slot; refresh())
 			tabs.add_child(button)
 
@@ -219,8 +226,19 @@ func _rebuild_cards() -> void:
 				continue
 			grid.add_child(_character_card(character_id, data))
 	else:
-		for item in economy.cosmetic_catalog(active_tab):
-			grid.add_child(_cosmetic_card(item))
+		if active_tab == "CHARACTERS":
+			for character_id in economy.character_catalog():
+				grid.add_child(_character_card(character_id, economy.character_catalog()[character_id]))
+		else:
+			var items := economy.cosmetic_catalog(active_tab)
+			if items.is_empty() and active_tab == "PET":
+				var coming := Label.new()
+				coming.text = "COMING SOON"
+				coming.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+				coming.custom_minimum_size = Vector2(320, 120)
+				grid.add_child(coming)
+			for item in items:
+				grid.add_child(_cosmetic_card(item))
 
 func _map_node_card(stage_number: int) -> Control:
 	var progression := economy.progression_snapshot()
@@ -313,7 +331,7 @@ func _character_card(character_id: String, data: Dictionary) -> Control:
 	portrait.custom_minimum_size = Vector2(112, 104)
 	portrait.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	portrait.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	var path := "res://assets/art/character_frames/%s/hang.png" % character_id.to_lower()
+	var path := "res://assets/art/character_frames/%s/front.png" % character_id.to_lower()
 	if ResourceLoader.exists(path): portrait.texture = load(path)
 	body.add_child(portrait)
 	var button := Button.new()
@@ -331,7 +349,9 @@ func _character_card(character_id: String, data: Dictionary) -> Control:
 		button.text = reason
 		button.disabled = true
 	body.add_child(button)
-	card.mouse_entered.connect(func(): _preview_character(character_id))
+	card.gui_input.connect(func(event):
+		if event is InputEventMouseButton and event.pressed:
+			_preview_character(character_id))
 	button.focus_entered.connect(func(): _preview_character(character_id))
 	return card
 
@@ -362,20 +382,27 @@ func _cosmetic_card(item: Dictionary) -> Control:
 		button.text = reason
 		button.disabled = true
 	body.add_child(button)
-	card.mouse_entered.connect(func(): _preview_item(item))
+	card.gui_input.connect(func(event):
+		if event is InputEventMouseButton and event.pressed:
+			_preview_item(item))
 	button.focus_entered.connect(func(): _preview_item(item))
 	return card
 
 func _preview_character(character_id: String) -> void:
-	if economy.character_available(character_id): preview.set_skin(character_id)
+	preview_character_id = character_id
+	preview_item = {}
+	_apply_preview()
 
 func _preview_item(item: Dictionary) -> void:
-	preview.set_cosmetics(economy.shop.equipped, economy.cosmetic_catalog())
-	preview.preview_cosmetic(item)
+	preview_item = item.duplicate(true)
+	_apply_preview()
 
 func _apply_preview() -> void:
-	preview.set_skin(str(economy.shop.selected_character))
+	preview.set_skin(preview_character_id if not preview_character_id.is_empty() else str(economy.shop.selected_character))
 	preview.set_cosmetics(economy.shop.equipped, economy.cosmetic_catalog())
+	if not preview_item.is_empty():
+		preview.preview_cosmetic(preview_item)
+	preview.show_front_preview()
 	if player_visual != null:
 		player_visual.set_skin(str(economy.shop.selected_character))
 		player_visual.set_cosmetics(economy.shop.equipped, economy.cosmetic_catalog())
