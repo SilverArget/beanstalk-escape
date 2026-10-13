@@ -356,7 +356,8 @@ func preview_tick(delta: float) -> void:
 	var preview_bob := sin(pet_preview_time * 3.2) * 5.0
 	sprite.position = Vector2(0.0, BASE_Y + preview_bob)
 	_update_cosmetic_anchors()
-	trail_effect.update_trail(to_global(Vector2(0.0, 24.0 + preview_bob)), true, false, delta)
+	var trail_sway := sin(pet_preview_time * 4.2) * 10.0
+	trail_effect.update_preview(Vector2(trail_sway, 24.0 + preview_bob), delta)
 	var pet := cosmetic_sprites.get("PET") as Sprite2D
 	if pet != null and pet.visible:
 		var bob := sin(pet_preview_time * 4.8) * 2.5

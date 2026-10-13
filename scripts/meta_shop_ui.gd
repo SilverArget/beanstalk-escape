@@ -163,8 +163,9 @@ func _layout() -> void:
 	view_toggle_button.position = Vector2(8.0 + (preview_width - 96.0) * 0.5, preview_host.position.y + preview_host.size.y + 4.0)
 	view_toggle_button.size = Vector2(96, 32)
 	view_toggle_button.visible = not map_mode
-	preview.scale = Vector2.ONE * (2.90 if preview_back else 1.45)
-	preview.position = Vector2(preview_width * (0.5 if preview_back or active_tab == "OUTFIT" else 0.262), preview_host.size.y * 0.52)
+	var trail_preview := active_tab == "TRAIL" or str(preview_item.get("slot", "")) == "TRAIL"
+	preview.scale = Vector2.ONE * (0.82 if trail_preview else (2.90 if preview_back else 1.45))
+	preview.position = Vector2(preview_width * 0.5, preview_host.size.y * 0.34) if trail_preview else Vector2(preview_width * (0.5 if preview_back or active_tab == "OUTFIT" else 0.262), preview_host.size.y * 0.52)
 	preview_host.visible = not map_mode
 	scroll.position = Vector2(8, 56) if map_mode else Vector2(preview_width + 16, 92)
 	scroll.size = Vector2(width - 16 if map_mode else width - preview_width - 24, maxf(footer_y - scroll.position.y - 6.0, 120.0))

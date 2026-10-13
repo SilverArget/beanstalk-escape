@@ -1,22 +1,30 @@
 class_name TrailEffect
 extends Node2D
 
-const MAX_POINTS := 40
-const LIFETIME := 1.0
+const MAX_POINTS := 48
+const LIFETIME := 1.1
 const SAMPLE_INTERVAL := 0.035
 const MIN_DISTANCE := 5.0
-const TRAIL_Z_OFFSET := -1
+const WORLD_Z_INDEX := 4
+const PREVIEW_Z_OFFSET := -1
+const PREVIEW_SCROLL_SPEED := 280.0
+const OUTLINE_COLOR := Color(0.025, 0.09, 0.07, 0.62)
+const STAR_RIBBON_WIDTH := 14.0
+const STAR_CORE_WIDTH := 6.0
+const STAR_MIN_RADIUS := 8.0
+const STAR_RIBBON_ALPHA := 0.90
 
 var trail_id := ""
 var effect_name := ""
 var points: Array[Dictionary] = []
 var _sample_elapsed := SAMPLE_INTERVAL
 var _sequence := 0
+var _preview_mode := false
 
 func _init() -> void:
 	top_level = true
-	z_as_relative = true
-	z_index = TRAIL_Z_OFFSET
+	z_as_relative = false
+	z_index = WORLD_Z_INDEX
 	position = Vector2.ZERO
 	visible = false
 
@@ -39,6 +47,34 @@ func update_trail(world_position: Vector2, moving: bool, transferring: bool, del
 	var far_enough := points.is_empty() or local_position.distance_to(Vector2(points[-1].position)) >= MIN_DISTANCE
 	if _sample_elapsed >= SAMPLE_INTERVAL and far_enough:
 		points.append({"position": local_position, "age": 0.0, "seed": _sequence, "transfer": transferring})
+		_sequence += 1
+		_sample_elapsed = 0.0
+		while points.size() > MAX_POINTS:
+			points.pop_front()
+	queue_redraw()
+
+func set_preview_mode(enabled: bool) -> void:
+	if _preview_mode == enabled:
+		return
+	_preview_mode = enabled
+	clear()
+	top_level = not enabled
+	z_as_relative = enabled
+	z_index = PREVIEW_Z_OFFSET if enabled else WORLD_Z_INDEX
+	position = Vector2.ZERO
+
+func update_preview(local_emitter_position: Vector2, delta: float) -> void:
+	set_preview_mode(true)
+	_age_points(delta)
+	for point in points:
+		point.position = Vector2(point.position) + Vector2.DOWN * PREVIEW_SCROLL_SPEED * delta
+	if not visible:
+		queue_redraw()
+		return
+	_sample_elapsed += delta
+	var far_enough := points.is_empty() or local_emitter_position.distance_to(Vector2(points[-1].position)) >= MIN_DISTANCE
+	if _sample_elapsed >= SAMPLE_INTERVAL and far_enough:
+		points.append({"position": local_emitter_position, "age": 0.0, "seed": _sequence, "transfer": false})
 		_sequence += 1
 		_sample_elapsed = 0.0
 		while points.size() > MAX_POINTS:
@@ -79,7 +115,8 @@ func snapshot() -> Dictionary:
 		"visible": visible and not points.is_empty(),
 		"screen_first": {"x": screen_first.x, "y": screen_first.y},
 		"screen_last": {"x": screen_last.x, "y": screen_last.y},
-		"z": {"index": z_index, "effective": effective_z_index(), "relative": z_as_relative},
+		"z": {"index": z_index, "effective": effective_z_index(), "relative": z_as_relative, "top_level": top_level},
+		"preview": _preview_mode,
 	}
 
 func effective_z_index() -> int:
@@ -107,7 +144,7 @@ func _draw() -> void:
 		"trail_star": _draw_star_wake()
 
 func _draw_leaf_wake() -> void:
-	_draw_ribbon(Color(0.24, 0.86, 0.28, 0.78), 5.0)
+	_draw_ribbon(Color(0.24, 0.86, 0.28, 0.82), 10.0)
 	for point in points:
 		var fade := _fade(point)
 		var seed := float(int(point.seed))
@@ -116,6 +153,7 @@ func _draw_leaf_wake() -> void:
 		var axis := Vector2(cos(angle), sin(angle))
 		var side := axis.orthogonal()
 		var leaf := PackedVector2Array([center + axis * 8.0, center + side * 5.0, center - axis * 8.0, center - side * 5.0])
+		_draw_closed_outline(leaf, fade)
 		draw_colored_polygon(leaf, Color(0.34, 0.94, 0.32, 0.94 * fade))
 		draw_line(center - axis * 6.0, center + axis * 6.0, Color(0.84, 1.0, 0.55, 0.82 * fade), 1.5)
 
@@ -127,25 +165,46 @@ func _draw_cloud_wake() -> void:
 		for bubble in 3:
 			var offset := Vector2(float(bubble - 1) * 5.2, -absf(float(bubble - 1)) * 1.8)
 			var radius := (6.0 + float((int(point.seed) + bubble) % 3) * 1.2) * grow
+			draw_circle(center + offset, radius + 1.5, Color(OUTLINE_COLOR, OUTLINE_COLOR.a * fade))
 			draw_circle(center + offset, radius, Color(0.68, 0.88, 1.0, 0.72 * fade))
 			draw_circle(center + offset, radius * 0.66, Color(0.94, 0.98, 1.0, 0.88 * fade))
 
 func _draw_star_wake() -> void:
-	_draw_ribbon(Color(1.0, 0.69, 0.12, 0.76), 5.0)
+	_draw_star_ribbon()
 	for point in points:
 		var fade := _fade(point)
 		var center := Vector2(point.position)
-		var radius := 6.0 + float(int(point.seed) % 3)
-		draw_colored_polygon(_star_points(center, radius, radius * 0.42), Color(1.0, 0.78, 0.16, 0.96 * fade))
+		var radius := STAR_MIN_RADIUS + float(int(point.seed) % 3)
+		var star := _star_points(center, radius, radius * 0.42)
+		var outline_star := _star_points(center, radius + 1.5, (radius + 1.5) * 0.42)
+		draw_colored_polygon(outline_star, Color(OUTLINE_COLOR, OUTLINE_COLOR.a * fade))
+		draw_colored_polygon(star, Color(1.0, 0.78, 0.16, 0.96 * fade))
 		draw_line(center + Vector2(-radius * 1.7, 0.0), center + Vector2(radius * 1.7, 0.0), Color(1.0, 0.95, 0.58, 0.78 * fade), 1.5)
 		draw_line(center + Vector2(0.0, -radius * 1.7), center + Vector2(0.0, radius * 1.7), Color(1.0, 0.95, 0.58, 0.78 * fade), 1.5)
+
+func _draw_star_ribbon() -> void:
+	if points.size() < 2:
+		return
+	for index in range(1, points.size()):
+		var alpha := minf(_fade(points[index - 1]), _fade(points[index]))
+		var from := Vector2(points[index - 1].position)
+		var to := Vector2(points[index].position)
+		draw_line(from, to, Color(OUTLINE_COLOR, OUTLINE_COLOR.a * alpha), STAR_RIBBON_WIDTH + 3.0, true)
+		draw_line(from, to, Color(1.0, 0.66, 0.08, STAR_RIBBON_ALPHA * alpha), STAR_RIBBON_WIDTH, true)
+		draw_line(from, to, Color(1.0, 0.94, 0.48, 0.94 * alpha), STAR_CORE_WIDTH, true)
 
 func _draw_ribbon(color: Color, width: float) -> void:
 	if points.size() < 2:
 		return
 	for index in range(1, points.size()):
 		var alpha := minf(_fade(points[index - 1]), _fade(points[index]))
+		draw_line(Vector2(points[index - 1].position), Vector2(points[index].position), Color(OUTLINE_COLOR, OUTLINE_COLOR.a * alpha), width + 3.0, true)
 		draw_line(Vector2(points[index - 1].position), Vector2(points[index].position), Color(color, color.a * alpha), width, true)
+
+func _draw_closed_outline(vertices: PackedVector2Array, fade: float) -> void:
+	var outline := vertices.duplicate()
+	outline.append(vertices[0])
+	draw_polyline(outline, Color(OUTLINE_COLOR, OUTLINE_COLOR.a * fade), 1.5, true)
 
 func _star_points(center: Vector2, outer_radius: float, inner_radius: float) -> PackedVector2Array:
 	var vertices := PackedVector2Array()
