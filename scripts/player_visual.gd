@@ -167,14 +167,19 @@ func set_cosmetics(equipped: Dictionary, catalog: Array) -> void:
 	cosmetic_data.clear()
 	for item in catalog:
 		cosmetic_data[str(item.get("id", ""))] = item
-	for slot in ["EMBLEM", "TRAIL"]:
+	for slot in ["EMBLEM", "PET", "TRAIL"]:
 		var item_id := str(equipped_cosmetics.get(slot, ""))
 		var layer := cosmetic_sprites.get(slot) as Sprite2D
 		if layer == null:
 			continue
 		layer.visible = not item_id.is_empty() and cosmetic_data.has(item_id)
 		if layer.visible:
-			layer.texture = load("res://assets/art/cosmetics/%s" % str(cosmetic_data[item_id].get("image", "")))
+			var art_folder := "pets" if slot == "PET" else "cosmetics"
+			layer.texture = load("res://assets/art/%s/%s" % [art_folder, str(cosmetic_data[item_id].get("image", ""))])
+			if slot == "PET" and layer.texture != null:
+				var pet_scale := 48.0 / maxf(float(layer.texture.get_height()), 1.0)
+				layer.scale = Vector2.ONE * pet_scale
+	_update_cosmetic_anchors()
 	var outfit_id := str(equipped_cosmetics.get("OUTFIT", ""))
 	var outfit_enabled := not outfit_id.is_empty() and cosmetic_data.has(outfit_id)
 	flash_material.set_shader_parameter("outfit_enabled", 1.0 if outfit_enabled else 0.0)
@@ -207,10 +212,13 @@ func _update_cosmetic_anchors() -> void:
 	var source_to_local := func(source_point: Vector2) -> Vector2:
 		return sprite.position + (source_point - texture_size * 0.5) * ART_SCALE
 	var emblem := cosmetic_sprites.get("EMBLEM") as Sprite2D
+	var pet := cosmetic_sprites.get("PET") as Sprite2D
 	var trail := cosmetic_sprites.get("TRAIL") as Sprite2D
 	var emblem_y := 0.46 if frame_name == "front" else 0.43
 	emblem.position = source_to_local.call(Vector2(head_center.x, float(used.position.y) + float(used.size.y) * emblem_y))
 	trail.position = source_to_local.call(Vector2(head_center.x, float(used.end.y) - float(used.size.y) * 0.08))
+	pet.position = source_to_local.call(Vector2(float(used.end.x) + head_width * 0.34, float(used.end.y) - float(used.size.y) * 0.12))
+	pet.visible = pet.texture != null and not str(equipped_cosmetics.get("PET", "")).is_empty() and frame_name == "front"
 	if emblem.texture != null:
 		var emblem_scale := head_width * ART_SCALE * 0.42 / maxf(float(emblem.texture.get_width()), 1.0)
 		emblem.scale = Vector2.ONE * emblem_scale
@@ -325,7 +333,7 @@ void fragment() {
 	flash_material.shader = shader
 	sprite.material = flash_material
 	add_child(sprite)
-	for slot in ["TRAIL", "EMBLEM"]:
+	for slot in ["TRAIL", "EMBLEM", "PET"]:
 		var layer := Sprite2D.new()
 		layer.name = "%sCosmetic" % slot.capitalize()
 		layer.centered = true

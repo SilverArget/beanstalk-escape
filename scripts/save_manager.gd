@@ -3,7 +3,7 @@ extends RefCounted
 
 signal profile_loaded(profile: Dictionary)
 
-const SAVE_VERSION := 3
+const SAVE_VERSION := 4
 const DEFAULT_PATH := "user://profile_v1.json"
 const CHALLENGE_NAMES := [
 	"NO BEAN HIT",

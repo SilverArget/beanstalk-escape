@@ -15,8 +15,17 @@ func _run() -> void:
 	_check(economy.cosmetic_catalog("FACE").is_empty(), "FACE catalog removed")
 	_check(economy.cosmetic_catalog("OUTFIT").size() == 9, "nine outfits")
 	_check(economy.cosmetic_catalog("EMBLEM").size() == 6, "six emblems")
+	_check(economy.cosmetic_catalog("PET").size() == 6, "six pets")
 	var migrated := save._sanitize_shop({"owned": ["M1", "face_mask"], "equipped": {"FACE": "face_mask"}})
-	_check(not migrated.owned.has("face_mask") and not migrated.equipped.has("FACE") and migrated.equipped.has("EMBLEM"), "legacy FACE data removed")
+	_check(not migrated.owned.has("face_mask") and migrated.equipped.keys() == ["HAIR", "OUTFIT", "EMBLEM", "PET", "TRAIL"], "legacy FACE data removed and slots normalized")
+	var pet_preview := PlayerVisual.new()
+	root.add_child(pet_preview)
+	await process_frame
+	pet_preview.set_cosmetics({"HAIR": "", "OUTFIT": "", "EMBLEM": "", "PET": "pet_squirrel", "TRAIL": ""}, economy.cosmetic_catalog())
+	pet_preview.show_front_preview()
+	var pet_layer := pet_preview.cosmetic_sprites.get("PET") as Sprite2D
+	_check(pet_layer != null and pet_layer.visible and pet_layer.texture != null, "pet visible beside front preview")
+	pet_preview.queue_free()
 	var all_pixels_ok := true
 	for skin in SKINS:
 		for frame in ["front", "climb_left"]:

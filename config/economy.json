@@ -55,6 +55,12 @@
     {"id": "emblem_sun", "slot": "EMBLEM", "name": "SUN CREST", "rarity": "RARE", "image": "emblem_sun.png"},
     {"id": "emblem_bolt", "slot": "EMBLEM", "name": "BOLT CREST", "rarity": "RARE", "image": "emblem_bolt.png"},
     {"id": "emblem_spider", "slot": "EMBLEM", "name": "SPIDER SHIELD", "rarity": "EPIC", "image": "emblem_spider.png"},
-    {"id": "emblem_crown", "slot": "EMBLEM", "name": "CROWN CREST", "rarity": "EPIC", "image": "emblem_crown.png"}
+    {"id": "emblem_crown", "slot": "EMBLEM", "name": "CROWN CREST", "rarity": "EPIC", "image": "emblem_crown.png"},
+    {"id": "pet_squirrel", "slot": "PET", "name": "SQUIRREL", "rarity": "COMMON", "image": "squirrel.png"},
+    {"id": "pet_ladybug", "slot": "PET", "name": "LADYBUG", "rarity": "COMMON", "image": "ladybug.png"},
+    {"id": "pet_frog", "slot": "PET", "name": "FROG", "rarity": "RARE", "image": "frog.png"},
+    {"id": "pet_bird", "slot": "PET", "name": "BIRD", "rarity": "RARE", "image": "bird.png"},
+    {"id": "pet_snail", "slot": "PET", "name": "SNAIL", "rarity": "EPIC", "image": "snail.png"},
+    {"id": "pet_rabbit", "slot": "PET", "name": "RABBIT", "rarity": "EPIC", "image": "rabbit.png"}
   ]
 }

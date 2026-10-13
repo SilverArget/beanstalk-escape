@@ -364,7 +364,8 @@ func _cosmetic_card(item: Dictionary) -> Control:
 	icon.custom_minimum_size = Vector2(112, 104)
 	icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	icon.texture = load("res://assets/art/cosmetics/%s" % item.image)
+	var art_folder := "pets" if str(item.get("slot", "")) == "PET" else "cosmetics"
+	icon.texture = load("res://assets/art/%s/%s" % [art_folder, item.image])
 	body.add_child(icon)
 	var button := Button.new()
 	button.custom_minimum_size.y = 36
