@@ -3,7 +3,7 @@ extends RefCounted
 
 signal profile_loaded(profile: Dictionary)
 
-const SAVE_VERSION := 2
+const SAVE_VERSION := 3
 const DEFAULT_PATH := "user://profile_v1.json"
 const CHALLENGE_NAMES := [
 	"NO BEAN HIT",
@@ -45,6 +45,46 @@ func replay_snapshot() -> Dictionary:
 	if profile.is_empty():
 		load_profile()
 	return profile.get("replay", _default_replay()).duplicate(true)
+
+func meta_systems_snapshot() -> Dictionary:
+	if profile.is_empty():
+		load_profile()
+	return _sanitize_meta_systems(profile.get("meta_systems", {}))
+
+func write_settings(settings: Dictionary) -> bool:
+	if profile.is_empty():
+		load_profile()
+	var systems := _sanitize_meta_systems(profile.get("meta_systems", {}))
+	systems["settings"] = _sanitize_settings(settings)
+	profile["meta_systems"] = systems
+	return _write_profile()
+
+func mark_tutorial_completed() -> bool:
+	if profile.is_empty():
+		load_profile()
+	var systems := _sanitize_meta_systems(profile.get("meta_systems", {}))
+	systems["tutorial_completed"] = true
+	profile["meta_systems"] = systems
+	return _write_profile()
+
+func record_stage_ghost(mode: String, stage_number: int, stage_time: float, samples: Array) -> bool:
+	if profile.is_empty():
+		load_profile()
+	if stage_time <= 0.0 or samples.is_empty():
+		return false
+	var systems := _sanitize_meta_systems(profile.get("meta_systems", {}))
+	var ghosts: Dictionary = systems.ghosts.duplicate(true)
+	var normalized_mode := "NIGHTMARE" if mode.to_upper() == "NIGHTMARE" else "NORMAL"
+	var mode_ghosts: Dictionary = ghosts.get(normalized_mode, {}).duplicate(true)
+	var key := str(clampi(stage_number, 1, 30))
+	var previous: Dictionary = mode_ghosts.get(key, {})
+	if float(previous.get("time", 0.0)) > 0.0 and float(previous.time) <= stage_time:
+		return false
+	mode_ghosts[key] = {"time": stage_time, "samples": _sanitize_ghost_samples(samples)}
+	ghosts[normalized_mode] = mode_ghosts
+	systems["ghosts"] = ghosts
+	profile["meta_systems"] = systems
+	return _write_profile()
 
 func unlock_nightmare() -> bool:
 	if profile.is_empty():
@@ -188,6 +228,14 @@ func _default_profile() -> Dictionary:
 		"purchases": {"remove_ads": false},
 		"shop": _default_shop(),
 		"replay": _default_replay(),
+		"meta_systems": _default_meta_systems(),
+	}
+
+func _default_meta_systems() -> Dictionary:
+	return {
+		"tutorial_completed": false,
+		"settings": {"sound": true, "music": true, "ghost": true},
+		"ghosts": {"NORMAL": {}, "NIGHTMARE": {}},
 	}
 
 func _default_replay() -> Dictionary:
@@ -275,6 +323,54 @@ func _sanitize_profile(value: Dictionary) -> Dictionary:
 		result.purchases = value.purchases.duplicate(true)
 	result.shop = _sanitize_shop(value.get("shop", {}))
 	result.replay = _sanitize_replay(value.get("replay", {}))
+	result.meta_systems = _sanitize_meta_systems(value.get("meta_systems", {}))
+	return result
+
+func _sanitize_settings(value: Variant) -> Dictionary:
+	var source: Dictionary = value if value is Dictionary else {}
+	return {
+		"sound": bool(source.get("sound", true)),
+		"music": bool(source.get("music", true)),
+		"ghost": bool(source.get("ghost", true)),
+	}
+
+func _sanitize_meta_systems(value: Variant) -> Dictionary:
+	var result := _default_meta_systems()
+	if value is not Dictionary:
+		return result
+	var source := value as Dictionary
+	result.tutorial_completed = bool(source.get("tutorial_completed", false))
+	result.settings = _sanitize_settings(source.get("settings", {}))
+	var source_ghosts: Variant = source.get("ghosts", {})
+	if source_ghosts is Dictionary:
+		for mode in ["NORMAL", "NIGHTMARE"]:
+			var mode_source: Variant = source_ghosts.get(mode, {})
+			if mode_source is not Dictionary:
+				continue
+			for stage_key in mode_source:
+				var stage_number := int(stage_key)
+				var ghost: Variant = mode_source[stage_key]
+				if stage_number < 1 or stage_number > 30 or ghost is not Dictionary:
+					continue
+				var samples := _sanitize_ghost_samples(ghost.get("samples", []))
+				var stage_time := maxf(float(ghost.get("time", 0.0)), 0.0)
+				if stage_time > 0.0 and not samples.is_empty():
+					result.ghosts[mode][str(stage_number)] = {"time": stage_time, "samples": samples}
+	return result
+
+func _sanitize_ghost_samples(value: Variant) -> Array:
+	var result: Array = []
+	if value is not Array:
+		return result
+	for raw_sample in value:
+		if raw_sample is not Dictionary or result.size() >= 2400:
+			continue
+		result.append({
+			"t": maxf(float(raw_sample.get("t", 0.0)), 0.0),
+			"x": float(raw_sample.get("x", 0.0)),
+			"y": float(raw_sample.get("y", 0.0)),
+			"branch": int(raw_sample.get("branch", 0)),
+		})
 	return result
 
 func _sanitize_replay(value: Variant) -> Dictionary:

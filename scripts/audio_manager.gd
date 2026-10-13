@@ -23,6 +23,8 @@ var sfx := AudioStreamPlayer.new()
 var heartbeat := AudioStreamPlayer.new()
 var game_music_prewarm := AudioStreamPlayer.new()
 var muted := false
+var music_enabled := true
+var sound_enabled := true
 var platform_audio_enabled := true
 var last_app_state := -1
 var last_stage := 1
@@ -157,6 +159,8 @@ func play_music(name: String) -> void:
 func play_sfx(name: String) -> void:
 	played_roles[name] = true
 	_record_event(name)
+	if not sound_enabled:
+		return
 	var one_shot := AudioStreamPlayer.new()
 	one_shot.stream = STREAMS[name]
 	one_shot.volume_db = VOLUME_DB.sfx
@@ -175,15 +179,27 @@ func audio_event_snapshot() -> Array:
 	return audio_events.duplicate(true)
 
 func toggle_mute() -> void:
-	muted = not muted
+	set_sound_enabled(not sound_enabled)
+
+func set_sound_enabled(value: bool) -> void:
+	sound_enabled = value
+	muted = not value
 	_apply_master_mute()
+
+func set_music_enabled(value: bool) -> void:
+	music_enabled = value
+	music.volume_db = VOLUME_DB.music if value else -80.0
 
 func set_platform_audio_enabled(value: bool) -> void:
 	platform_audio_enabled = value
 	_apply_master_mute()
 
 func _apply_master_mute() -> void:
-	AudioServer.set_bus_mute(AudioServer.get_bus_index("Master"), muted or not platform_audio_enabled)
+	AudioServer.set_bus_mute(AudioServer.get_bus_index("Master"), not platform_audio_enabled)
+	music.volume_db = VOLUME_DB.music if music_enabled else -80.0
+	wind.volume_db = VOLUME_DB.ambience if sound_enabled else -80.0
+	sfx.volume_db = VOLUME_DB.sfx if sound_enabled else -80.0
+	heartbeat.volume_db = VOLUME_DB.heartbeat if sound_enabled else -80.0
 
 func _set_paused(value: bool) -> void:
 	for player in [music, wind, sfx, heartbeat]:

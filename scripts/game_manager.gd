@@ -7,7 +7,7 @@ const MODE_NIGHTMARE := "NIGHTMARE"
 const SPIDER_RED_ZONE_PX := 96.0
 
 enum State { PLAYING, PLAYER_DEAD, PROTOTYPE_COMPLETE }
-enum AppState { MENU, INTRO, PLAYING, PAUSED, PLAYER_DEAD, FINAL_CINEMATIC, GAME_COMPLETE, SHOP, CHARACTER_SELECT, MAP }
+enum AppState { MENU, INTRO, PLAYING, PAUSED, PLAYER_DEAD, FINAL_CINEMATIC, GAME_COMPLETE, SHOP, CHARACTER_SELECT, MAP, SETTINGS, CREDITS }
 enum DeathCause { NONE, FALL, CAUGHT, OBSTACLE }
 var state := State.PLAYING
 var app_state := AppState.MENU
@@ -84,12 +84,30 @@ var final_character: Sprite2D
 var final_wings: Polygon2D
 var last_web_state_publish_msec := -1000
 const WEB_STATE_INTERVAL_MSEC := 50
+const GHOST_SAMPLE_SECONDS := 0.1
+var meta_settings := {"sound": true, "music": true, "ghost": true}
+var tutorial_active := false
+var tutorial_step := 0
+var tutorial_force := false
+var tutorial_step_elapsed := 0.0
+var tutorial_transition_baseline := 0
+var tutorial_catch_triggered := false
+var ghost_sprite: Sprite2D
+var ghost_trace: Array = []
+var ghost_playback: Array = []
+var ghost_stage := 1
+var ghost_stage_elapsed := 0.0
+var ghost_sample_elapsed := 0.0
+var ghost_best_time := 0.0
 
 func _ready() -> void:
 	process_physics_priority = 10
 	save_manager.configure_platform(platform_services)
 	if not economy.initialize(save_manager):
 		push_error("Economy config could not be loaded")
+	meta_settings = save_manager.meta_systems_snapshot().settings
+	audio.set_sound_enabled(bool(meta_settings.sound))
+	audio.set_music_enabled(bool(meta_settings.music))
 	_apply_debug_meta_overrides()
 	save_manager.profile_loaded.connect(economy.reload_profile)
 	economy.level_up.connect(_on_level_up)
@@ -129,12 +147,16 @@ func _physics_process(delta: float) -> void:
 		_update_hud()
 		_publish_readonly_web_state()
 		return
-	if app_state in [AppState.PAUSED, AppState.MENU, AppState.PLAYER_DEAD, AppState.GAME_COMPLETE, AppState.SHOP, AppState.CHARACTER_SELECT, AppState.MAP]:
+	if app_state in [AppState.PAUSED, AppState.MENU, AppState.PLAYER_DEAD, AppState.GAME_COMPLETE, AppState.SHOP, AppState.CHARACTER_SELECT, AppState.MAP, AppState.SETTINGS, AppState.CREDITS]:
 		_apply_impact_fx(0.0)
 		_update_hud()
 		_publish_readonly_web_state()
 		return
 	total_time += delta
+	if tutorial_active:
+		_update_onboarding(delta)
+	else:
+		_update_ghost(delta)
 	shake_remaining = maxf(shake_remaining - delta, 0.0)
 	close_text_remaining = maxf(close_text_remaining - delta, 0.0)
 	danger_pulse_remaining = maxf(danger_pulse_remaining - delta, 0.0)
@@ -200,6 +222,8 @@ func _unhandled_input(event: InputEvent) -> void:
 		_pause_game()
 	elif event.is_action_pressed("pause") and app_state == AppState.PAUSED:
 		_resume_game()
+	elif event.is_action_pressed("pause") and app_state in [AppState.SETTINGS, AppState.CREDITS]:
+		_show_menu()
 	if event.is_action_pressed("time_wings"):
 		dispatch_command("time_wings", "keyboard")
 	if event.is_action_pressed("fire_wings"):
@@ -299,6 +323,7 @@ func restart() -> void:
 	player.fire_wings_active = false
 	player.remove_from_group("time_wings_active")
 	_show_tutorial_for_stage(1)
+	_reset_stage_ghost(1)
 	gauge.update_from_positions(player.global_position.y, spider.global_position.y)
 	_remember_continue_checkpoint()
 	_update_hud()
@@ -419,6 +444,8 @@ func _finish_intro() -> void:
 	app_state = AppState.PLAYING
 	gauge.update_from_positions(player.global_position.y, spider.global_position.y)
 	audio.play_music("music_game")
+	if mode == MODE_NORMAL and (tutorial_force or not bool(save_manager.meta_systems_snapshot().tutorial_completed)):
+		_start_onboarding()
 	_update_hud()
 	_publish_readonly_web_state()
 
@@ -466,6 +493,7 @@ func restart_stage() -> void:
 	dead_restart_delay = 0.0
 	confirm_pending = false
 	_show_tutorial_for_stage(stage_number)
+	_reset_stage_ghost(stage_number)
 	gauge.update_from_positions(player.global_position.y, spider.global_position.y)
 	_update_hud()
 	_publish_readonly_web_state()
@@ -567,6 +595,8 @@ func _complete_menu() -> void:
 		_show_menu()
 
 func _on_stage_completed(stage_number: int) -> void:
+	if not tutorial_active and stage_number == ghost_stage:
+		save_manager.record_stage_ghost(mode, stage_number, ghost_stage_elapsed, ghost_trace)
 	completed_stages[stage_number] = true
 	var player_body := player.get_node_or_null("Body")
 	if player_body != null and player_body.has_method("play_celebration"):
@@ -583,6 +613,7 @@ func _on_stage_completed(stage_number: int) -> void:
 			completed_since_interstitial = 0
 	if stage_number < Balance.STAGE_COUNT:
 		_show_tutorial_for_stage(stage_number + 1)
+		_reset_stage_ghost(stage_number + 1)
 
 func try_time_wings() -> bool:
 	var stage_number := stages.stage_for_y(player.global_position.y)
@@ -650,7 +681,9 @@ func _die(cause: DeathCause = DeathCause.CAUGHT) -> void:
 	_publish_readonly_web_state()
 
 func _request_confirm() -> void:
-	if app_state == AppState.MENU:
+	if tutorial_active and app_state == AppState.PLAYER_DEAD:
+		_finish_onboarding()
+	elif app_state == AppState.MENU:
 		var focused := get_viewport().gui_get_focus_owner() as Button
 		if focused != null and focused.visible and not focused.disabled:
 			focused.pressed.emit()
@@ -672,6 +705,8 @@ func _request_confirm() -> void:
 			_complete_new_run()
 
 func _spider_can_catch() -> bool:
+	if tutorial_active and tutorial_step < 3:
+		return false
 	var claw_half_width := ScaleLock.BRANCH_CENTER_GAP + ScaleLock.BRANCH_WIDTH * 0.5
 	return gauge.distance_px <= Balance.CATCH_DISTANCE and absf(player.global_position.x - spider.global_position.x) <= claw_half_width
 
@@ -707,6 +742,54 @@ func _show_menu() -> void:
 	beans.set_physics_process(false)
 	golds.visible = false
 	_update_hud()
+	call_deferred("_focus_menu_action")
+
+func _focus_menu_action() -> void:
+	if app_state == AppState.MENU:
+		($HUD/NewRun as Button).grab_focus()
+
+func _show_settings() -> void:
+	app_state = AppState.SETTINGS
+	_refresh_settings_text()
+	_update_hud()
+	($HUD/SettingsSound as Button).grab_focus()
+
+func _show_credits() -> void:
+	app_state = AppState.CREDITS
+	_update_hud()
+	($HUD/InfoBack as Button).grab_focus()
+
+func _replay_tutorial() -> void:
+	mode = MODE_NORMAL
+	tutorial_force = true
+	restart()
+	_start_onboarding()
+
+func _toggle_sound_setting() -> void:
+	meta_settings.sound = not bool(meta_settings.sound)
+	audio.set_sound_enabled(bool(meta_settings.sound))
+	_save_meta_settings()
+
+func _toggle_music_setting() -> void:
+	meta_settings.music = not bool(meta_settings.music)
+	audio.set_music_enabled(bool(meta_settings.music))
+	_save_meta_settings()
+
+func _toggle_ghost_setting() -> void:
+	meta_settings.ghost = not bool(meta_settings.ghost)
+	_save_meta_settings()
+
+func _save_meta_settings() -> void:
+	save_manager.write_settings(meta_settings)
+	_refresh_settings_text()
+	_update_hud()
+
+func _refresh_settings_text() -> void:
+	if not has_node("HUD/SettingsSound"):
+		return
+	$HUD/SettingsSound.text = "SOUND: ON" if bool(meta_settings.sound) else "SOUND: OFF"
+	$HUD/SettingsMusic.text = "MUSIC: ON" if bool(meta_settings.music) else "MUSIC: OFF"
+	$HUD/SettingsGhost.text = "GHOST: ON" if bool(meta_settings.ghost) else "GHOST: OFF"
 
 func _show_shop() -> void:
 	app_state = AppState.SHOP
@@ -824,6 +907,90 @@ func _on_remove_ads_ownership_changed(value: bool) -> void:
 	save_manager.set_remove_ads(value)
 	_update_hud()
 
+func _start_onboarding() -> void:
+	if mode == MODE_NIGHTMARE:
+		return
+	tutorial_active = true
+	tutorial_step = 1
+	tutorial_step_elapsed = 0.0
+	tutorial_transition_baseline = player.branch_transition_count
+	tutorial_catch_triggered = false
+	ghost_sprite.visible = false
+	_show_onboarding_step()
+
+func _update_onboarding(delta: float) -> void:
+	tutorial_step_elapsed += delta
+	if tutorial_step == 1 and player.branch_transition_count > tutorial_transition_baseline:
+		tutorial_step = 2
+		tutorial_step_elapsed = 0.0
+		tutorial_transition_baseline = player.branch_transition_count
+		beans.spawn_bean(player.active_branch, player.global_position.y + 180.0, "tutorial-dodge")
+		_show_onboarding_step()
+	elif tutorial_step == 2 and player.branch_transition_count > tutorial_transition_baseline:
+		tutorial_step = 3
+		tutorial_step_elapsed = 0.0
+		_show_onboarding_step()
+	elif tutorial_step == 3 and tutorial_step_elapsed >= 0.8 and not tutorial_catch_triggered:
+		tutorial_catch_triggered = true
+		spider.global_position = player.global_position + Vector2(0.0, Balance.CATCH_DISTANCE * 0.5)
+		_die(DeathCause.CAUGHT)
+		$HUD/TutorialPanel.text = "3 / 3  CAUGHT\nThe death screen lets you retry the stage, restart the run, or return to menu."
+		$HUD/TutorialSkip.text = "START STAGE 1"
+
+func _show_onboarding_step() -> void:
+	var messages := {
+		1: "1 / 3  CHANGE BRANCH\nPress LEFT or RIGHT once. One press commits one branch change.",
+		2: "2 / 3  DODGE THE BEAN\nA bean is falling on your route. Change branch once to escape.",
+		3: "3 / 3  SPIDER CATCH\nThe spider is closing in. Watch the controlled catch.",
+	}
+	$HUD/TutorialPanel.text = messages.get(tutorial_step, "")
+	$HUD/TutorialSkip.text = "SKIP"
+	_update_hud()
+
+func _finish_onboarding() -> void:
+	if not tutorial_active:
+		return
+	tutorial_active = false
+	tutorial_force = false
+	tutorial_step = 0
+	save_manager.mark_tutorial_completed()
+	restart()
+
+func _reset_stage_ghost(stage_number: int) -> void:
+	ghost_stage = stage_number
+	ghost_stage_elapsed = 0.0
+	ghost_sample_elapsed = GHOST_SAMPLE_SECONDS
+	ghost_trace.clear()
+	ghost_playback.clear()
+	ghost_best_time = 0.0
+	var systems := save_manager.meta_systems_snapshot()
+	var mode_ghosts: Dictionary = systems.ghosts.get(mode, {})
+	var stored: Dictionary = mode_ghosts.get(str(stage_number), {})
+	ghost_best_time = float(stored.get("time", 0.0))
+	ghost_playback = stored.get("samples", []).duplicate(true)
+	if ghost_sprite != null:
+		ghost_sprite.visible = false
+
+func _update_ghost(delta: float) -> void:
+	ghost_stage_elapsed += delta
+	ghost_sample_elapsed += delta
+	if ghost_sample_elapsed >= GHOST_SAMPLE_SECONDS:
+		ghost_sample_elapsed = fmod(ghost_sample_elapsed, GHOST_SAMPLE_SECONDS)
+		ghost_trace.append({"t": ghost_stage_elapsed, "x": player.global_position.x, "y": player.global_position.y, "branch": player.active_branch})
+	var visible := bool(meta_settings.ghost) and not ghost_playback.is_empty()
+	ghost_sprite.visible = visible
+	if not visible:
+		return
+	var sample: Dictionary = ghost_playback.back()
+	for candidate in ghost_playback:
+		if float(candidate.t) >= ghost_stage_elapsed:
+			sample = candidate
+			break
+	ghost_sprite.global_position = Vector2(float(sample.x), float(sample.y))
+	var body := player.get_node_or_null("Body") as PlayerVisual
+	if body != null and body.sprite != null:
+		ghost_sprite.texture = body.sprite.texture
+
 func _show_tutorial_for_stage(stage_number: int) -> void:
 	if is_nightmare_mode():
 		tutorial_text = ""
@@ -898,7 +1065,30 @@ func _setup_hud() -> void:
 	_add_action_button("Nightmare", "NIGHTMARE", _start_nightmare_run)
 	_add_action_button("Shop", "SHOP", _show_shop)
 	_add_action_button("Map", "MAP", _show_map)
+	_add_action_button("Settings", "SETTINGS", _show_settings)
+	_add_action_button("HowToPlay", "HOW TO PLAY", _replay_tutorial)
+	_add_action_button("Credits", "CREDITS", _show_credits)
 	_build_daily_card()
+	_add_label("InfoTitle", Vector2.ZERO, "", 34)
+	var info_body := _add_label("InfoBody", Vector2.ZERO, "", 17)
+	info_body.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	info_body.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_add_action_button("SettingsSound", "SOUND: ON", _toggle_sound_setting)
+	_add_action_button("SettingsMusic", "MUSIC: ON", _toggle_music_setting)
+	_add_action_button("SettingsGhost", "GHOST: ON", _toggle_ghost_setting)
+	_add_action_button("InfoBack", "BACK", _show_menu)
+	var tutorial_panel := _add_label("TutorialPanel", Vector2.ZERO, "", 24)
+	tutorial_panel.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	tutorial_panel.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	var tutorial_box := StyleBoxFlat.new()
+	tutorial_box.bg_color = Color(0.025, 0.055, 0.075, 0.92)
+	tutorial_box.border_color = Color("7ad8d0")
+	tutorial_box.set_border_width_all(3)
+	tutorial_box.set_corner_radius_all(14)
+	tutorial_box.content_margin_left = 18.0
+	tutorial_box.content_margin_right = 18.0
+	tutorial_panel.add_theme_stylebox_override("normal", tutorial_box)
+	_add_action_button("TutorialSkip", "SKIP", _finish_onboarding)
 	var intro_label := $HUD/IntroText as Label
 	intro_label.theme = ui_theme
 	intro_label.add_theme_font_size_override("font_size", 34)
@@ -990,8 +1180,16 @@ func _setup_hud() -> void:
 	meta_ui.setup(economy, player.get_node("Body") as PlayerVisual, platform_services)
 	meta_ui.closed.connect(_close_meta_ui)
 	meta_ui.run_started.connect(_start_selected_run)
+	ghost_sprite = Sprite2D.new()
+	ghost_sprite.name = "StageGhost"
+	ghost_sprite.scale = Vector2.ONE * 0.49
+	ghost_sprite.modulate = Color(0.42, 0.92, 1.0, 0.24)
+	ghost_sprite.z_index = 4
+	ghost_sprite.visible = false
+	add_child(ghost_sprite)
 	economy.changed.connect(func(_snapshot): _refresh_daily_card())
 	_refresh_daily_card()
+	_refresh_settings_text()
 
 func _build_daily_card() -> void:
 	daily_card = PanelContainer.new()
@@ -1093,18 +1291,39 @@ func layout_hud_for_viewport(viewport_size: Vector2) -> void:
 	$HUD/GetMoreGold.size = Vector2(270.0, 52.0)
 	$HUD/RemoveAds.position = Vector2(width - 288.0, menu_action_y)
 	$HUD/RemoveAds.size = Vector2(270.0, 52.0)
-	var menu_width := minf(250.0, width * 0.34)
+	var menu_width := minf(220.0, width * 0.34)
 	var menu_gap := 8.0
 	menu_width = minf(menu_width, (width - 32.0 - menu_gap * 3.0) / 4.0)
 	var menu_row_width := menu_width * 4.0 + menu_gap * 3.0
 	var menu_x := (width - menu_row_width) * 0.5
 	for index in 4:
 		var menu_button: Button = [$HUD/NewRun, $HUD/Shop, $HUD/Map, $HUD/Nightmare][index]
-		menu_button.position = Vector2(menu_x + index * (menu_width + menu_gap), height - 126.0)
+		menu_button.position = Vector2(menu_x + index * (menu_width + menu_gap), height - 184.0)
 		menu_button.size = Vector2(menu_width, 48.0)
+	var secondary_width := minf(220.0, (width - 32.0 - menu_gap * 2.0) / 3.0)
+	var secondary_total := secondary_width * 3.0 + menu_gap * 2.0
+	var secondary_x := (width - secondary_total) * 0.5
+	for index in 3:
+		var secondary_button: Button = [$HUD/Settings, $HUD/HowToPlay, $HUD/Credits][index]
+		secondary_button.position = Vector2(secondary_x + index * (secondary_width + menu_gap), height - 128.0)
+		secondary_button.size = Vector2(secondary_width, 48.0)
 	if daily_card != null:
-		daily_card.position = Vector2(18.0, clampf(height * 0.31, 86.0, height - 250.0))
+		daily_card.position = Vector2(18.0, clampf(height * 0.31, 82.0, maxf(82.0, height - 308.0)))
 		daily_card.size = Vector2(minf(260.0, width * 0.31), 112.0)
+	_layout_centered_label($HUD/InfoTitle, width, 36.0, 52.0, 24.0)
+	_layout_centered_label($HUD/InfoBody, width, 92.0, maxf(height - 190.0, 130.0), 64.0)
+	var setting_width := minf(220.0, (width - 48.0) / 3.0)
+	var setting_start := (width - setting_width * 3.0 - 16.0) * 0.5
+	for index in 3:
+		var setting_button: Button = [$HUD/SettingsSound, $HUD/SettingsMusic, $HUD/SettingsGhost][index]
+		setting_button.position = Vector2(setting_start + index * (setting_width + 8.0), height * 0.43)
+		setting_button.size = Vector2(setting_width, 52.0)
+	$HUD/InfoBack.position = Vector2((width - 220.0) * 0.5, height - 76.0)
+	$HUD/InfoBack.size = Vector2(220.0, 52.0)
+	$HUD/TutorialPanel.position = Vector2(maxf((width - 620.0) * 0.5, 24.0), 24.0)
+	$HUD/TutorialPanel.size = Vector2(minf(620.0, width - 48.0), 104.0)
+	$HUD/TutorialSkip.position = Vector2(width - 174.0, 140.0)
+	$HUD/TutorialSkip.size = Vector2(150.0, 46.0)
 	_layout_centered_label($HUD/RewardToast, width, 154.0, 30.0, 190.0)
 	# Stage completion can show this together with the 188..240 double-reward
 	# button. Keep the level reward in its own readable row below that action.
@@ -1221,7 +1440,7 @@ func _add_mute_button() -> void:
 	button.theme = ui_theme
 	button.position = Vector2(824, 18)
 	button.size = Vector2(112, 52)
-	button.pressed.connect(func(): audio.toggle_mute(); _update_hud())
+	button.pressed.connect(_toggle_sound_setting)
 	$HUD.add_child(button)
 
 func _add_reduce_motion_toggle() -> void:
@@ -1268,6 +1487,7 @@ func _update_hud() -> void:
 	var playing := app_state == AppState.PLAYING
 	var meta_visible := playing or app_state == AppState.GAME_COMPLETE
 	$HUD/Menu.visible = app_state == AppState.MENU
+	$HUD/Menu.visible = $HUD/Menu.visible and get_viewport_rect().size.y >= 480.0
 	$HUD/Pause.visible = app_state == AppState.PAUSED
 	$HUD/Dead.visible = app_state == AppState.PLAYER_DEAD
 	$HUD/Dead.text = _death_text()
@@ -1282,7 +1502,23 @@ func _update_hud() -> void:
 	$HUD/Nightmare.visible = app_state == AppState.MENU and bool(save_manager.replay_snapshot().nightmare_unlocked)
 	$HUD/Shop.visible = app_state == AppState.MENU
 	$HUD/Map.visible = app_state == AppState.MENU
+	$HUD/Settings.visible = app_state == AppState.MENU
+	$HUD/HowToPlay.visible = app_state == AppState.MENU
+	$HUD/Credits.visible = app_state == AppState.MENU
 	daily_card.visible = app_state == AppState.MENU
+	var settings_visible := app_state == AppState.SETTINGS
+	var credits_visible := app_state == AppState.CREDITS
+	$HUD/InfoTitle.visible = settings_visible or credits_visible
+	$HUD/InfoTitle.text = "SETTINGS" if settings_visible else "CREDITS"
+	$HUD/InfoBody.visible = settings_visible or credits_visible
+	$HUD/InfoBody.text = "Sound, music, and the best-run ghost are saved automatically." if settings_visible else "BEANSTALK ESCAPE\nMade with Godot\n\nArt: Kenney (CC0), Codex image_gen project assets, manager-provided logo (origin review pending)\nMusic: MintoDog and TAD (CC0)\nAudio: Kenney (CC0), Sonniss GDC 2026 (commercial use; raw redistribution prohibited)\nFont: Lilita One (SIL OFL 1.1)\nFull attributions: CREDITS.md"
+	$HUD/SettingsSound.visible = settings_visible
+	$HUD/SettingsMusic.visible = settings_visible
+	$HUD/SettingsGhost.visible = settings_visible
+	$HUD/InfoBack.visible = settings_visible or credits_visible
+	$HUD/TutorialPanel.visible = tutorial_active
+	$HUD/TutorialSkip.visible = tutorial_active
+	$HUD/Mute.visible = app_state == AppState.MENU
 	$HUD/IntroText.visible = app_state in [AppState.INTRO, AppState.FINAL_CINEMATIC]
 	$HUD/ReduceMotion.visible = app_state == AppState.PAUSED
 	$HUD/Gauge.visible = playing
@@ -1314,7 +1550,7 @@ func _update_hud() -> void:
 	$HUD/TouchRight.visible = playing and DisplayServer.is_touchscreen_available()
 	$HUD/TouchWings.visible = playing and DisplayServer.is_touchscreen_available()
 	$HUD/TouchFire.visible = playing and DisplayServer.is_touchscreen_available()
-	$HUD/Mute.text = "SOUND OFF" if audio.muted else "SOUND ON"
+	$HUD/Mute.text = "SOUND ON" if bool(meta_settings.sound) else "SOUND OFF"
 	$HUD/StageBanner.text = stages.stage_banner if stages.stage_banner_remaining > 0.0 and app_state == AppState.PLAYING else ""
 	$HUD/StageCounter.text = "STAGE %d / 30" % stages.stage_for_y(player.global_position.y)
 	var route_hint_visible := tutorial_text != "CHANGE BRANCH" or stages.branch_targets_visible(player.global_position.y, get_viewport_rect().size.y)
@@ -1336,6 +1572,8 @@ func _update_hud() -> void:
 		$HUD/Replay.text = ""
 	if Engine.get_physics_frames() % 6 == 0:
 		$HUD/MiniMap.queue_redraw()
+	if ghost_sprite != null and not playing:
+		ghost_sprite.visible = false
 
 func _on_level_up(new_level: int, gold_reward: int) -> void:
 	level_up_remaining = 2.4
@@ -1455,6 +1693,8 @@ func _readonly_state_snapshot() -> Dictionary:
 		"nightmare_unlocked": bool(save_manager.replay_snapshot().nightmare_unlocked),
 		"challenges": _challenge_snapshot(),
 		"intro": {"active": intro_active, "beat": intro_beat, "t": intro_t, "visual_mode": INTRO_VISUAL_MODES[intro_beat] if intro_active else "none"},
+		"tutorial": {"active": tutorial_active, "step": tutorial_step, "completed": bool(save_manager.meta_systems_snapshot().tutorial_completed)},
+		"ghost": {"enabled": bool(meta_settings.ghost), "visible": ghost_sprite != null and ghost_sprite.visible, "stage_best_time": ghost_best_time},
 		"final": {"active": app_state == AppState.FINAL_CINEMATIC, "t": final_t, "duration": FINAL_CINEMATIC_SECONDS},
 		"death_cause": DeathCause.keys()[death_cause],
 		"stage": stages.stage_for_y(player.global_position.y),
@@ -1509,6 +1749,9 @@ func _apply_debug_meta_overrides() -> void:
 			debug_sandbox = requested_sandbox if requested_sandbox in ["rocks", "storm"] else ""
 			if not debug_sandbox.is_empty():
 				debug_start_stage = 3
+			continue
+		if parts[0] == "tutorial" and parts[1] == "1":
+			tutorial_force = true
 			continue
 		if not parts[1].is_valid_int():
 			continue
