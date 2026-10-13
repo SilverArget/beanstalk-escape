@@ -12,6 +12,8 @@ const SKIN_IDS := ["M1", "M2", "M3", "F1", "F2", "F3"]
 const FRAME_RATE := 8.0
 const ART_SCALE := 0.49
 const BASE_Y := -7.2
+const TIME_WINGS_TARGET_SCALE := 0.72
+const TIME_WINGS_REVEAL_SECONDS := 0.18
 const PET_PREVIEW_HEIGHT := 60.0
 const PET_PREVIEW_BOUNDS := {}
 
@@ -45,6 +47,8 @@ var pet_preview_scale := Vector2.ONE
 var _was_transferring := false
 var _transfer_trail_alpha := 0.0
 var _last_transfer_direction := 1.0
+var _time_wings_reveal := 0.0
+var _time_wings_was_active := false
 
 func _ready() -> void:
 	_build_visual()
@@ -62,12 +66,23 @@ func _process(delta: float) -> void:
 		hurt_remaining = 0.32
 	hurt_remaining = maxf(hurt_remaining - delta, 0.0)
 	celebrate_remaining = maxf(celebrate_remaining - delta, 0.0)
-	time_wings.visible = player.time_wings_active
+	if player.time_wings_active and not _time_wings_was_active:
+		_time_wings_reveal = 0.0
+	if player.time_wings_active:
+		_time_wings_reveal = minf(_time_wings_reveal + delta / TIME_WINGS_REVEAL_SECONDS, 1.0)
+		var reveal := smoothstep(0.0, 1.0, _time_wings_reveal)
+		var wing_pulse := sin(Time.get_ticks_msec() * 0.010) * 0.003
+		var reveal_scale := TIME_WINGS_TARGET_SCALE * lerpf(0.70, 1.0, reveal)
+		time_wings.scale = Vector2(reveal_scale + wing_pulse, reveal_scale - wing_pulse * 0.5)
+		time_wings.modulate.a = reveal
+		time_wings.visible = true
+	else:
+		_time_wings_reveal = 0.0
+		time_wings.modulate.a = 0.0
+		time_wings.visible = false
+	_time_wings_was_active = player.time_wings_active
 	fire_wings.visible = player.fire_wings_active
 	for trail in fire_trails: trail.visible = player.fire_wings_active
-	if time_wings.visible:
-		var wing_pulse := sin(Time.get_ticks_msec() * 0.010) * 0.002
-		time_wings.scale = Vector2(0.045 + wing_pulse, 0.045 - wing_pulse * 0.5)
 	if fire_wings.visible:
 		var fire_pulse := sin(Time.get_ticks_msec() * 0.014) * 0.008
 		fire_wings.scale = Vector2(0.32 + fire_pulse, 0.32 - fire_pulse * 0.35)
@@ -370,8 +385,9 @@ func _build_visual() -> void:
 	time_wings.texture = WING_TEXTURE
 	time_wings.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
 	time_wings.position = Vector2(0.0, -13.0)
-	time_wings.scale = Vector2.ONE * 0.045
+	time_wings.scale = Vector2.ONE * TIME_WINGS_TARGET_SCALE * 0.70
 	time_wings.z_index = -1
+	time_wings.modulate.a = 0.0
 	time_wings.visible = false
 	add_child(time_wings)
 	sprite = Sprite2D.new()

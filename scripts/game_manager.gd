@@ -1,7 +1,7 @@
 class_name GameManager
 extends Node2D
 
-const TIME_WINGS_ORB := preload("res://assets/art/gpt/items/wing_orb.png")
+const TIME_WINGS_ICON := preload("res://assets/art/character_rig/wing/time_wings.png")
 const PET_FOLLOWER := preload("res://scripts/pet_follower.gd")
 const MODE_NORMAL := "NORMAL"
 const MODE_NIGHTMARE := "NIGHTMARE"
@@ -33,6 +33,9 @@ var best_spider_distance := 0.0
 var time_wings_remaining := 0.0
 var time_wings_started_remaining := 0.0
 var time_wings_used_stage := {}
+var time_wings_notice := ""
+var time_wings_notice_remaining := 0.0
+var time_wings_stage_intro_shown := false
 var fire_wings_remaining := 0.0
 var fire_wings_started_remaining := 0.0
 var fire_wings_used_stage := {}
@@ -139,6 +142,7 @@ func _ready() -> void:
 
 func _physics_process(delta: float) -> void:
 	reward_toast_remaining = maxf(reward_toast_remaining - delta, 0.0)
+	time_wings_notice_remaining = maxf(time_wings_notice_remaining - delta, 0.0)
 	level_up_remaining = maxf(level_up_remaining - delta, 0.0)
 	double_reward_remaining = maxf(double_reward_remaining - delta, 0.0)
 	if dead_restart_delay > 0.0:
@@ -202,6 +206,12 @@ func _physics_process(delta: float) -> void:
 	_update_hud()
 	_publish_readonly_web_state()
 
+func _input(event: InputEvent) -> void:
+	var is_time_wings_key: bool = event.is_action_pressed("time_wings") or (event is InputEventKey and event.physical_keycode == KEY_F and event.pressed)
+	if app_state == AppState.PLAYING and is_time_wings_key and not (event is InputEventKey and event.echo):
+		dispatch_command("time_wings", "keyboard")
+		get_viewport().set_input_as_handled()
+
 func _unhandled_input(event: InputEvent) -> void:
 	if app_state == AppState.INTRO and _is_intro_skip_event(event):
 		_finish_intro()
@@ -236,8 +246,6 @@ func _unhandled_input(event: InputEvent) -> void:
 		_resume_game()
 	elif event.is_action_pressed("pause") and app_state in [AppState.SETTINGS, AppState.CREDITS]:
 		_show_menu()
-	if event.is_action_pressed("time_wings"):
-		dispatch_command("time_wings", "keyboard")
 	if event.is_action_pressed("fire_wings"):
 		dispatch_command("fire_wings", "keyboard")
 	if event is InputEventScreenTouch:
@@ -326,6 +334,9 @@ func restart() -> void:
 	stage_restart_count = 0
 	stage_restart_start_distance = 0.0
 	time_wings_used_stage.clear()
+	time_wings_notice = ""
+	time_wings_notice_remaining = 0.0
+	time_wings_stage_intro_shown = false
 	fire_wings_remaining = 0.0
 	fire_wings_started_remaining = 0.0
 	fire_wings_used_stage.clear()
@@ -636,7 +647,15 @@ func _on_stage_completed(stage_number: int) -> void:
 
 func try_time_wings() -> bool:
 	var stage_number := stages.stage_for_y(player.global_position.y)
-	if app_state != AppState.PLAYING or stage_number < Balance.TIME_WINGS_STAGE or time_wings_used_stage.has(stage_number) or time_wings_remaining > 0.0 or fire_wings_remaining > 0.0:
+	if app_state != AppState.PLAYING:
+		return false
+	if stage_number < Balance.TIME_WINGS_STAGE:
+		_show_time_wings_notice("Unlocks at Stage 5", 1.2)
+		return false
+	if time_wings_used_stage.has(stage_number) or time_wings_remaining > 0.0:
+		_show_time_wings_notice("Used this stage", 1.2)
+		return false
+	if fire_wings_remaining > 0.0:
 		return false
 	time_wings_used_stage[stage_number] = true
 	time_wings_remaining = Balance.TIME_WINGS_SECONDS
@@ -644,8 +663,17 @@ func try_time_wings() -> bool:
 	player.time_wings_active = true
 	player.add_to_group("time_wings_active")
 	skills_used += 1
+	audio.play_sfx("time_wings")
+	audio.wings_was_active = true
 	_update_hud()
 	return true
+
+func _show_time_wings_notice(text: String, seconds: float) -> void:
+	time_wings_notice = text
+	time_wings_notice_remaining = seconds
+	tutorial_text = text
+	tutorial_remaining = seconds
+	_update_hud()
 
 func try_fire_wings() -> bool:
 	var stage_number := stages.stage_for_y(player.global_position.y)
@@ -1076,7 +1104,11 @@ func _show_tutorial_for_stage(stage_number: int) -> void:
 		tutorial_text = ""
 		tutorial_remaining = 0.0
 		return
-	var messages := {1: "MOVE LEFT / RIGHT", 2: "AVOID", 3: "CHANGE BRANCH", 5: "PRESS F", 6: "ROCKS BLOCK THE VINE", 8: "WATCH THE ROLL", 10: "PRESS H", 15: "NO MORE HELP"}
+	if stage_number == Balance.TIME_WINGS_STAGE and not time_wings_stage_intro_shown:
+		time_wings_stage_intro_shown = true
+		_show_time_wings_notice("TIME WINGS — PRESS F", 2.0)
+		return
+	var messages := {1: "MOVE LEFT / RIGHT", 2: "AVOID", 3: "CHANGE BRANCH", 6: "ROCKS BLOCK THE VINE", 8: "WATCH THE ROLL", 10: "PRESS H", 15: "NO MORE HELP"}
 	tutorial_text = messages.get(stage_number, "")
 	tutorial_remaining = Balance.TUTORIAL_SECONDS if tutorial_text != "" else 0.0
 
@@ -1218,11 +1250,17 @@ func _setup_hud() -> void:
 	_add_action_button("RemoveAds", "REMOVE ADS", platform_services.purchase_remove_ads)
 	var wings_orb := TextureRect.new()
 	wings_orb.name = "TimeWingsOrb"
-	wings_orb.texture = TIME_WINGS_ORB
+	wings_orb.texture = TIME_WINGS_ICON
 	wings_orb.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	wings_orb.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 	wings_orb.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	$HUD.add_child(wings_orb)
+	var wings_bar := ProgressBar.new()
+	wings_bar.name = "TimeWingsBar"
+	wings_bar.max_value = Balance.TIME_WINGS_SECONDS
+	wings_bar.show_percentage = false
+	wings_bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	$HUD.add_child(wings_bar)
 	var result_panel := Panel.new()
 	result_panel.name = "ResultPanel"
 	result_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -1365,14 +1403,18 @@ func layout_hud_for_viewport(viewport_size: Vector2) -> void:
 	$HUD/Mute.size = Vector2(112.0, 46.0)
 	var skill := $HUD/TimeWings as Label
 	var skill_orb := $HUD/TimeWingsOrb as TextureRect
-	skill_orb.position = Vector2(18.0, 78.0) if portrait else Vector2(width - 438.0, 14.0)
-	skill_orb.size = Vector2(44.0, 44.0) if portrait else Vector2(48.0, 48.0)
-	skill.position = Vector2(70.0, 82.0) if portrait else Vector2(width - 380.0, 24.0)
-	skill.size = Vector2(width - 88.0, 30.0) if portrait else Vector2(220.0, 30.0)
+	var skill_y := maxf(height - (226.0 if DisplayServer.is_touchscreen_available() else 84.0), 126.0)
+	skill_orb.position = Vector2(maxf(width - 310.0, 10.0), skill_y)
+	skill_orb.size = Vector2(54.0, 54.0)
+	skill.position = Vector2(maxf(width - 248.0, 70.0), skill_y + 2.0)
+	skill.size = Vector2(minf(230.0, width - skill.position.x - 10.0), 28.0)
 	skill.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+	var skill_bar := $HUD/TimeWingsBar as ProgressBar
+	skill_bar.position = Vector2(skill.position.x, skill_y + 34.0)
+	skill_bar.size = Vector2(skill.size.x, 10.0)
 	var fire_skill := $HUD/FireWings as Label
-	fire_skill.position = skill.position + Vector2(0.0, 20.0)
-	fire_skill.size = skill.size
+	fire_skill.position = Vector2(maxf(width - 270.0, 70.0), 18.0)
+	fire_skill.size = Vector2(minf(250.0, width - fire_skill.position.x - 10.0), 28.0)
 	fire_skill.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
 	# Keep the meta readout in the gap between the centered banners and the
 	# right-side sound/gauge column. Explicit gaps matter because the HUD
@@ -1494,7 +1536,7 @@ func layout_hud_for_viewport(viewport_size: Vector2) -> void:
 	$HUD/TouchRight.position = Vector2(132.0, touch_y)
 	$HUD/TouchRight.size = Vector2(104.0, 128.0)
 	$HUD/TouchWings.position = Vector2(width - 292.0, touch_y)
-	$HUD/TouchWings.size = Vector2(132.0, 128.0)
+	$HUD/TouchWings.size = Vector2(maxf(132.0, Balance.TOUCH_BUTTON_MIN_PX), maxf(128.0, Balance.TOUCH_BUTTON_MIN_PX))
 	$HUD/TouchFire.position = Vector2(width - 150.0, touch_y)
 	$HUD/TouchFire.size = Vector2(132.0, 128.0)
 	$HUD/MetaShop.set_offsets_preset(Control.PRESET_FULL_RECT)
@@ -1594,7 +1636,7 @@ func _add_touch_button(name: String, rect: Rect2, text: String, action: String) 
 	button.name = name
 	button.theme = ui_theme
 	button.position = rect.position
-	button.size = rect.size
+	button.size = Vector2(maxf(rect.size.x, Balance.TOUCH_BUTTON_MIN_PX), maxf(rect.size.y, Balance.TOUCH_BUTTON_MIN_PX))
 	button.text = text
 	button.mouse_filter = Control.MOUSE_FILTER_STOP
 	button.visible = DisplayServer.is_touchscreen_available()
@@ -1670,6 +1712,7 @@ func _update_hud() -> void:
 	$HUD/Tutorial.visible = normal_playing
 	$HUD/TimeWings.visible = normal_playing
 	$HUD/TimeWingsOrb.visible = normal_playing
+	$HUD/TimeWingsBar.visible = normal_playing and time_wings_remaining > 0.0
 	$HUD/FireWings.visible = normal_playing
 	$HUD/GoldStatus.visible = meta_visible
 	$HUD/XPStatus.visible = meta_visible
@@ -1698,6 +1741,8 @@ func _update_hud() -> void:
 	var route_hint_visible := tutorial_text != "CHANGE BRANCH" or stages.branch_targets_visible(player.global_position.y, get_viewport_rect().size.y)
 	$HUD/Tutorial.text = tutorial_text if tutorial_remaining > 0.0 and app_state == AppState.PLAYING and route_hint_visible else ""
 	$HUD/TimeWings.text = _time_wings_status()
+	$HUD/TimeWingsBar.max_value = Balance.TIME_WINGS_SECONDS
+	$HUD/TimeWingsBar.value = time_wings_remaining
 	$HUD/FireWings.text = _fire_wings_status()
 	var meta := economy.snapshot()
 	$HUD/GoldStatus.text = "GOLD %d" % meta.gold
@@ -1740,12 +1785,12 @@ func _death_text() -> String:
 func _time_wings_status() -> String:
 	var stage_number := stages.stage_for_y(player.global_position.y)
 	if stage_number < Balance.TIME_WINGS_STAGE:
-		return "F · TIME WINGS LOCKED"
+		return "F · STAGE %d" % Balance.TIME_WINGS_STAGE
 	if time_wings_remaining > 0.0:
-		return "F · TIME WINGS %.1fs" % time_wings_remaining
+		return "F · ACTIVE %.1fs" % time_wings_remaining
 	if time_wings_used_stage.has(stage_number):
-		return "F · TIME WINGS USED"
-	return "F · TIME WINGS READY"
+		return "F · USED THIS STAGE"
+	return "F · READY"
 
 func _fire_wings_status() -> String:
 	var stage_number := stages.stage_for_y(player.global_position.y)
@@ -1855,7 +1900,7 @@ func _readonly_state_snapshot() -> Dictionary:
 		"pet": pet_state,
 		"spider": {"y": spider.global_position.y, "distance": gauge.distance_px, "ratio": spider.speed_ratio, "boost": spider.boost_remaining > 0.0, "boost_remaining": spider.boost_remaining, "catchup_active": spider.catchup_active, "catchup_blend": spider.catchup_blend, "on_screen": spider_visibility.on_screen, "visible_px": spider_visibility.visible_px},
 		"gauge_level": gauge.level,
-		"time_wings": {"unlocked": stages.stage_for_y(player.global_position.y) >= Balance.TIME_WINGS_STAGE, "active": time_wings_remaining > 0.0, "remaining": time_wings_remaining, "started_remaining": time_wings_started_remaining, "used": time_wings_used_stage.has(stages.stage_for_y(player.global_position.y))},
+		"time_wings": {"unlocked": stages.stage_for_y(player.global_position.y) >= Balance.TIME_WINGS_STAGE, "active": time_wings_remaining > 0.0, "remaining": time_wings_remaining, "started_remaining": time_wings_started_remaining, "used": time_wings_used_stage.has(stages.stage_for_y(player.global_position.y)), "notice": time_wings_notice, "slow_scale": Balance.TIME_WINGS_SLOW_SCALE},
 		"fire_wings": {"unlocked": stages.stage_for_y(player.global_position.y) >= Balance.FIRE_WINGS_STAGE or debug_sandbox == "rocks", "active": fire_wings_remaining > 0.0, "remaining": fire_wings_remaining, "started_remaining": fire_wings_started_remaining, "used": fire_wings_used_stage.has(stages.stage_for_y(player.global_position.y))},
 		"rocks": rocks.snapshot(),
 		"audio_events": audio.audio_event_snapshot(),
