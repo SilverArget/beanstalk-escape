@@ -4,7 +4,7 @@ extends Control
 signal closed
 signal run_started
 
-const SLOTS := ["CHARACTERS", "HAIR", "OUTFIT", "EMBLEM", "PET", "TRAIL"]
+const SLOTS := ["CHARACTERS", "OUTFIT", "EMBLEM", "PET", "TRAIL"]
 
 var economy: EconomyManager
 var platform_services: Node

@@ -37,24 +37,18 @@ foreach ($skin in @('m1','m2','m3','f1','f2','f3')) {
         }
     }}
     $bodyW = [Math]::Max(1,$bodyMaxX-$bodyMinX+1); $bodyH = [Math]::Max(1,$bodyMaxY-$bodyMinY+1)
-    $hair = [System.Drawing.Bitmap]::new(512,512,[System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
     $outfit = [System.Drawing.Bitmap]::new(512,512,[System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
     for ($y=0; $y -lt 512; $y++) { for ($x=0; $x -lt 512; $x++) {
         $c=$front.GetPixel($x,$y); if ($c.A -le 16) { continue }
         $nx=($x-$bodyMinX)/[double]$bodyW; $ny=($y-$bodyMinY)/[double]$bodyH; $skinPixel=Is-Skin $c
-        $brightness=0.299*$c.R + 0.587*$c.G + 0.114*$c.B
-        $isFace=($nx -ge 0.32 -and $nx -le 0.68 -and $ny -ge 0.15 -and $ny -le 0.34)
-        $isHair=($ny -lt 0.30 -and $brightness -ge 48 -and -not $skinPixel -and -not $isFace)
         $isTorso=($ny -ge 0.31 -and $ny -le 0.62 -and $nx -ge 0.16 -and $nx -le 0.84)
         $isLegs=($ny -gt 0.58 -and $ny -le 0.84 -and $nx -ge 0.25 -and $nx -le 0.75)
-        if ($isHair) { $hair.SetPixel($x,$y,[System.Drawing.Color]::White) }
         if (($isTorso -or $isLegs) -and -not $skinPixel) { $outfit.SetPixel($x,$y,[System.Drawing.Color]::White) }
     }}
     $target = Join-Path $frameRoot $skin
     $front.Save((Join-Path $target 'front.png'),[System.Drawing.Imaging.ImageFormat]::Png)
-    $hair.Save((Join-Path $target 'front_hair_mask.png'),[System.Drawing.Imaging.ImageFormat]::Png)
     $outfit.Save((Join-Path $target 'front_outfit_mask.png'),[System.Drawing.Imaging.ImageFormat]::Png)
-    $front.Dispose(); $hair.Dispose(); $outfit.Dispose()
+    $front.Dispose(); $outfit.Dispose()
 }
 
 $sheet = [System.Drawing.Bitmap]::new((Join-Path $root 'assets/art/cosmetics/emblems_imagegen_2026-10-13.png'))

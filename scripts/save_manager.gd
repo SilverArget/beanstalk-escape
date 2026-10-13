@@ -13,6 +13,11 @@ const LEGACY_PET_IDS := {
 	"pet_snail": "fairy_cloud",
 	"pet_rabbit": "fairy_star",
 }
+const RETIRED_HAIR_REFUNDS := {
+	"hair_dark": 150,
+	"hair_blonde": 400,
+	"hair_silver": 900,
+}
 const CHALLENGE_NAMES := [
 	"NO BEAN HIT",
 	"NO ROCK HIT",
@@ -27,6 +32,7 @@ var profile: Dictionary = {}
 var platform_service: Node
 var bridge_loaded := false
 var pending_bridge_write := false
+var hair_refund_migrated := false
 
 func _init(path := DEFAULT_PATH) -> void:
 	save_path = _qa_path() if path == DEFAULT_PATH and _is_qa_process() else path
@@ -46,7 +52,10 @@ func load_profile() -> Dictionary:
 	var parsed: Variant = JSON.parse_string(file.get_as_text())
 	if parsed is not Dictionary:
 		return profile.duplicate(true)
+	hair_refund_migrated = false
 	profile = _sanitize_profile(parsed as Dictionary)
+	if hair_refund_migrated:
+		_write_local_profile()
 	return profile.duplicate(true)
 
 func replay_snapshot() -> Dictionary:
@@ -133,6 +142,7 @@ func write_meta(meta: Dictionary) -> bool:
 		"gold": maxi(int(meta.get("gold", 0)), 0),
 		"xp": maxi(int(meta.get("xp", 0)), 0),
 		"level": maxi(int(meta.get("level", 1)), 1),
+		"hair_refund_done": bool(profile.get("meta", {}).get("hair_refund_done", true)),
 	}
 	return _write_profile()
 
@@ -235,7 +245,7 @@ func _write_local_profile() -> bool:
 func _default_profile() -> Dictionary:
 	return {
 		"version": SAVE_VERSION,
-		"meta": {"gold": 0, "xp": 0, "level": 1},
+		"meta": {"gold": 0, "xp": 0, "level": 1, "hair_refund_done": true},
 		"progression": {"completed_stages": [], "skipped_stages": [], "treasures_claimed": []},
 		"daily": {"day_index": 0, "last_claim_date": ""},
 		"purchases": {"remove_ads": false},
@@ -267,7 +277,7 @@ func _default_replay() -> Dictionary:
 func _default_shop() -> Dictionary:
 	return {
 		"owned": ["M1", "F1"],
-		"equipped": {"HAIR": "", "OUTFIT": "", "EMBLEM": "", "PET": "", "TRAIL": ""},
+		"equipped": {"OUTFIT": "", "EMBLEM": "", "PET": "", "TRAIL": ""},
 		"selected_character": "M1",
 	}
 
@@ -281,12 +291,12 @@ func _sanitize_shop(value: Variant) -> Dictionary:
 		for item in owned_value:
 			var item_id := str(item).to_upper() if str(item).length() == 2 else str(item)
 			item_id = str(LEGACY_PET_IDS.get(item_id, item_id))
-			if not item_id.begins_with("face_") and not result.owned.has(item_id):
+			if not item_id.begins_with("face_") and not RETIRED_HAIR_REFUNDS.has(item_id) and not result.owned.has(item_id):
 				result.owned.append(item_id)
 	var equipped_value: Variant = source.get("equipped", {})
 	if equipped_value is Dictionary:
 		# Retired HAT/FACE equipment is deliberately ignored during migration.
-		for slot in ["HAIR", "OUTFIT", "EMBLEM", "PET", "TRAIL"]:
+		for slot in ["OUTFIT", "EMBLEM", "PET", "TRAIL"]:
 			var equipped_id := str(equipped_value.get(slot, ""))
 			result.equipped[slot] = str(LEGACY_PET_IDS.get(equipped_id, equipped_id)) if slot == "PET" else equipped_id
 	var selected := str(source.get("selected_character", "M1")).to_upper()
@@ -318,8 +328,11 @@ func _sanitize_daily(value: Variant) -> Dictionary:
 func _on_bridge_profile_loaded(success: bool, value: Variant) -> void:
 	bridge_loaded = true
 	if success and value is Dictionary and not pending_bridge_write:
+		hair_refund_migrated = false
 		profile = _sanitize_profile(value)
 		_write_local_profile()
+		if hair_refund_migrated:
+			platform_service.storage_set(profile.duplicate(true))
 		profile_loaded.emit(profile.duplicate(true))
 	if pending_bridge_write:
 		pending_bridge_write = false
@@ -328,9 +341,20 @@ func _on_bridge_profile_loaded(success: bool, value: Variant) -> void:
 func _sanitize_profile(value: Dictionary) -> Dictionary:
 	var result := _default_profile()
 	var meta: Dictionary = value.get("meta", {}) if value.get("meta", {}) is Dictionary else {}
-	result.meta.gold = maxi(int(meta.get("gold", 0)), 0)
+	var refund_done := bool(meta.get("hair_refund_done", false))
+	var refund_gold := 0
+	if not refund_done:
+		var source_shop: Variant = value.get("shop", {})
+		var source_owned: Variant = source_shop.get("owned", []) if source_shop is Dictionary else []
+		if source_owned is Array:
+			for item_id in RETIRED_HAIR_REFUNDS:
+				if source_owned.has(item_id):
+					refund_gold += int(RETIRED_HAIR_REFUNDS[item_id])
+		hair_refund_migrated = true
+	result.meta.gold = maxi(int(meta.get("gold", 0)), 0) + refund_gold
 	result.meta.xp = maxi(int(meta.get("xp", 0)), 0)
 	result.meta.level = maxi(int(meta.get("level", 1)), 1)
+	result.meta.hair_refund_done = true
 	if value.get("progression", {}) is Dictionary:
 		result.progression = _sanitize_progression(value.progression)
 	result.daily = _sanitize_daily(value.get("daily", {}))

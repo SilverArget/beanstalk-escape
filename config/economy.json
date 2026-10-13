@@ -14,7 +14,7 @@
   "daily_login_day_7_item": "outfit_sky",
   "map_treasures": [
     {"stage": 5, "type": "gold", "amount": 150},
-    {"stage": 10, "type": "item", "item": "hair_silver"},
+    {"stage": 10, "type": "gold", "amount": 900},
     {"stage": 15, "type": "gold", "amount": 250},
     {"stage": 20, "type": "item", "item": "trail_star"},
     {"stage": 25, "type": "gold", "amount": 400},
@@ -40,9 +40,6 @@
   "cosmetic_prices": {"COMMON": 150, "RARE": 400, "EPIC": 900},
   "cosmetic_levels": {"COMMON": 1, "RARE": 3, "EPIC": 5},
   "cosmetics": [
-    {"id": "hair_dark", "slot": "HAIR", "name": "DARK", "rarity": "COMMON", "image": "hair_dark.png", "ramp": ["0d0907", "2b1d16", "5c4436"]},
-    {"id": "hair_blonde", "slot": "HAIR", "name": "BLONDE", "rarity": "RARE", "image": "hair_blonde.png", "ramp": ["b07f2c", "f0c75a", "fff3b8"]},
-    {"id": "hair_silver", "slot": "HAIR", "name": "SILVER", "rarity": "EPIC", "image": "hair_silver.png", "ramp": ["828c97", "c9d1d9", "fbfcfe"], "source": "MAP TREASURE"},
     {"id": "trail_leaf", "slot": "TRAIL", "name": "LEAF WAKE", "rarity": "COMMON", "image": "leaf_trail.png", "price": 200, "level": 1, "effect_name": "LEAF FALL"},
     {"id": "trail_cloud", "slot": "TRAIL", "name": "CLOUD WAKE", "rarity": "RARE", "image": "cloud_trail.png", "price": 500, "level": 2, "effect_name": "CLOUD BLOOM"},
     {"id": "trail_star", "slot": "TRAIL", "name": "STAR WAKE", "rarity": "EPIC", "image": "star_trail.png", "price": 1000, "level": 3, "effect_name": "STAR DUST", "source": "MAP TREASURE"},

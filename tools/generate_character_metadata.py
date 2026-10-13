@@ -1,4 +1,4 @@
-"""Generate per-frame cosmetic anchors, garment masks and hair masks.
+"""Generate per-frame cosmetic anchors and garment masks.
 
 The character sheets share pose alignment, but hands frequently extend above the
 head.  Anchors therefore use a pose-specific anatomical band instead of the
@@ -16,7 +16,6 @@ from pathlib import Path
 import cv2
 import numpy as np
 from PIL import Image
-from PIL import ImageDraw
 
 
 ROOT = Path(__file__).resolve().parents[1] / "assets" / "art" / "character_frames"
@@ -187,188 +186,6 @@ def garment_mask(rgba: np.ndarray, anchor: tuple[int, int, int]) -> Image.Image:
     return Image.fromarray(result, "RGBA")
 
 
-def hair_palette(rgba: np.ndarray, anchor: tuple[int, int, int], outfit: np.ndarray) -> list[tuple[float, float, float]]:
-    """Learn hair colours from the crown, where skin and tunic cannot seed the palette."""
-    center_x, head_y, head_width = anchor
-    height, width = rgba.shape[:2]
-    x0 = max(0, int(center_x - head_width * 0.46))
-    x1 = min(width, int(center_x + head_width * 0.46))
-    y0 = max(0, int(head_y - head_width * 0.78))
-    y1 = min(height, int(head_y - head_width * 0.12))
-    bins: Counter[tuple[int, int, int]] = Counter()
-    for y in range(y0, y1):
-        for x in range(x0, x1):
-            red, green, blue, alpha = (int(value) for value in rgba[y, x])
-            if alpha < 96 or outfit[y, x, 3] > 16:
-                continue
-            hue, saturation, value = colorsys.rgb_to_hsv(red / 255.0, green / 255.0, blue / 255.0)
-            if value < 0.08 or saturation < 0.10:
-                continue
-            bins[(int(hue * 24.0) % 24, int(saturation * 4.0), int(value * 5.0))] += 1
-    if not bins:
-        return []
-    # Several bins preserve the painted highlight/shadow family without
-    # admitting unrelated brown gloves, boots or bags outside the head region.
-    selected = [entry[0] for entry in bins.most_common(5)]
-    return [((hue_bin + 0.5) / 24.0, (sat_bin + 0.5) / 4.0, (val_bin + 0.5) / 5.0) for hue_bin, sat_bin, val_bin in selected]
-
-
-def hair_mask(
-    rgba: np.ndarray,
-    anchor: tuple[int, int, int],
-    outfit: np.ndarray,
-    palette: list[tuple[float, float, float]],
-    frame: str,
-) -> Image.Image:
-    center_x, head_y, head_width = anchor
-    height, width = rgba.shape[:2]
-    result = np.zeros((height, width, 4), dtype=np.uint8)
-    x0 = max(0, int(center_x - head_width * 0.60))
-    x1 = min(width, int(center_x + head_width * 0.60))
-    y0 = max(0, int(head_y - head_width * 0.82))
-    y1 = min(height, int(head_y + head_width * 0.55))
-    for y in range(y0, y1):
-        for x in range(x0, x1):
-            red, green, blue, alpha = (int(value) for value in rgba[y, x])
-            if alpha < 64 or outfit[y, x, 3] > 16:
-                continue
-            dx = (x - center_x) / max(head_width * 0.58, 1.0)
-            dy = (y - (head_y - head_width * 0.10)) / max(head_width * 0.70, 1.0)
-            if dx * dx + dy * dy > 1.0:
-                continue
-            # A front-facing face occupies the central lower head oval. Hair
-            # may frame it at the sides, but must never dye eyes/cheeks.
-            if frame in FRONT_FRAMES and y >= head_y - head_width * 0.12 and abs(x - center_x) < head_width * 0.25:
-                continue
-            hue, saturation, value = colorsys.rgb_to_hsv(red / 255.0, green / 255.0, blue / 255.0)
-            if value < 0.09 or saturation < 0.10:
-                continue
-            matches = any(
-                hue_distance(hue, sample_hue) <= 0.075
-                and abs(saturation - sample_saturation) <= 0.34
-                and abs(value - sample_value) <= 0.34
-                for sample_hue, sample_saturation, sample_value in palette
-            )
-            if matches:
-                result[y, x] = (255, 255, 255, alpha)
-    return Image.fromarray(result, "RGBA")
-
-
-def front_hair_mask(rgba: np.ndarray, outfit: np.ndarray, allow_long_hair: bool) -> Image.Image:
-    """Segment portrait hair from its own crown palette and remove the filled face."""
-    outfit_x0, outfit_y0, outfit_x1, _ = opaque_bounds(outfit[:, :, 3])
-    center_x = int(round((outfit_x0 + outfit_x1 - 1) * 0.5))
-    alpha = rgba[:, :, 3] > 127
-    yy, xx = np.indices(alpha.shape)
-    head_alpha = alpha & (yy < outfit_y0)
-    crown_top = int(np.where(head_alpha)[0].min())
-    crown_seed = (
-        alpha
-        & (np.abs(xx - center_x) <= 66)
-        & (yy >= crown_top)
-        & (yy <= min(crown_top + 70, outfit_y0 - 48))
-    )
-    cheek_seed = (
-        alpha
-        & (np.abs(xx - center_x) <= 18)
-        & (yy >= outfit_y0 - 50)
-        & (yy <= outfit_y0 - 25)
-    )
-    lab = cv2.cvtColor(rgba[:, :, :3], cv2.COLOR_RGB2LAB).astype(np.float32)
-    criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 50, 0.2)
-    cv2.setRNGSeed(20261013)
-    _, _, hair_centers = cv2.kmeans(lab[crown_seed], 12, None, criteria, 5, cv2.KMEANS_PP_CENTERS)
-    _, _, skin_centers = cv2.kmeans(lab[cheek_seed], 5, None, criteria, 5, cv2.KMEANS_PP_CENTERS)
-    hair_distance = np.min(np.linalg.norm(lab[:, :, None, :] - hair_centers[None, None, :, :], axis=3), axis=2)
-    skin_distance = np.min(np.linalg.norm(lab[:, :, None, :] - skin_centers[None, None, :, :], axis=3), axis=2)
-
-    face_ellipse = ((xx - center_x) / 48.0) ** 2 + ((yy - (outfit_y0 - 54)) / 59.0) ** 2 < 1.0
-    skin_candidates = ((skin_distance < 19.0) & face_ellipse & alpha).astype(np.uint8)
-    skin_count, skin_labels, skin_stats, _ = cv2.connectedComponentsWithStats(skin_candidates, connectivity=8)
-    skin = np.zeros_like(skin_candidates)
-    if skin_count > 1:
-        central_face = (np.abs(xx - center_x) <= 22) & (yy >= outfit_y0 - 55) & (yy <= outfit_y0 - 25)
-        face_label = max(
-            range(1, skin_count),
-            key=lambda index: int(np.count_nonzero((skin_labels == index) & central_face)),
-        )
-        if int(skin_stats[face_label, cv2.CC_STAT_AREA]) > 150:
-            skin[skin_labels == face_label] = 1
-    skin = cv2.morphologyEx(skin, cv2.MORPH_CLOSE, np.ones((3, 3), dtype=np.uint8))
-
-    collar_cutoff = outfit_y0 - 6
-    long_hair = outfit_y0 + 42 if allow_long_hair else collar_cutoff
-    region = (
-        alpha
-        & (outfit[:, :, 3] <= 16)
-        & (np.abs(xx - center_x) <= 102)
-        & (yy < long_hair)
-    )
-    # Keep the neck/collar clear. F1's long side locks are the sole exception.
-    region &= (yy < collar_cutoff) | (allow_long_hair & (np.abs(xx - center_x) > 45))
-    # Exclude the actual connected skin component rather than its filled contour:
-    # the contour spans over forehead bangs and used to leave their brown strokes.
-    face_features = face_ellipse & (np.abs(xx - center_x) <= 44) & (yy >= outfit_y0 - 58)
-    hair_likely = hair_distance + 6.0 < skin_distance
-    protected_skin = (skin > 0) & ~hair_likely
-    candidates = region & (hair_distance < 31.0) & ~protected_skin & ~face_features
-    bang_candidates = (
-        region
-        & (yy < outfit_y0 - 24)
-        & (hair_distance < 25.0)
-        & (hair_distance + 9.0 < skin_distance)
-    )
-    bang_candidates = cv2.morphologyEx(
-        bang_candidates.astype(np.uint8),
-        cv2.MORPH_OPEN,
-        np.ones((2, 2), dtype=np.uint8),
-    ).astype(bool)
-    bang_count, bang_labels, bang_stats, _ = cv2.connectedComponentsWithStats(bang_candidates.astype(np.uint8), connectivity=8)
-    for index in range(1, bang_count):
-        component = bang_labels == index
-        if int(bang_stats[index, cv2.CC_STAT_AREA]) >= 5 and np.any(component & crown_seed):
-            candidates |= component
-    count, labels, stats, _ = cv2.connectedComponentsWithStats(candidates.astype(np.uint8), connectivity=8)
-    selected = np.zeros_like(candidates)
-    for index in range(1, count):
-        area = int(stats[index, cv2.CC_STAT_AREA])
-        if area < 5:
-            continue
-        component = labels == index
-        selected |= component
-
-    # Close the painted hair component so dark internal linework and narrow
-    # colour gaps recolour with the surrounding lock. Skin and facial features
-    # remain protected after the close, and the collar cutoff is re-applied.
-    closed = cv2.morphologyEx(
-        selected.astype(np.uint8),
-        cv2.MORPH_CLOSE,
-        cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (11, 11)),
-    ).astype(bool)
-    selected = (selected | closed) & region & ~protected_skin & ~face_features
-
-    result = np.zeros_like(rgba)
-    result[selected] = (255, 255, 255, 255)
-    return Image.fromarray(result, "RGBA")
-
-
-def paint_hair_icon(path: Path, base: tuple[int, int, int]) -> None:
-    """Draw a compact painted swatch; no character-specific silhouette needed."""
-    image = Image.new("RGBA", (192, 192), (0, 0, 0, 0))
-    draw = ImageDraw.Draw(image)
-    dark = tuple(max(0, int(channel * 0.48)) for channel in base) + (255,)
-    mid = base + (255,)
-    light = tuple(min(255, int(channel * 1.28 + 12)) for channel in base) + (235,)
-    outline = (24, 22, 27, 255)
-    silhouette = [(35, 129), (44, 76), (72, 42), (92, 68), (112, 34), (151, 61), (161, 126), (139, 150), (55, 150)]
-    draw.polygon(silhouette, fill=outline)
-    draw.polygon([(42, 126), (50, 80), (73, 52), (92, 78), (112, 44), (144, 67), (153, 124), (135, 141), (58, 141)], fill=dark)
-    draw.polygon([(55, 116), (61, 80), (76, 61), (92, 88), (111, 55), (132, 72), (141, 111), (126, 123), (69, 126)], fill=mid)
-    draw.line([(66, 91), (77, 72), (91, 99)], fill=light, width=8)
-    draw.line([(110, 68), (126, 82), (132, 104)], fill=light, width=7)
-    image.save(path, optimize=True)
-
-
 def main() -> None:
     for skin in SKINS:
         anchors: dict[str, dict[str, object]] = {}
@@ -393,16 +210,9 @@ def main() -> None:
             if frame == "front":
                 _, _, body_x1, body_y1 = opaque_bounds(rgba[:, :, 3])
                 anchors[frame]["pet_anchor"] = [body_x1 + 7, body_y1]
-                front_hair_mask(rgba, outfit, skin == "f1").save(ROOT / skin / "front_hair_mask.png", optimize=True)
         (ROOT / skin / "anchors.json").write_text(
             json.dumps({"frames": anchors}, indent=2) + "\n", encoding="utf-8"
         )
-
-    icon_root = ROOT.parent / "cosmetics"
-    paint_hair_icon(icon_root / "hair_dark.png", (48, 35, 29))
-    paint_hair_icon(icon_root / "hair_blonde.png", (205, 158, 55))
-    paint_hair_icon(icon_root / "hair_silver.png", (176, 190, 200))
-
 
 if __name__ == "__main__":
     main()

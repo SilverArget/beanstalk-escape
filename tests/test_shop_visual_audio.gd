@@ -38,12 +38,6 @@ const BACK_EMBLEM_LANDMARKS := {
 		"jump": [98, 130, 152, 214], "fall": [121, 156, 142, 216],
 	},
 }
-const HAIR_STRAND_POINTS := {
-	"m1": Vector2i(243, 59),
-	"m2": Vector2i(267, 100),
-	"m3": Vector2i(260, 77),
-	"f1": Vector2i(292, 82),
-}
 var passed := 0
 var failed := 0
 
@@ -61,11 +55,11 @@ func _run() -> void:
 	_check(economy.cosmetic_catalog("EMBLEM").size() == 6, "six emblems")
 	_check(economy.cosmetic_catalog("PET").size() == 6, "six pets")
 	var migrated := save._sanitize_shop({"owned": ["M1", "face_mask"], "equipped": {"FACE": "face_mask"}})
-	_check(not migrated.owned.has("face_mask") and migrated.equipped.keys() == ["HAIR", "OUTFIT", "EMBLEM", "PET", "TRAIL"], "legacy FACE data removed and slots normalized")
+	_check(not migrated.owned.has("face_mask") and migrated.equipped.keys() == ["OUTFIT", "EMBLEM", "PET", "TRAIL"], "legacy FACE data removed and slots normalized")
 	var pet_preview := PlayerVisual.new()
 	root.add_child(pet_preview)
 	await process_frame
-	pet_preview.set_cosmetics({"HAIR": "", "OUTFIT": "", "EMBLEM": "", "PET": "pet_squirrel", "TRAIL": ""}, economy.cosmetic_catalog())
+	pet_preview.set_cosmetics({"OUTFIT": "", "EMBLEM": "", "PET": "pet_squirrel", "TRAIL": ""}, economy.cosmetic_catalog())
 	pet_preview.show_front_preview()
 	var pet_layer := pet_preview.cosmetic_sprites.get("PET") as Sprite2D
 	_check(pet_layer != null and pet_layer.visible and pet_layer.texture != null and absf(pet_layer.position.x) <= 92.0, "pet visible inside front preview")
@@ -96,19 +90,19 @@ func _run() -> void:
 	await process_frame
 	_check(shop_preview.preview.frame_name == "front" and shop_preview.view_toggle_button.text == "ARKA", "non-emblem tab resets to front view")
 	var tabs_stay_fixed := _shop_tabs_fit(shop_preview)
-	shop_preview.active_tab = "HAIR"
+	shop_preview.active_tab = "OUTFIT"
 	shop_preview.refresh()
 	await process_frame
 	tabs_stay_fixed = tabs_stay_fixed and _shop_tabs_fit(shop_preview)
-	shop_preview.call("_preview_item", economy.cosmetic_catalog("HAIR")[0])
+	shop_preview.call("_preview_item", economy.cosmetic_catalog("OUTFIT")[0])
 	await process_frame
 	tabs_stay_fixed = tabs_stay_fixed and _shop_tabs_fit(shop_preview)
-	var bought_hair := economy.buy("hair_dark")
-	tabs_stay_fixed = tabs_stay_fixed and bought_hair
+	var bought_outfit := economy.buy("outfit_moss")
+	tabs_stay_fixed = tabs_stay_fixed and bought_outfit
 	await process_frame
 	tabs_stay_fixed = tabs_stay_fixed and _shop_tabs_fit(shop_preview)
-	var equipped_hair := economy.equip("hair_dark")
-	tabs_stay_fixed = tabs_stay_fixed and equipped_hair
+	var equipped_outfit := economy.equip("outfit_moss")
+	tabs_stay_fixed = tabs_stay_fixed and equipped_outfit
 	await process_frame
 	tabs_stay_fixed = tabs_stay_fixed and _shop_tabs_fit(shop_preview)
 	_check(tabs_stay_fixed, "shop tabs stay inside 960 px after refresh, tab change, preview, buy, and equip")
@@ -119,7 +113,7 @@ func _run() -> void:
 	for skin in SKINS:
 		shop_preview.preview.set_skin(skin)
 		for item in economy.cosmetic_catalog("PET"):
-			shop_preview.preview.set_cosmetics({"HAIR": "", "OUTFIT": "", "EMBLEM": "", "PET": item.id, "TRAIL": ""}, economy.cosmetic_catalog())
+			shop_preview.preview.set_cosmetics({"OUTFIT": "", "EMBLEM": "", "PET": item.id, "TRAIL": ""}, economy.cosmetic_catalog())
 			shop_preview.preview.show_front_preview()
 			var rects := _preview_rects(shop_preview, skin, item)
 			var body_rect: Rect2 = rects.body
@@ -136,16 +130,14 @@ func _run() -> void:
 	_check(pets_grounded, "all six pets share the character foot line")
 	_check(pets_proportional, "all six pets are 22-28 percent of character height")
 	shop_preview.free()
-	pet_preview.set_cosmetics({"HAIR": "", "OUTFIT": "", "EMBLEM": str(emblem_item.id), "PET": "pet_squirrel", "TRAIL": ""}, economy.cosmetic_catalog())
+	pet_preview.set_cosmetics({"OUTFIT": "", "EMBLEM": str(emblem_item.id), "PET": "pet_squirrel", "TRAIL": ""}, economy.cosmetic_catalog())
 	var all_pixels_ok := true
 	for skin in SKINS:
 		pet_preview.set_skin(skin)
 		pet_preview.show_front_preview()
 		var metrics := _pixel_metrics(skin, "front")
-		print("PIXEL %s/front hair=%d/%d face DE(hair)=%.2f hair DL=%.2f tunic DE(outfit)=%.2f" % [skin.to_upper(), metrics.hair_mask_pixels, metrics.head_opaque_pixels, metrics.face_hair_delta_e, metrics.hair_delta_l, metrics.tunic_outfit_delta_e])
-		all_pixels_ok = all_pixels_ok and metrics.face_hair_delta_e < 3.0 and metrics.hair_delta_l >= 15.0 and metrics.tunic_outfit_delta_e >= 10.0
-		_check(metrics.hair_mask_pixels >= metrics.head_opaque_pixels * 0.35, "%s front hair mask covers at least 35%% of opaque head pixels" % skin.to_upper())
-		_check(_hair_regressions_pass(skin), "%s front hair mask covers strands and excludes the collar" % skin.to_upper())
+		print("PIXEL %s/front tunic DE(outfit)=%.2f" % [skin.to_upper(), metrics.tunic_outfit_delta_e])
+		all_pixels_ok = all_pixels_ok and metrics.tunic_outfit_delta_e >= 10.0
 		for frame in FRONT_FRAMES:
 			pet_preview.call("_set_frame", frame)
 			_check(not (pet_preview.cosmetic_sprites.get("EMBLEM") as Sprite2D).visible, "%s %s hides the back emblem" % [skin.to_upper(), frame])
@@ -153,7 +145,7 @@ func _run() -> void:
 			_check(_back_emblem_geometry_pass(skin, frame), "%s %s emblem is centered on the back at about 40%% tunic width" % [skin.to_upper(), frame])
 		pet_preview.show_front_preview()
 		_check(not _pet_overlaps_body(skin, pet_preview, pet_layer), "%s front pet bbox does not overlap body bbox" % skin.to_upper())
-	_check(all_pixels_ok, "front face/hair/outfit isolation for six skins")
+	_check(all_pixels_ok, "front outfit replacement is visible for six skins")
 	pet_preview.free()
 	var audio := BeanstalkAudio.new()
 	root.add_child(audio)
@@ -188,59 +180,24 @@ func _run() -> void:
 func _pixel_metrics(skin: String, frame: String) -> Dictionary:
 	var root_path := "res://assets/art/character_frames/%s/%s" % [skin, frame]
 	var source := Image.load_from_file(ProjectSettings.globalize_path(root_path + ".png"))
-	var hair := Image.load_from_file(ProjectSettings.globalize_path(root_path + "_hair_mask.png"))
 	var outfit := Image.load_from_file(ProjectSettings.globalize_path(root_path + "_outfit_mask.png"))
-	if source == null or hair == null or outfit == null or source.is_empty() or hair.is_empty() or outfit.is_empty():
-		return {"hair_delta_l": -999.0, "tunic_hair_delta_e": 999.0, "tunic_outfit_delta_e": -999.0, "hair_outfit_delta_e": 999.0}
-	var used := source.get_used_rect()
-	var hair_l_before := 0.0
-	var hair_l_after := 0.0
-	var hair_count := 0
+	if source == null or outfit == null or source.is_empty() or outfit.is_empty():
+		return {"tunic_outfit_delta_e": -999.0}
 	var outfit_delta := 0.0
 	var outfit_count := 0
-	var tunic_hair_delta := 0.0
-	var hair_outfit_delta := 0.0
-	var face_hair_delta := 0.0
-	var face_count := 0
-	var outfit_rect := outfit.get_used_rect()
-	var head_opaque_pixels := 0
 	for y in source.get_height():
 		for x in source.get_width():
 			var pixel := source.get_pixel(x, y)
-			var in_hair := hair.get_pixel(x, y).a > 0.5
 			var in_outfit := outfit.get_pixel(x, y).a > 0.5
-			if y < outfit_rect.position.y and pixel.a > 0.5:
-				head_opaque_pixels += 1
-			var hair_result := _dye_hair(pixel, Color("241b18")) if in_hair else pixel
 			# FERN CHECK is the second OUTFIT card reported by the browser QA pass.
 			var outfit_result := _dye_outfit(pixel, Color("4f8b55")) if in_outfit else pixel
-			var nx := (float(x) - used.position.x) / maxf(used.size.x, 1.0)
-			var ny := (float(y) - used.position.y) / maxf(used.size.y, 1.0)
-			# The upper head box contains the fringe by design. Sample the lower
-			# central face so correct bang coverage is not reported as dyed skin.
-			var in_face_box := nx >= 0.38 and nx <= 0.62 and ny >= 0.22 and ny <= 0.31
-			if in_face_box and pixel.a > 0.2 and _is_skin_tone(pixel):
-				face_count += 1
-				face_hair_delta += _delta_e_rgb(pixel, hair_result)
-			if in_hair:
-				hair_count += 1
-				hair_l_before += _luma(pixel)
-				hair_l_after += _luma(hair_result)
-				hair_outfit_delta += _delta_e_rgb(pixel, outfit_result)
 			if in_outfit:
 				outfit_count += 1
 				outfit_delta += _delta_e_rgb(pixel, outfit_result)
-				tunic_hair_delta += _delta_e_rgb(pixel, hair_result)
-	if hair_count == 0 or outfit_count == 0:
-		return {"hair_delta_l": -999.0, "tunic_hair_delta_e": 999.0, "tunic_outfit_delta_e": -999.0, "hair_outfit_delta_e": 999.0}
+	if outfit_count == 0:
+		return {"tunic_outfit_delta_e": -999.0}
 	return {
-		"face_hair_delta_e": face_hair_delta / max(face_count, 1),
-		"hair_delta_l": (hair_l_before - hair_l_after) / hair_count,
-		"tunic_hair_delta_e": tunic_hair_delta / outfit_count,
 		"tunic_outfit_delta_e": outfit_delta / outfit_count,
-		"hair_outfit_delta_e": hair_outfit_delta / hair_count,
-		"hair_mask_pixels": hair_count,
-		"head_opaque_pixels": head_opaque_pixels,
 	}
 
 func _anchor_inside_outfit(skin: String, frame: String, anchor_name: String) -> bool:
@@ -325,7 +282,9 @@ func _shop_tabs_fit(shop: MetaShopUI) -> bool:
 		var rect := (button as Control).get_global_rect()
 		if rect.position.x < 0.0 or rect.end.x > shop.size.x:
 			return false
-	return true
+	var first_rect := (buttons[0] as Control).get_global_rect()
+	var last_rect := (buttons[-1] as Control).get_global_rect()
+	return absf(first_rect.position.x - (shop.size.x - last_rect.end.x)) <= 1.0
 
 func _visible_rect(image: Image, minimum_alpha: float) -> Rect2i:
 	var minimum := Vector2i(image.get_width(), image.get_height())
@@ -340,32 +299,6 @@ func _visible_rect(image: Image, minimum_alpha: float) -> Rect2i:
 			maximum.y = maxi(maximum.y, y)
 	return Rect2i(minimum, maximum - minimum + Vector2i.ONE)
 
-func _hair_regressions_pass(skin: String) -> bool:
-	var root_path := "res://assets/art/character_frames/%s/front" % skin
-	var hair := Image.load_from_file(ProjectSettings.globalize_path(root_path + "_hair_mask.png"))
-	var outfit := Image.load_from_file(ProjectSettings.globalize_path(root_path + "_outfit_mask.png"))
-	var outfit_rect := outfit.get_used_rect()
-	if HAIR_STRAND_POINTS.has(skin):
-		var strand: Vector2i = HAIR_STRAND_POINTS[skin]
-		if hair.get_pixelv(strand).a <= 0.5:
-			return false
-	var cutoff := outfit_rect.position.y - 6
-	var center_x := outfit_rect.get_center().x
-	for y in range(cutoff, hair.get_height()):
-		for x in hair.get_width():
-			if hair.get_pixel(x, y).a <= 0.5:
-				continue
-			if skin != "f1" or absf(float(x - center_x)) <= 45.0:
-				return false
-	return true
-
-func _dye_hair(pixel: Color, tint: Color) -> Color:
-	var value := lerpf(0.35, 1.10, smoothstep(0.05, 0.75, _luma(pixel) / 100.0))
-	var dyed := Color(tint.r * value, tint.g * value, tint.b * value, pixel.a)
-	if _luma(tint) < 18.0:
-		dyed = Color(dyed.r * 0.18, dyed.g * 0.18, dyed.b * 0.18, dyed.a)
-	return dyed
-
 func _dye_outfit(pixel: Color, tint: Color) -> Color:
 	var value := lerpf(0.42, 1.34, _luma(pixel) / 100.0)
 	var dyed := Color(tint.r * value, tint.g * value, tint.b * value, pixel.a)
@@ -373,14 +306,6 @@ func _dye_outfit(pixel: Color, tint: Color) -> Color:
 
 func _luma(pixel: Color) -> float:
 	return (pixel.r * 0.299 + pixel.g * 0.587 + pixel.b * 0.114) * 100.0
-
-func _is_skin_tone(pixel: Color) -> bool:
-	var red := pixel.r * 255.0
-	var green := pixel.g * 255.0
-	var blue := pixel.b * 255.0
-	var cb := 128.0 - 0.168736 * red - 0.331264 * green + 0.5 * blue
-	var cr := 128.0 + 0.5 * red - 0.418688 * green - 0.081312 * blue
-	return cb >= 72.0 and cb <= 132.0 and cr >= 132.0 and cr <= 184.0 and red > green * 0.92
 
 func _delta_e_rgb(a: Color, b: Color) -> float:
 	return Vector3(a.r - b.r, a.g - b.g, a.b - b.b).length() * 100.0
