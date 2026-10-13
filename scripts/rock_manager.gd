@@ -116,7 +116,7 @@ func _physics_process(delta: float) -> void:
 		if player.global_position.y <= hazard.anchor_y + 360.0 and not warning_ids.has(hazard.hazard_id):
 			warning_ids[hazard.hazard_id] = true
 			var audio := get_parent().get_node_or_null("Audio") as BeanstalkAudio
-			if audio != null: audio.play_sfx("bean_warning_creak")
+			if audio != null: audio.play_sfx("rock_rumble")
 		var clock_scale := float(nightmare_modifiers.get("rock_clock_scale", 1.0)) if game.is_nightmare_mode() else 1.0
 		hazard.advance_threat_clock(delta * clock_scale, player.time_wings_active, player.global_position.y)
 		if _swept_contact(hazard) and invulnerability_remaining <= 0.0 and not hit_ids.has(hazard.hazard_id):

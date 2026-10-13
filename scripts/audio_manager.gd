@@ -3,16 +3,18 @@ extends Node
 
 const STREAMS := {
 	"music_game": preload("res://assets/audio/music_game.ogg"), "music_menu": preload("res://assets/audio/music_menu.ogg"),
-	"wind_loop": preload("res://assets/audio/wind_loop.ogg"), "branch_swoosh": preload("res://assets/audio/branch_swoosh.ogg"),
-	"bean_warning_creak": preload("res://assets/audio/bean_warning_creak.ogg"), "bean_fall_whoosh": preload("res://assets/audio/bean_fall_whoosh.ogg"),
-	"bean_impact": preload("res://assets/audio/bean_impact.ogg"), "bean_impact_wood": preload("res://assets/audio/bean_impact_wood.ogg"),
-	"spider_step_1": preload("res://assets/audio/spider_step_1.ogg"), "spider_step_2": preload("res://assets/audio/spider_step_2.ogg"),
+	"wind_loop": preload("res://assets/audio/wind_meadow_loop.ogg"), "branch_swoosh": preload("res://assets/audio/vine_swish.ogg"),
+	"bean_warning_creak": preload("res://assets/audio/bean_pop.ogg"), "bean_fall_whoosh": preload("res://assets/audio/bean_fall_whoosh.ogg"),
+	"bean_impact": preload("res://assets/audio/bean_impact.ogg"), "bean_impact_wood": preload("res://assets/audio/leaf_crunch.ogg"),
+	"spider_step_1": preload("res://assets/audio/spider_skitter_1.ogg"), "spider_step_2": preload("res://assets/audio/spider_skitter_2.ogg"),
 	"spider_scream": preload("res://assets/audio/spider_scream.ogg"), "heartbeat_thump": preload("res://assets/audio/heartbeat_thump.ogg"),
-	"time_wings": preload("res://assets/audio/time_wings.ogg"), "stage_complete": preload("res://assets/audio/stage_complete.ogg"),
-	"game_complete": preload("res://assets/audio/game_complete.ogg"), "death_bass_down": preload("res://assets/audio/death_bass_down.ogg"),
-	"ui_click": preload("res://assets/audio/ui_click.ogg"), "climb_rustle_1": preload("res://assets/audio/climb_rustle_1.ogg"),
-	"gold_pickup": preload("res://assets/audio/gold_pickup.ogg"),
+	"time_wings": preload("res://assets/audio/wings_flap.ogg"), "stage_complete": preload("res://assets/audio/stage_complete.ogg"),
+	"game_complete": preload("res://assets/audio/xylophone_win.ogg"), "death_bass_down": preload("res://assets/audio/vine_snap_fall.ogg"),
+	"ui_click": preload("res://assets/audio/page_flick.ogg"), "climb_rustle_1": preload("res://assets/audio/climb_rustle_1.ogg"),
+	"gold_pickup": preload("res://assets/audio/kalimba_gold.ogg"),
 	"climb_rustle_2": preload("res://assets/audio/climb_rustle_2.ogg"), "climb_rustle_3": preload("res://assets/audio/climb_rustle_3.ogg"),
+	"rock_rumble": preload("res://assets/audio/rock_rumble.ogg"), "vine_crack": preload("res://assets/audio/vine_crack.ogg"),
+	"vine_break": preload("res://assets/audio/vine_break.ogg"),
 }
 const VOLUME_DB := {"music": -14.0, "ambience": -24.0, "sfx": -7.0, "heartbeat": -12.0}
 const EVENT_RING_CAPACITY := 24
@@ -42,7 +44,7 @@ var audio_events: Array = []
 func announce_storm_role(role: String) -> void:
 	# Storm mechanics reuse the compact existing palette; the distinct role is
 	# still recorded for debug/QA even when it maps to an existing sound.
-	var stream_by_role := {"storm_wind": "wind_loop", "branch_crack": "bean_warning_creak", "branch_break": "branch_swoosh", "web_shot": "spider_scream"}
+	var stream_by_role := {"storm_wind": "wind_loop", "branch_crack": "vine_crack", "branch_break": "vine_break", "web_shot": "spider_scream"}
 	played_roles[role] = true
 	_record_event(role)
 	var stream_name := String(stream_by_role.get(role, "branch_swoosh"))
