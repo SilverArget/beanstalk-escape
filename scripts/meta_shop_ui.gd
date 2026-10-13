@@ -7,6 +7,7 @@ signal run_started
 const SLOTS := ["HAIR", "FACE", "TRAIL", "OUTFIT"]
 
 var economy: EconomyManager
+var platform_services: Node
 var player_visual: PlayerVisual
 var mode := "SHOP"
 var active_tab := "HAIR"
@@ -21,9 +22,12 @@ var preview: PlayerVisual
 var footer: HBoxContainer
 var gold_label: Label
 var start_button: Button
+var double_treasure_button: Button
+var pending_double_gold := 0
 
-func setup(manager: EconomyManager, gameplay_visual: PlayerVisual) -> void:
+func setup(manager: EconomyManager, gameplay_visual: PlayerVisual, services: Node = null) -> void:
 	economy = manager
+	platform_services = services
 	player_visual = gameplay_visual
 	_build()
 	economy.changed.connect(func(_snapshot): refresh())
@@ -41,6 +45,13 @@ func open_character_select() -> void:
 	visible = true
 	refresh()
 	call_deferred("_focus_start_button")
+
+func open_map() -> void:
+	mode = "MAP"
+	pending_double_gold = 0
+	visible = true
+	refresh()
+	call_deferred("_focus_first_map_action")
 
 func close() -> void:
 	visible = false
@@ -102,6 +113,11 @@ func _build() -> void:
 	gold_label.custom_minimum_size = Vector2(190, 40)
 	gold_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	footer.add_child(gold_label)
+	double_treasure_button = Button.new()
+	double_treasure_button.text = "DOUBLE TREASURE (AD)"
+	double_treasure_button.custom_minimum_size = Vector2(210, 40)
+	double_treasure_button.pressed.connect(_double_treasure)
+	footer.add_child(double_treasure_button)
 	var back := Button.new()
 	back.text = "BACK"
 	back.custom_minimum_size = Vector2(130, 40)
@@ -128,19 +144,25 @@ func _layout() -> void:
 	preview_host.position = Vector2(8, 92)
 	preview_host.size = Vector2(preview_width, maxf(footer_y - 98.0, 120.0))
 	preview.position = Vector2(preview_width * 0.5, preview_host.size.y * 0.52)
-	scroll.position = Vector2(preview_width + 16, 92)
-	scroll.size = Vector2(width - preview_width - 24, maxf(footer_y - 98.0, 120.0))
-	grid.columns = 3 if scroll.size.x >= 450.0 else 2
+	var map_mode := mode == "MAP"
+	preview_host.visible = not map_mode
+	scroll.position = Vector2(8, 56) if map_mode else Vector2(preview_width + 16, 92)
+	scroll.size = Vector2(width - 16 if map_mode else width - preview_width - 24, maxf(footer_y - scroll.position.y - 6.0, 120.0))
+	grid.columns = (6 if scroll.size.x >= 720.0 else 3) if map_mode else (3 if scroll.size.x >= 450.0 else 2)
 
 func refresh() -> void:
 	if economy == null:
 		return
-	title_label.text = "CHARACTER SELECT" if mode == "SELECT" else "SHOP"
+	title_label.text = "STAGE MAP" if mode == "MAP" else ("CHARACTER SELECT" if mode == "SELECT" else "SHOP")
 	gold_label.text = "GOLD %d  ·  LV %d" % [economy.gold, economy.level]
 	start_button.visible = mode == "SELECT"
+	double_treasure_button.visible = mode == "MAP" and pending_double_gold > 0 and platform_services != null and platform_services.is_rewarded_supported()
+	if double_treasure_button.visible:
+		double_treasure_button.text = "DOUBLE +%d (AD)" % pending_double_gold
 	_rebuild_tabs()
 	_rebuild_cards()
 	_apply_preview()
+	_layout()
 
 func _focus_start_button() -> void:
 	if visible and mode == "SELECT" and start_button.visible and not start_button.disabled:
@@ -163,6 +185,9 @@ func _cycle_character(direction: int) -> void:
 
 func _rebuild_tabs() -> void:
 	for child in tabs.get_children(): child.queue_free()
+	tabs.visible = mode != "MAP"
+	if mode == "MAP":
+		return
 	if mode == "SELECT":
 		for gender in ["MALE", "FEMALE"]:
 			var button := Button.new()
@@ -184,7 +209,10 @@ func _rebuild_tabs() -> void:
 
 func _rebuild_cards() -> void:
 	for child in grid.get_children(): child.queue_free()
-	if mode == "SELECT":
+	if mode == "MAP":
+		for stage_number in range(1, 31):
+			grid.add_child(_map_node_card(stage_number))
+	elif mode == "SELECT":
 		for character_id in economy.character_catalog():
 			var data: Dictionary = economy.character_catalog()[character_id]
 			if mode == "SELECT" and str(data.gender) != active_gender:
@@ -193,6 +221,57 @@ func _rebuild_cards() -> void:
 	else:
 		for item in economy.cosmetic_catalog(active_tab):
 			grid.add_child(_cosmetic_card(item))
+
+func _map_node_card(stage_number: int) -> Control:
+	var progression := economy.progression_snapshot()
+	var completed: Array = progression.completed_stages
+	var skipped: Array = progression.skipped_stages
+	var claimed: Array = progression.treasures_claimed
+	var is_summit := stage_number % 5 == 0
+	var status := "COMPLETED" if completed.has(stage_number) else ("SKIPPED" if skipped.has(stage_number) else "LOCKED")
+	if status == "LOCKED" and (stage_number == 1 or completed.has(stage_number - 1)):
+		status = "OPEN"
+	var card := _base_card("%s %02d" % ["TREASURE" if is_summit else "STAGE", stage_number], status)
+	card.custom_minimum_size = Vector2(120, 108)
+	var body := _card_body(card)
+	var button := Button.new()
+	button.custom_minimum_size.y = 34
+	if is_summit and claimed.has(stage_number):
+		button.text = "CLAIMED"
+		button.disabled = true
+	elif is_summit and completed.has(stage_number):
+		button.text = "CLAIM"
+		button.pressed.connect(_claim_treasure.bind(stage_number))
+	else:
+		button.text = status
+		button.disabled = true
+	body.add_child(button)
+	return card
+
+func _claim_treasure(stage_number: int) -> void:
+	var reward := economy.claim_map_treasure(stage_number)
+	if reward.is_empty():
+		return
+	pending_double_gold = int(reward.get("amount", 0)) if str(reward.get("type", "")) == "gold" else 0
+	refresh()
+
+func _double_treasure() -> void:
+	if pending_double_gold <= 0 or platform_services == null:
+		return
+	var reward := pending_double_gold
+	pending_double_gold = 0
+	platform_services.show_rewarded("double_treasure", func(): economy.grant_gold(reward); refresh())
+	refresh()
+
+func _focus_first_map_action() -> void:
+	if not visible or mode != "MAP":
+		return
+	for card in grid.get_children():
+		for node in card.find_children("*", "Button", true, false):
+			var button := node as Button
+			if not button.disabled:
+				button.grab_focus()
+				return
 
 func _base_card(title: String, subtitle: String) -> PanelContainer:
 	var card := PanelContainer.new()

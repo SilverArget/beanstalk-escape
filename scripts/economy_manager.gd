@@ -66,6 +66,64 @@ func grant_gold(amount: int) -> int:
 	_persist_and_emit()
 	return reward
 
+func daily_snapshot() -> Dictionary:
+	var saved := save_manager.daily_snapshot()
+	var today := Time.get_date_string_from_system(false)
+	var claimed_today := str(saved.last_claim_date) == today
+	return {
+		"day_index": int(saved.day_index) if claimed_today else _next_daily_day(saved, today),
+		"claimed_today": claimed_today,
+	}
+
+func claim_daily_bonus() -> Dictionary:
+	var daily := daily_snapshot()
+	if daily.claimed_today:
+		return {}
+	var day_index := int(daily.day_index)
+	var result := {"day_index": day_index, "gold": 0, "item": ""}
+	if day_index == 7:
+		var item_id := str(config.get("daily_login_day_7_item", "outfit_sky"))
+		_unlock_item(item_id)
+		result.item = item_id
+	else:
+		var rewards: Array = config.get("daily_login_gold", [])
+		if day_index < 1 or day_index > rewards.size():
+			return {}
+		result.gold = maxi(int(rewards[day_index - 1]), 0)
+		gold += result.gold
+	save_manager.write_daily({"day_index": day_index, "last_claim_date": Time.get_date_string_from_system(false)})
+	_persist_shop()
+	return result
+
+func progression_snapshot() -> Dictionary:
+	return save_manager.progression_snapshot()
+
+func mark_stage_completed(stage_number: int) -> void:
+	save_manager.mark_stage_completed(stage_number)
+	changed.emit(snapshot())
+
+func map_treasure(stage_number: int) -> Dictionary:
+	for raw_reward in config.get("map_treasures", []):
+		if raw_reward is Dictionary and int(raw_reward.get("stage", 0)) == stage_number:
+			return (raw_reward as Dictionary).duplicate(true)
+	return {}
+
+func claim_map_treasure(stage_number: int) -> Dictionary:
+	var progression := progression_snapshot()
+	if not progression.completed_stages.has(stage_number) or progression.treasures_claimed.has(stage_number):
+		return {}
+	var reward := map_treasure(stage_number)
+	if reward.is_empty() or not save_manager.mark_treasure_claimed(stage_number):
+		return {}
+	if str(reward.get("type", "")) == "item":
+		_unlock_item(str(reward.get("item", "")))
+	else:
+		var amount := maxi(int(reward.get("amount", 0)), 0)
+		gold += amount
+		reward["amount"] = amount
+	_persist_shop()
+	return reward
+
 func reload_profile(profile: Dictionary) -> void:
 	var meta: Dictionary = profile.get("meta", {})
 	gold = maxi(int(meta.get("gold", gold)), 0)
@@ -168,6 +226,20 @@ func _persist_shop() -> void:
 		save_manager.write_shop(shop)
 	changed.emit(snapshot())
 
+func _unlock_item(item_id: String) -> void:
+	if not item_id.is_empty() and not shop.get("owned", []).has(item_id):
+		shop.owned.append(item_id)
+
+func _next_daily_day(saved: Dictionary, today: String) -> int:
+	var last_date := str(saved.get("last_claim_date", ""))
+	if last_date.is_empty():
+		return 1
+	var last_unix := Time.get_unix_time_from_datetime_string(last_date + "T00:00:00")
+	var today_unix := Time.get_unix_time_from_datetime_string(today + "T00:00:00")
+	if int(today_unix - last_unix) != 86400:
+		return 1
+	return int(saved.get("day_index", 0)) % 7 + 1
+
 func threshold_for(current_level := level) -> int:
 	return value("level_threshold_base") + value("level_threshold_per_level") * (current_level - 1)
 
@@ -211,6 +283,8 @@ func _validate_config() -> bool:
 	config["stage_gold_count_min"] = maxi(int(config.stage_gold_count_min), 1)
 	config["stage_gold_count_max"] = maxi(int(config.stage_gold_count_max), int(config.stage_gold_count_min))
 	config["level_threshold_base"] = maxi(int(config.level_threshold_base), 1)
+	if config.daily_login_gold is not Array or config.daily_login_gold.size() != 6:
+		return false
 	return true
 
 func _try_playgama_remote_config() -> void:

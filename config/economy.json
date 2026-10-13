@@ -10,6 +10,16 @@
   "level_threshold_per_level": 25,
   "level_up_gold": 50,
   "get_more_gold_reward": 100,
+  "daily_login_gold": [50, 75, 100, 125, 150, 200],
+  "daily_login_day_7_item": "outfit_sky",
+  "map_treasures": [
+    {"stage": 5, "type": "gold", "amount": 150},
+    {"stage": 10, "type": "item", "item": "hair_silver"},
+    {"stage": 15, "type": "gold", "amount": 250},
+    {"stage": 20, "type": "item", "item": "trail_star"},
+    {"stage": 25, "type": "gold", "amount": 400},
+    {"stage": 30, "type": "gold", "amount": 600}
+  ],
   "skip_stage_death_count": 3,
   "interstitial_min_stage": 3,
   "interstitial_completed_stage_interval": 2,
