@@ -2,6 +2,12 @@ extends SceneTree
 
 const TEST_PATH := "user://qa/test_shop_visual_audio.json"
 const SKINS := ["m1", "m2", "m3", "f1", "f2", "f3"]
+const HAIR_STRAND_POINTS := {
+	"m1": Vector2i(243, 59),
+	"m2": Vector2i(267, 100),
+	"m3": Vector2i(260, 77),
+	"f1": Vector2i(292, 82),
+}
 var passed := 0
 var failed := 0
 
@@ -27,6 +33,34 @@ func _run() -> void:
 	pet_preview.show_front_preview()
 	var pet_layer := pet_preview.cosmetic_sprites.get("PET") as Sprite2D
 	_check(pet_layer != null and pet_layer.visible and pet_layer.texture != null and absf(pet_layer.position.x) <= 92.0, "pet visible inside front preview")
+	var shop_preview := MetaShopUI.new()
+	root.add_child(shop_preview)
+	shop_preview.size = Vector2(960, 540)
+	shop_preview.setup(economy, null)
+	var pets_fit := true
+	var pets_clear_body := true
+	var pets_grounded := true
+	var pets_proportional := true
+	for skin in SKINS:
+		shop_preview.preview.set_skin(skin)
+		for item in economy.cosmetic_catalog("PET"):
+			shop_preview.preview.set_cosmetics({"HAIR": "", "OUTFIT": "", "EMBLEM": "", "PET": item.id, "TRAIL": ""}, economy.cosmetic_catalog())
+			shop_preview.preview.show_front_preview()
+			var rects := _preview_rects(shop_preview, skin, item)
+			var body_rect: Rect2 = rects.body
+			var pet_rect: Rect2 = rects.pet
+			var host_rect := Rect2(Vector2.ZERO, shop_preview.preview_host.size)
+			var gap := pet_rect.position.x - body_rect.end.x
+			var height_ratio := pet_rect.size.y / body_rect.size.y
+			pets_fit = pets_fit and host_rect.encloses(body_rect) and host_rect.encloses(pet_rect)
+			pets_clear_body = pets_clear_body and gap >= 2.0 and gap <= 10.0 and not body_rect.intersects(pet_rect)
+			pets_grounded = pets_grounded and absf(pet_rect.end.y - body_rect.end.y) <= 3.0
+			pets_proportional = pets_proportional and height_ratio >= 0.22 and height_ratio <= 0.28
+	_check(pets_fit, "all six pets and all characters fit the 960x540 preview host")
+	_check(pets_clear_body, "all six pets sit 2-10 px to the right without overlap")
+	_check(pets_grounded, "all six pets share the character foot line")
+	_check(pets_proportional, "all six pets are 22-28 percent of character height")
+	shop_preview.free()
 	var all_pixels_ok := true
 	for skin in SKINS:
 		pet_preview.set_skin(skin)
@@ -35,11 +69,12 @@ func _run() -> void:
 		print("PIXEL %s/front hair=%d/%d face DE(hair)=%.2f hair DL=%.2f tunic DE(outfit)=%.2f" % [skin.to_upper(), metrics.hair_mask_pixels, metrics.head_opaque_pixels, metrics.face_hair_delta_e, metrics.hair_delta_l, metrics.tunic_outfit_delta_e])
 		all_pixels_ok = all_pixels_ok and metrics.face_hair_delta_e < 3.0 and metrics.hair_delta_l >= 15.0 and metrics.tunic_outfit_delta_e >= 10.0
 		_check(metrics.hair_mask_pixels >= metrics.head_opaque_pixels * 0.35, "%s front hair mask covers at least 35%% of opaque head pixels" % skin.to_upper())
+		_check(_hair_regressions_pass(skin), "%s front hair mask covers strands and excludes the collar" % skin.to_upper())
 		_check(_anchor_inside_outfit(skin, "front", "emblem_center"), "%s front emblem center is inside outfit mask" % skin.to_upper())
 		_check(_anchor_inside_outfit(skin, "hang", "emblem_center"), "%s hang emblem center is inside outfit mask" % skin.to_upper())
 		_check(not _pet_overlaps_body(skin, pet_preview, pet_layer), "%s front pet bbox does not overlap body bbox" % skin.to_upper())
 	_check(all_pixels_ok, "front face/hair/outfit isolation for six skins")
-	pet_preview.queue_free()
+	pet_preview.free()
 	var audio := BeanstalkAudio.new()
 	root.add_child(audio)
 	await process_frame
@@ -152,13 +187,59 @@ func _pet_overlaps_body(skin: String, visual: PlayerVisual, pet_layer: Sprite2D)
 	var body_image := Image.load_from_file(ProjectSettings.globalize_path("res://assets/art/character_frames/%s/front.png" % skin))
 	var pet_path := "res://assets/art/pets/%s" % str(visual.cosmetic_data["pet_squirrel"].image)
 	var pet_image := Image.load_from_file(ProjectSettings.globalize_path(pet_path))
-	var body_used := body_image.get_used_rect()
-	var pet_used := pet_image.get_used_rect()
+	var body_used := _visible_rect(body_image, 0.5)
+	var pet_used := _visible_rect(pet_image, 0.04)
 	var body_top_left := visual.sprite.position + (Vector2(body_used.position) - Vector2(body_image.get_size()) * 0.5) * PlayerVisual.ART_SCALE
 	var body_rect := Rect2(body_top_left, Vector2(body_used.size) * PlayerVisual.ART_SCALE)
 	var pet_top_left := pet_layer.position + (Vector2(pet_used.position) - Vector2(pet_image.get_size()) * 0.5) * pet_layer.scale
 	var pet_rect := Rect2(pet_top_left, Vector2(pet_used.size) * pet_layer.scale)
 	return body_rect.intersects(pet_rect)
+
+func _preview_rects(shop: MetaShopUI, skin: String, item: Dictionary) -> Dictionary:
+	var visual := shop.preview
+	var pet_layer := visual.cosmetic_sprites.get("PET") as Sprite2D
+	var body_image := Image.load_from_file(ProjectSettings.globalize_path("res://assets/art/character_frames/%s/front.png" % skin))
+	var pet_image := Image.load_from_file(ProjectSettings.globalize_path("res://assets/art/pets/%s" % str(item.image)))
+	var body_used := _visible_rect(body_image, 0.5)
+	var pet_used := _visible_rect(pet_image, 0.04)
+	var body_top_left := visual.sprite.position + (Vector2(body_used.position) - Vector2(body_image.get_size()) * 0.5) * PlayerVisual.ART_SCALE
+	var pet_top_left := pet_layer.position + (Vector2(pet_used.position) - Vector2(pet_image.get_size()) * 0.5) * pet_layer.scale
+	return {
+		"body": Rect2(visual.position + body_top_left * visual.scale, Vector2(body_used.size) * PlayerVisual.ART_SCALE * visual.scale),
+		"pet": Rect2(visual.position + pet_top_left * visual.scale, Vector2(pet_used.size) * pet_layer.scale * visual.scale),
+	}
+
+func _visible_rect(image: Image, minimum_alpha: float) -> Rect2i:
+	var minimum := Vector2i(image.get_width(), image.get_height())
+	var maximum := Vector2i(-1, -1)
+	for y in image.get_height():
+		for x in image.get_width():
+			if image.get_pixel(x, y).a < minimum_alpha:
+				continue
+			minimum.x = mini(minimum.x, x)
+			minimum.y = mini(minimum.y, y)
+			maximum.x = maxi(maximum.x, x)
+			maximum.y = maxi(maximum.y, y)
+	return Rect2i(minimum, maximum - minimum + Vector2i.ONE)
+
+func _hair_regressions_pass(skin: String) -> bool:
+	var root_path := "res://assets/art/character_frames/%s/front" % skin
+	var hair := Image.load_from_file(ProjectSettings.globalize_path(root_path + "_hair_mask.png"))
+	var outfit := Image.load_from_file(ProjectSettings.globalize_path(root_path + "_outfit_mask.png"))
+	var outfit_rect := outfit.get_used_rect()
+	if HAIR_STRAND_POINTS.has(skin):
+		var strand: Vector2i = HAIR_STRAND_POINTS[skin]
+		if hair.get_pixelv(strand).a <= 0.5:
+			return false
+	var cutoff := outfit_rect.position.y - 6
+	var center_x := outfit_rect.get_center().x
+	for y in range(cutoff, hair.get_height()):
+		for x in hair.get_width():
+			if hair.get_pixel(x, y).a <= 0.5:
+				continue
+			if skin != "f1" or absf(float(x - center_x)) <= 45.0:
+				return false
+	return true
 
 func _dye_hair(pixel: Color, tint: Color) -> Color:
 	var value := lerpf(0.35, 1.10, smoothstep(0.05, 0.75, _luma(pixel) / 100.0))

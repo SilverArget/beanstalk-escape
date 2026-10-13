@@ -9,6 +9,15 @@ const SKIN_IDS := ["M1", "M2", "M3", "F1", "F2", "F3"]
 const FRAME_RATE := 8.0
 const ART_SCALE := 0.49
 const BASE_Y := -7.2
+const PET_PREVIEW_HEIGHT := 60.0
+const PET_PREVIEW_BOUNDS := {
+	"bird.png": Rect2(195, 170, 875, 943),
+	"frog.png": Rect2(269, 298, 738, 670),
+	"ladybug.png": Rect2(180, 311, 962, 695),
+	"rabbit.png": Rect2(241, 143, 802, 949),
+	"snail.png": Rect2(201, 243, 918, 771),
+	"squirrel.png": Rect2(120, 65, 1082, 1130),
+}
 
 var skin_id := "M1"
 var mode := "hang"
@@ -174,10 +183,12 @@ func set_cosmetics(equipped: Dictionary, catalog: Array) -> void:
 			continue
 		layer.visible = not item_id.is_empty() and cosmetic_data.has(item_id)
 		if layer.visible:
+			var image_name := str(cosmetic_data[item_id].get("image", ""))
 			var art_folder := "pets" if slot == "PET" else "cosmetics"
-			layer.texture = load("res://assets/art/%s/%s" % [art_folder, str(cosmetic_data[item_id].get("image", ""))])
+			layer.texture = load("res://assets/art/%s/%s" % [art_folder, image_name])
 			if slot == "PET" and layer.texture != null:
-				var pet_scale := 68.0 / maxf(float(layer.texture.get_height()), 1.0)
+				var preview_bounds: Rect2 = PET_PREVIEW_BOUNDS.get(image_name, Rect2(Vector2.ZERO, layer.texture.get_size()))
+				var pet_scale := PET_PREVIEW_HEIGHT / maxf(preview_bounds.size.y, 1.0)
 				layer.scale = Vector2.ONE * pet_scale
 	_update_cosmetic_anchors()
 	var outfit_id := str(equipped_cosmetics.get("OUTFIT", ""))
@@ -220,8 +231,11 @@ func _update_cosmetic_anchors() -> void:
 	var pet_data: Array = frame_anchor.get("pet_anchor", [])
 	if frame_name == "front" and pet_data.size() == 2 and pet.texture != null:
 		var pet_bottom_left: Vector2 = source_to_local.call(Vector2(float(pet_data[0]), float(pet_data[1])))
-		var pet_size := pet.texture.get_size() * pet.scale
-		pet.position = pet_bottom_left + Vector2(pet_size.x * 0.5, -pet_size.y * 0.5)
+		var pet_id := str(equipped_cosmetics.get("PET", ""))
+		var image_name := str(cosmetic_data.get(pet_id, {}).get("image", ""))
+		var preview_bounds: Rect2 = PET_PREVIEW_BOUNDS.get(image_name, Rect2(Vector2.ZERO, pet.texture.get_size()))
+		var visible_top_left_offset := (preview_bounds.position - pet.texture.get_size() * 0.5) * pet.scale
+		pet.position = pet_bottom_left - Vector2(0.0, preview_bounds.size.y * pet.scale.y) - visible_top_left_offset
 	else:
 		pet.position = source_to_local.call(Vector2(head_center.x + head_width * 1.65, head_center.y + head_width * 1.75))
 	pet.visible = pet.texture != null and not str(equipped_cosmetics.get("PET", "")).is_empty() and frame_name == "front"

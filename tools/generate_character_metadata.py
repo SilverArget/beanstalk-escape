@@ -250,22 +250,23 @@ def front_hair_mask(rgba: np.ndarray, outfit: np.ndarray, allow_long_hair: bool)
         if int(skin_stats[face_label, cv2.CC_STAT_AREA]) > 150:
             skin[skin_labels == face_label] = 1
     skin = cv2.morphologyEx(skin, cv2.MORPH_CLOSE, np.ones((3, 3), dtype=np.uint8))
-    contours, _ = cv2.findContours(skin, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    filled_face = np.zeros_like(skin)
-    face_contours = [contour for contour in contours if cv2.contourArea(contour) > 150.0]
-    if face_contours:
-        cv2.drawContours(filled_face, [max(face_contours, key=cv2.contourArea)], -1, 1, -1)
 
-    long_hair = outfit_y0 + 42 if allow_long_hair else outfit_y0
+    collar_cutoff = outfit_y0 - 6
+    long_hair = outfit_y0 + 42 if allow_long_hair else collar_cutoff
     region = (
         alpha
         & (outfit[:, :, 3] <= 16)
         & (np.abs(xx - center_x) <= 102)
         & (yy < long_hair)
     )
-    # Below the collar line only side locks/ponytails are eligible.
-    region &= (yy < outfit_y0 - 10) | (np.abs(xx - center_x) > 45)
-    candidates = region & (hair_distance < 31.0) & (filled_face == 0)
+    # Keep the neck/collar clear. F1's long side locks are the sole exception.
+    region &= (yy < collar_cutoff) | (allow_long_hair & (np.abs(xx - center_x) > 45))
+    # Exclude the actual connected skin component rather than its filled contour:
+    # the contour spans over forehead bangs and used to leave their brown strokes.
+    face_features = face_ellipse & (np.abs(xx - center_x) <= 44) & (yy >= outfit_y0 - 58)
+    hair_likely = hair_distance + 6.0 < skin_distance
+    protected_skin = (skin > 0) & ~hair_likely
+    candidates = region & (hair_distance < 31.0) & ~protected_skin & ~face_features
     bang_candidates = (
         region
         & (yy < outfit_y0 - 24)
@@ -289,10 +290,17 @@ def front_hair_mask(rgba: np.ndarray, outfit: np.ndarray, allow_long_hair: bool)
         if area < 5:
             continue
         component = labels == index
-        face_fraction = float(np.count_nonzero(component & (filled_face > 0))) / float(area)
-        if face_fraction > 0.60 and not np.any(component & crown_seed):
-            continue
         selected |= component
+
+    # Close the painted hair component so dark internal linework and narrow
+    # colour gaps recolour with the surrounding lock. Skin and facial features
+    # remain protected after the close, and the collar cutoff is re-applied.
+    closed = cv2.morphologyEx(
+        selected.astype(np.uint8),
+        cv2.MORPH_CLOSE,
+        cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (11, 11)),
+    ).astype(bool)
+    selected = (selected | closed) & region & ~protected_skin & ~face_features
 
     result = np.zeros_like(rgba)
     result[selected] = (255, 255, 255, 255)
@@ -336,7 +344,7 @@ def main() -> None:
             }
             if frame == "front":
                 _, _, body_x1, body_y1 = opaque_bounds(rgba[:, :, 3])
-                anchors[frame]["pet_anchor"] = [body_x1 + 6, body_y1]
+                anchors[frame]["pet_anchor"] = [body_x1 + 7, body_y1]
                 front_hair_mask(rgba, outfit, skin == "f1").save(ROOT / skin / "front_hair_mask.png", optimize=True)
         (ROOT / skin / "anchors.json").write_text(
             json.dumps({"frames": anchors}, indent=2) + "\n", encoding="utf-8"
