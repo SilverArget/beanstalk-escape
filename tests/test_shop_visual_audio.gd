@@ -2,16 +2,41 @@ extends SceneTree
 
 const TEST_PATH := "user://qa/test_shop_visual_audio.json"
 const SKINS := ["m1", "m2", "m3", "f1", "f2", "f3"]
-const BACK_FRAMES := ["climb_left", "climb_right", "climb_reach", "hang", "jump", "hurt", "fall", "cheer"]
-const BELT_ROW_HINTS := {
-	"climb_left": 141,
-	"climb_right": 137,
-	"climb_reach": 147,
-	"hang": 137,
-	"jump": 134,
-	"hurt": 144,
-	"fall": 158,
-	"cheer": 139,
+const BACK_FRAMES := ["climb_left", "climb_right", "climb_reach", "hang", "jump", "fall"]
+const FRONT_FRAMES := ["front", "hurt", "cheer"]
+# Hand-measured [shoulder top, dark-brown belt top, tunic left, tunic right].
+# The lower outfit-mask edge is the hem and must never be used as the belt.
+const BACK_EMBLEM_LANDMARKS := {
+	"m1": {
+		"climb_left": [89, 136, 152, 202], "climb_right": [91, 136, 155, 207],
+		"climb_reach": [96, 140, 150, 202], "hang": [87, 132, 143, 215],
+		"jump": [93, 130, 151, 213], "fall": [110, 148, 142, 218],
+	},
+	"m2": {
+		"climb_left": [86, 135, 153, 203], "climb_right": [87, 133, 155, 205],
+		"climb_reach": [91, 140, 153, 203], "hang": [84, 128, 143, 217],
+		"jump": [91, 130, 161, 225], "fall": [101, 148, 136, 222],
+	},
+	"m3": {
+		"climb_left": [88, 137, 153, 203], "climb_right": [88, 135, 156, 206],
+		"climb_reach": [96, 145, 153, 203], "hang": [86, 130, 144, 218],
+		"jump": [94, 136, 149, 211], "fall": [105, 148, 142, 218],
+	},
+	"f1": {
+		"climb_left": [89, 136, 149, 199], "climb_right": [90, 135, 162, 208],
+		"climb_reach": [96, 142, 152, 198], "hang": [90, 132, 142, 210],
+		"jump": [93, 130, 151, 211], "fall": [126, 157, 142, 214],
+	},
+	"f2": {
+		"climb_left": [91, 136, 148, 198], "climb_right": [91, 132, 159, 209],
+		"climb_reach": [94, 143, 150, 200], "hang": [91, 128, 142, 216],
+		"jump": [99, 131, 159, 221], "fall": [126, 157, 143, 217],
+	},
+	"f3": {
+		"climb_left": [89, 129, 149, 199], "climb_right": [90, 129, 158, 208],
+		"climb_reach": [95, 137, 145, 195], "hang": [87, 127, 143, 217],
+		"jump": [98, 130, 152, 214], "fall": [121, 156, 142, 216],
+	},
 }
 const HAIR_STRAND_POINTS := {
 	"m1": Vector2i(243, 59),
@@ -50,6 +75,26 @@ func _run() -> void:
 	economy.grant_gold(1000)
 	shop_preview.setup(economy, null)
 	await process_frame
+	shop_preview.active_tab = "EMBLEM"
+	shop_preview.refresh()
+	await process_frame
+	var emblem_item: Dictionary = economy.cosmetic_catalog("EMBLEM")[0]
+	shop_preview.call("_preview_item", emblem_item)
+	await process_frame
+	var emblem_layer := shop_preview.preview.cosmetic_sprites.get("EMBLEM") as Sprite2D
+	_check(shop_preview.preview.frame_name == "hang" and emblem_layer.visible, "EMBLEM tab previews the equipped emblem on the back")
+	_check(is_equal_approx(shop_preview.preview.emblem_visible_bounds.size.x * emblem_layer.scale.x / PlayerVisual.ART_SCALE, float(shop_preview.preview.anchor_data.hang.emblem_width)), "emblem scale uses the alpha-visible texture width")
+	_check(shop_preview.preview.scale.x >= 2.8 and shop_preview.preview.scale.x <= 3.0, "hang preview is enlarged to match front character height")
+	var toggle_rect: Rect2 = shop_preview.view_toggle_button.get_global_rect()
+	_check(toggle_rect.position.x >= 8.0 and toggle_rect.end.x <= shop_preview.preview_host.get_global_rect().end.x and toggle_rect.position.y >= shop_preview.preview_host.get_global_rect().end.y and toggle_rect.end.y <= shop_preview.footer.get_global_rect().position.y, "front/back toggle fits below preview at 960x540")
+	shop_preview.view_toggle_button.pressed.emit()
+	_check(shop_preview.preview.frame_name == "front" and not emblem_layer.visible, "front/back toggle hides emblem on the front")
+	shop_preview.call("_preview_item", emblem_item)
+	_check(shop_preview.preview.frame_name == "hang" and emblem_layer.visible, "focusing an emblem card restores the back preview")
+	shop_preview.active_tab = "PET"
+	shop_preview.refresh()
+	await process_frame
+	_check(shop_preview.preview.frame_name == "front" and shop_preview.view_toggle_button.text == "ARKA", "non-emblem tab resets to front view")
 	var tabs_stay_fixed := _shop_tabs_fit(shop_preview)
 	shop_preview.active_tab = "HAIR"
 	shop_preview.refresh()
@@ -91,6 +136,7 @@ func _run() -> void:
 	_check(pets_grounded, "all six pets share the character foot line")
 	_check(pets_proportional, "all six pets are 22-28 percent of character height")
 	shop_preview.free()
+	pet_preview.set_cosmetics({"HAIR": "", "OUTFIT": "", "EMBLEM": str(emblem_item.id), "PET": "pet_squirrel", "TRAIL": ""}, economy.cosmetic_catalog())
 	var all_pixels_ok := true
 	for skin in SKINS:
 		pet_preview.set_skin(skin)
@@ -100,9 +146,12 @@ func _run() -> void:
 		all_pixels_ok = all_pixels_ok and metrics.face_hair_delta_e < 3.0 and metrics.hair_delta_l >= 15.0 and metrics.tunic_outfit_delta_e >= 10.0
 		_check(metrics.hair_mask_pixels >= metrics.head_opaque_pixels * 0.35, "%s front hair mask covers at least 35%% of opaque head pixels" % skin.to_upper())
 		_check(_hair_regressions_pass(skin), "%s front hair mask covers strands and excludes the collar" % skin.to_upper())
-		_check(_anchor_inside_outfit(skin, "front", "emblem_center"), "%s front emblem center is inside outfit mask" % skin.to_upper())
+		for frame in FRONT_FRAMES:
+			pet_preview.call("_set_frame", frame)
+			_check(not (pet_preview.cosmetic_sprites.get("EMBLEM") as Sprite2D).visible, "%s %s hides the back emblem" % [skin.to_upper(), frame])
 		for frame in BACK_FRAMES:
-			_check(_back_emblem_geometry_pass(skin, frame), "%s %s emblem stays between shoulders and belt at <=40%% tunic width" % [skin.to_upper(), frame])
+			_check(_back_emblem_geometry_pass(skin, frame), "%s %s emblem is centered on the back at about 40%% tunic width" % [skin.to_upper(), frame])
+		pet_preview.show_front_preview()
 		_check(not _pet_overlaps_body(skin, pet_preview, pet_layer), "%s front pet bbox does not overlap body bbox" % skin.to_upper())
 	_check(all_pixels_ok, "front face/hair/outfit isolation for six skins")
 	pet_preview.free()
@@ -224,33 +273,19 @@ func _back_emblem_geometry_pass(skin: String, frame: String) -> bool:
 	if center.size() != 2:
 		return false
 	var emblem_width := float(frame_data.get("emblem_width", 999.0))
-	var head: Array = frame_data.get("head_center", [])
-	var head_width := int(frame_data.get("head_width", 0))
-	if head.size() != 2 or head_width <= 0:
+	var landmarks: Array = BACK_EMBLEM_LANDMARKS.get(skin, {}).get(frame, [])
+	if landmarks.size() != 4:
 		return false
-	var source := Image.load_from_file(ProjectSettings.globalize_path("res://assets/art/character_frames/%s/%s.png" % [skin, frame]))
-	if source == null or source.is_empty():
-		return false
-	var body_x := roundi(float(head[0]))
-	var shoulder_row := roundi(float(head[1]))
-	# Literal pose landmarks keep the assertion independent from the metadata
-	# generator's brown-pixel belt detector.
-	var belt_row := int(BELT_ROW_HINTS.get(frame, shoulder_row + head_width / 2))
-	var emblem_y := float(center[1])
-	var torso_height := float(belt_row - shoulder_row)
-	if torso_height <= 0.0 or emblem_y < shoulder_row + torso_height * 0.35 or emblem_y > shoulder_row + torso_height * 0.55:
-		return false
-	if emblem_y + emblem_width * 0.5 > float(belt_row):
-		return false
-	var emblem_row := clampi(roundi(emblem_y), 0, source.get_height() - 1)
-	var tunic_left := body_x
-	var tunic_right := body_x
-	while tunic_left > 0 and source.get_pixel(tunic_left - 1, emblem_row).a > 0.5 and body_x - tunic_left < head_width:
-		tunic_left -= 1
-	while tunic_right + 1 < source.get_width() and source.get_pixel(tunic_right + 1, emblem_row).a > 0.5 and tunic_right - body_x < head_width:
-		tunic_right += 1
-	var tunic_width := float(tunic_right - tunic_left + 1)
-	return tunic_width > 0.0 and emblem_width <= tunic_width * 0.40
+	var shoulder_row := int(landmarks[0])
+	var belt_top_row := int(landmarks[1])
+	var tunic_left := int(landmarks[2])
+	var tunic_right := int(landmarks[3])
+	var expected_y := roundi(float(shoulder_row) + 0.45 * float(belt_top_row - shoulder_row))
+	var expected_x := roundi(float(tunic_left + tunic_right) * 0.5)
+	var expected_width := roundi(float(tunic_right - tunic_left + 1) * 0.40)
+	return roundi(float(center[0])) == expected_x \
+		and roundi(float(center[1])) == expected_y \
+		and roundi(emblem_width) == expected_width
 
 func _pet_overlaps_body(skin: String, visual: PlayerVisual, pet_layer: Sprite2D) -> bool:
 	if pet_layer == null or pet_layer.texture == null:

@@ -1,6 +1,7 @@
 {
   "frames": {
     "climb_left": {
+	  "outfit_back": [178, 118, 104],
       "head_center": [
         178,
         91
@@ -9,11 +10,12 @@
       "face_view": "back",
       "emblem_center": [
         178,
-        113
+        108
       ],
-      "emblem_width": 14
+      "emblem_width": 20
     },
     "climb_right": {
+	  "outfit_back": [180, 118, 104],
       "head_center": [
         180,
         91
@@ -22,11 +24,12 @@
       "face_view": "back",
       "emblem_center": [
         180,
-        112
+        108
       ],
-      "emblem_width": 14
+      "emblem_width": 20
     },
     "climb_reach": {
+	  "outfit_back": [178, 125, 104],
       "head_center": [
         178,
         98
@@ -35,11 +38,12 @@
       "face_view": "back",
       "emblem_center": [
         178,
-        120
+        113
       ],
-      "emblem_width": 13
+      "emblem_width": 20
     },
     "jump": {
+	  "outfit_back": [193, 130, 104],
       "head_center": [
         193,
         103
@@ -48,11 +52,12 @@
       "face_view": "back",
       "emblem_center": [
         193,
-        116
+        109
       ],
-      "emblem_width": 14
+      "emblem_width": 26
     },
     "hurt": {
+	  "outfit_back": [183, 130, 104],
       "head_center": [
         183,
         103
@@ -66,6 +71,7 @@
       "emblem_width": 14
     },
     "fall": {
+	  "outfit_back": [179, 139, 104],
       "head_center": [
         179,
         112
@@ -74,11 +80,12 @@
       "face_view": "back",
       "emblem_center": [
         179,
-        129
+        122
       ],
-      "emblem_width": 14
+      "emblem_width": 35
     },
     "cheer": {
+	  "outfit_back": [180, 130, 104],
       "head_center": [
         180,
         103
@@ -92,6 +99,7 @@
       "emblem_width": 14
     },
     "hang": {
+	  "outfit_back": [180, 127, 104],
       "head_center": [
         180,
         100
@@ -100,9 +108,9 @@
       "face_view": "back",
       "emblem_center": [
         180,
-        117
+        104
       ],
-      "emblem_width": 14
+      "emblem_width": 30
     },
     "front": {
       "head_center": [
@@ -111,11 +119,6 @@
       ],
       "head_width": 124,
       "face_view": "front",
-      "emblem_center": [
-        257,
-        226
-      ],
-      "emblem_width": 42,
       "pet_anchor": [
         350,
         493

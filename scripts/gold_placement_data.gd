@@ -12,14 +12,18 @@ static func placements_for_stage(stage_number: int, count: int, stages: StageMan
 		var local_height := progress * stages.stage_length(stage_number)
 		var encounter := _nearest_encounter(encounters, local_height)
 		var witness: Variant = encounter.get("witness", 1)
-		var preferred_route := int(witness) if witness is int else stages.route_for_x((float(witness) - 0.5) * 2.0 * Balance.TRUNK_HALF_WIDTH)
+		var trunk_witness := float(witness)
+		if stage_number <= 2 and typeof(witness) == TYPE_INT:
+			trunk_witness = float(ScaleLock.TRUNK_SAFE_NORMALIZED_X[int(witness)])
+		var preferred_route := stages.route_for_x((trunk_witness - 0.5) * 2.0 * Balance.TRUNK_HALF_WIDTH) if stage_number <= 2 else int(witness)
 		var safe_placement := _safe_placement(encounters, local_height, preferred_route, stages.stage_length(stage_number))
 		local_height = float(safe_placement.height)
 		var route := int(safe_placement.route)
 		var world_y := stages.stage_bottom_y(stage_number) - local_height
-		var world_x := (float(ScaleLock.TRUNK_SAFE_WORLD_X[route]) if witness is int else (float(witness) - 0.5) * 2.0 * (Balance.TRUNK_HALF_WIDTH - 12.0)) if stage_number <= 2 else stages.branch_x_at(route, world_y)
+		var world_x := (trunk_witness - 0.5) * 2.0 * (Balance.TRUNK_HALF_WIDTH - 12.0) if stage_number <= 2 else stages.branch_x_at(route, world_y)
 		if stage_number <= 2 and route != preferred_route:
-			world_x = float(ScaleLock.TRUNK_SAFE_WORLD_X[route])
+			var safe_witness := float(ScaleLock.TRUNK_SAFE_NORMALIZED_X[route])
+			world_x = (safe_witness - 0.5) * 2.0 * (Balance.TRUNK_HALF_WIDTH - 12.0)
 		result.append({
 			"id": "S%02d-G%02d" % [stage_number, index + 1],
 			"stage": stage_number,
