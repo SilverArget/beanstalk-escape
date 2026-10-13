@@ -142,8 +142,8 @@ func cosmetic_catalog(slot := "") -> Array:
 		if not slot.is_empty() and str(item.get("slot", "")) != slot:
 			continue
 		var rarity := str(item.get("rarity", "COMMON"))
-		item["price"] = int(config.get("cosmetic_prices", {}).get(rarity, 0))
-		item["level"] = int(config.get("cosmetic_levels", {}).get(rarity, 1))
+		item["price"] = int(item.get("price", config.get("cosmetic_prices", {}).get(rarity, 0)))
+		item["level"] = int(item.get("level", config.get("cosmetic_levels", {}).get(rarity, 1)))
 		result.append(item)
 	return result
 

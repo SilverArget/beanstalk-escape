@@ -1,6 +1,7 @@
 class_name PetFollower
 extends Node2D
 
+const FAIRY_EFFECT := preload("res://scripts/fairy_effect.gd")
 const FOLLOW_OFFSET := Vector2(52.0, -10.0)
 const FOLLOW_SPEED := 9.0
 const TARGET_HEIGHT := 68.0
@@ -10,9 +11,17 @@ var cinematic_anchor: Sprite2D
 var pet_id := ""
 var sprite: Sprite2D
 var cinematic_sprite: Sprite2D
+var effect: FairyEffect
+var cinematic_effect: FairyEffect
+var sprite_base_scale := Vector2.ONE
+var cinematic_base_scale := Vector2.ONE
 var motion_time := 0.0
 
 func _ready() -> void:
+	effect = FAIRY_EFFECT.new()
+	effect.name = "FairyEffect"
+	effect.z_index = 3
+	add_child(effect)
 	sprite = Sprite2D.new()
 	sprite.name = "Sprite"
 	sprite.z_index = 4
@@ -23,6 +32,11 @@ func setup(player: PlayerController, final_character: Sprite2D) -> void:
 	cinematic_anchor = final_character
 	global_position = target.global_position + FOLLOW_OFFSET
 	if cinematic_anchor != null:
+		cinematic_effect = FAIRY_EFFECT.new()
+		cinematic_effect.name = "FairyEffect"
+		cinematic_effect.position = Vector2(-92.0, -18.0)
+		cinematic_effect.z_index = -2
+		cinematic_anchor.add_child(cinematic_effect)
 		cinematic_sprite = Sprite2D.new()
 		cinematic_sprite.name = "Pet"
 		cinematic_sprite.position = Vector2(-92.0, -18.0)
@@ -37,9 +51,13 @@ func set_pet(item: Dictionary) -> void:
 		texture = load("res://assets/art/pets/%s" % str(item.get("image", ""))) as Texture2D
 	sprite.texture = texture
 	_apply_scale(sprite, false)
+	sprite_base_scale = sprite.scale
+	effect.configure(item)
 	if cinematic_sprite != null:
 		cinematic_sprite.texture = texture
 		_apply_scale(cinematic_sprite, true)
+		cinematic_base_scale = cinematic_sprite.scale
+		cinematic_effect.configure(item)
 	_update_visibility()
 
 func _process(delta: float) -> void:
@@ -52,11 +70,17 @@ func _process(delta: float) -> void:
 		death_drop = maxf(body.sprite.position.y - PlayerVisual.BASE_Y, 0.0)
 	var desired := target.global_position + FOLLOW_OFFSET + Vector2(0.0, death_drop)
 	global_position = global_position.lerp(desired, 1.0 - exp(-FOLLOW_SPEED * delta))
-	sprite.position.y = sin(motion_time * 4.8) * 3.0
+	var bob := sin(motion_time * 4.8) * 3.0
+	var wing_pulse := sin(motion_time * 16.0) * 0.045
+	sprite.position.y = bob
 	sprite.rotation = sin(motion_time * 3.2) * 0.055
+	sprite.scale = sprite_base_scale * Vector2(1.0 + wing_pulse, 1.0 - wing_pulse * 0.55)
+	effect.position = sprite.position
 	if cinematic_sprite != null:
 		cinematic_sprite.position.y = -18.0 + sin(motion_time * 4.8) * 5.0
 		cinematic_sprite.rotation = sin(motion_time * 3.2) * 0.055
+		cinematic_sprite.scale = cinematic_base_scale * Vector2(1.0 + wing_pulse, 1.0 - wing_pulse * 0.55)
+		cinematic_effect.position = cinematic_sprite.position
 	_update_visibility()
 
 func snapshot() -> Dictionary:
@@ -78,5 +102,7 @@ func _update_visibility() -> void:
 	var in_cinematic := has_pet and cinematic_anchor != null and cinematic_anchor.visible
 	if sprite != null:
 		sprite.visible = has_pet and not in_cinematic and target != null and target.visible
+		effect.visible = sprite.visible and not effect.effect_name.is_empty()
 	if cinematic_sprite != null:
 		cinematic_sprite.visible = in_cinematic
+		cinematic_effect.visible = in_cinematic and not cinematic_effect.effect_name.is_empty()

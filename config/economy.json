@@ -56,11 +56,11 @@
     {"id": "emblem_bolt", "slot": "EMBLEM", "name": "BOLT CREST", "rarity": "RARE", "image": "emblem_bolt.png"},
     {"id": "emblem_spider", "slot": "EMBLEM", "name": "SPIDER SHIELD", "rarity": "EPIC", "image": "emblem_spider.png"},
     {"id": "emblem_crown", "slot": "EMBLEM", "name": "CROWN CREST", "rarity": "EPIC", "image": "emblem_crown.png"},
-    {"id": "pet_squirrel", "slot": "PET", "name": "SQUIRREL", "rarity": "COMMON", "image": "squirrel.png"},
-    {"id": "pet_ladybug", "slot": "PET", "name": "LADYBUG", "rarity": "COMMON", "image": "ladybug.png"},
-    {"id": "pet_frog", "slot": "PET", "name": "FROG", "rarity": "RARE", "image": "frog.png"},
-    {"id": "pet_bird", "slot": "PET", "name": "BIRD", "rarity": "RARE", "image": "bird.png"},
-    {"id": "pet_snail", "slot": "PET", "name": "SNAIL", "rarity": "EPIC", "image": "snail.png"},
-    {"id": "pet_rabbit", "slot": "PET", "name": "RABBIT", "rarity": "EPIC", "image": "rabbit.png"}
+    {"id": "fairy_leaf", "slot": "PET", "name": "LEAF FAIRY", "rarity": "COMMON", "image": "fairy_leaf.png", "price": 150, "level": 1, "effect_name": "SOFT GLOW"},
+    {"id": "fairy_flower", "slot": "PET", "name": "FLOWER FAIRY", "rarity": "COMMON", "image": "fairy_flower.png", "price": 250, "level": 2, "effect_name": "LIGHT TRAIL"},
+    {"id": "fairy_drop", "slot": "PET", "name": "DROP FAIRY", "rarity": "RARE", "image": "fairy_drop.png", "price": 400, "level": 3, "effect_name": "SPARKLE DUST"},
+    {"id": "fairy_firefly", "slot": "PET", "name": "FIREFLY FAIRY", "rarity": "RARE", "image": "fairy_firefly.png", "price": 600, "level": 4, "effect_name": "HALO RING"},
+    {"id": "fairy_cloud", "slot": "PET", "name": "CLOUD FAIRY", "rarity": "EPIC", "image": "fairy_cloud.png", "price": 900, "level": 5, "effect_name": "PRISM AURA"},
+    {"id": "fairy_star", "slot": "PET", "name": "STAR FAIRY", "rarity": "EPIC", "image": "fairy_star.png", "price": 1200, "level": 6, "effect_name": "STAR BURST"}
   ]
 }

@@ -5,6 +5,14 @@ signal profile_loaded(profile: Dictionary)
 
 const SAVE_VERSION := 4
 const DEFAULT_PATH := "user://profile_v1.json"
+const LEGACY_PET_IDS := {
+	"pet_squirrel": "fairy_leaf",
+	"pet_ladybug": "fairy_flower",
+	"pet_frog": "fairy_drop",
+	"pet_bird": "fairy_firefly",
+	"pet_snail": "fairy_cloud",
+	"pet_rabbit": "fairy_star",
+}
 const CHALLENGE_NAMES := [
 	"NO BEAN HIT",
 	"NO ROCK HIT",
@@ -272,13 +280,15 @@ func _sanitize_shop(value: Variant) -> Dictionary:
 	if owned_value is Array:
 		for item in owned_value:
 			var item_id := str(item).to_upper() if str(item).length() == 2 else str(item)
+			item_id = str(LEGACY_PET_IDS.get(item_id, item_id))
 			if not item_id.begins_with("face_") and not result.owned.has(item_id):
 				result.owned.append(item_id)
 	var equipped_value: Variant = source.get("equipped", {})
 	if equipped_value is Dictionary:
 		# Retired HAT/FACE equipment is deliberately ignored during migration.
 		for slot in ["HAIR", "OUTFIT", "EMBLEM", "PET", "TRAIL"]:
-			result.equipped[slot] = str(equipped_value.get(slot, ""))
+			var equipped_id := str(equipped_value.get(slot, ""))
+			result.equipped[slot] = str(LEGACY_PET_IDS.get(equipped_id, equipped_id)) if slot == "PET" else equipped_id
 	var selected := str(source.get("selected_character", "M1")).to_upper()
 	result.selected_character = selected if result.owned.has(selected) else "M1"
 	return result

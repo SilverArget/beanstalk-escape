@@ -4,20 +4,14 @@ extends Node2D
 const FRAME_ROOT := "res://assets/art/character_frames"
 const WING_TEXTURE := preload("res://assets/art/character_rig/wing/time_wings.png")
 const ROCK_FIRE_ATLAS := preload("res://assets/art/hazards/rock_fire_atlas.png")
+const FAIRY_EFFECT := preload("res://scripts/fairy_effect.gd")
 const FRAME_NAMES := ["climb_left", "climb_right", "climb_reach", "hang"]
 const SKIN_IDS := ["M1", "M2", "M3", "F1", "F2", "F3"]
 const FRAME_RATE := 8.0
 const ART_SCALE := 0.49
 const BASE_Y := -7.2
 const PET_PREVIEW_HEIGHT := 60.0
-const PET_PREVIEW_BOUNDS := {
-	"bird.png": Rect2(195, 170, 875, 943),
-	"frog.png": Rect2(269, 298, 738, 670),
-	"ladybug.png": Rect2(180, 311, 962, 695),
-	"rabbit.png": Rect2(241, 143, 802, 949),
-	"snail.png": Rect2(201, 243, 918, 771),
-	"squirrel.png": Rect2(120, 65, 1082, 1130),
-}
+const PET_PREVIEW_BOUNDS := {}
 
 var skin_id := "M1"
 var mode := "hang"
@@ -40,6 +34,9 @@ var anchor_data: Dictionary = {}
 var outfit_masks: Dictionary = {}
 var hair_masks: Dictionary = {}
 var frame_metrics: Dictionary = {}
+var fairy_effect: FairyEffect
+var pet_preview_time := 0.0
+var pet_preview_scale := Vector2.ONE
 
 func _ready() -> void:
 	_build_visual()
@@ -190,6 +187,10 @@ func set_cosmetics(equipped: Dictionary, catalog: Array) -> void:
 				var preview_bounds: Rect2 = PET_PREVIEW_BOUNDS.get(image_name, Rect2(Vector2.ZERO, layer.texture.get_size()))
 				var pet_scale := PET_PREVIEW_HEIGHT / maxf(preview_bounds.size.y, 1.0)
 				layer.scale = Vector2.ONE * pet_scale
+				pet_preview_scale = layer.scale
+	if fairy_effect != null:
+		var pet_id := str(equipped_cosmetics.get("PET", ""))
+		fairy_effect.configure(cosmetic_data.get(pet_id, {}))
 	_update_cosmetic_anchors()
 	var outfit_id := str(equipped_cosmetics.get("OUTFIT", ""))
 	var outfit_enabled := not outfit_id.is_empty() and cosmetic_data.has(outfit_id)
@@ -239,6 +240,9 @@ func _update_cosmetic_anchors() -> void:
 	else:
 		pet.position = source_to_local.call(Vector2(head_center.x + head_width * 1.65, head_center.y + head_width * 1.75))
 	pet.visible = pet.texture != null and not str(equipped_cosmetics.get("PET", "")).is_empty() and frame_name == "front"
+	if fairy_effect != null:
+		fairy_effect.position = pet.position
+		fairy_effect.visible = pet.visible and not fairy_effect.effect_name.is_empty()
 	if emblem.texture != null:
 		var emblem_width := float(frame_anchor.get("emblem_width", head_width * 0.85))
 		var emblem_scale := emblem_width * ART_SCALE / maxf(float(emblem.texture.get_width()), 1.0)
@@ -248,7 +252,15 @@ func play_celebration() -> void:
 	celebrate_remaining = 0.75
 
 func preview_tick(delta: float) -> void:
+	pet_preview_time += delta
 	show_front_preview()
+	var pet := cosmetic_sprites.get("PET") as Sprite2D
+	if pet != null and pet.visible:
+		var bob := sin(pet_preview_time * 4.8) * 2.5
+		var wing_pulse := sin(pet_preview_time * 16.0) * 0.045
+		pet.position.y += bob
+		pet.scale = pet_preview_scale * Vector2(1.0 + wing_pulse, 1.0 - wing_pulse * 0.55)
+		fairy_effect.position = pet.position
 
 func show_front_preview() -> void:
 	_set_frame("front")
@@ -365,3 +377,8 @@ void fragment() {
 		layer.visible = false
 		add_child(layer)
 		cosmetic_sprites[slot] = layer
+	fairy_effect = FAIRY_EFFECT.new()
+	fairy_effect.name = "FairyEffect"
+	fairy_effect.z_index = 1
+	fairy_effect.visible = false
+	add_child(fairy_effect)
