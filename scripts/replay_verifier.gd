@@ -28,7 +28,8 @@ static func run_stages_1_to_5(game: GameManager, commands: Array, expected_hashe
 	var expected_from_solution: Array = []
 	var minimum_gap := INF
 	var trunk_target_x := NAN
-	var last_tick := int(ceil(5.0 * Balance.STAGE_HEIGHT / Balance.PLAYER_VERTICAL_SPEED * PHYSICS_HZ)) + PHYSICS_HZ
+	var stage_five := StageDatabase.stage(5)
+	var last_tick := int(ceil(float(stage_five.get("target_height", 5.0 * Balance.STAGE_HEIGHT)) / Balance.PLAYER_VERTICAL_SPEED * PHYSICS_HZ)) + PHYSICS_HZ
 	for tick in last_tick:
 		if actions_by_tick.has(tick):
 			var action: Variant = actions_by_tick[tick]

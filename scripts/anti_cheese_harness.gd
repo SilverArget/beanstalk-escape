@@ -18,7 +18,7 @@ static func run_deterministic(agent: String, variant: String, final_stage: int) 
 			if not _route_survives(encounter, route):
 				var closing_speed := Balance.BEAN_FALL_SPEED + Balance.PLAYER_VERTICAL_SPEED
 				var contact_delay := (120.0 - Balance.BEAN_HIT_RADIUS) / closing_speed
-				return {"completed": false, "failed_stage": stage.number, "encounter": encounter.id, "route": route, "hit_seconds": (float(int(stage.number) - 1) * Balance.STAGE_HEIGHT + float(encounter.anchor)) / Balance.PLAYER_VERTICAL_SPEED + contact_delay}
+				return {"completed": false, "failed_stage": stage.number, "encounter": encounter.id, "route": route, "hit_seconds": (float(stage.start_height) + float(encounter.anchor)) / Balance.PLAYER_VERTICAL_SPEED + contact_delay}
 	return {"completed": true, "failed_stage": 0, "encounter": "", "route": route}
 
 static func run_random_experiment(attempts_per_variant: int, final_stage: int) -> Dictionary:
@@ -67,7 +67,8 @@ static func _run_random(policy_seed: int, variant: String, final_stage: int) -> 
 	var transfer_ready_tick := 0
 	var events := _hazard_events(variant, final_stage)
 	var event_index := 0
-	var last_tick := int(float(final_stage) * Balance.STAGE_HEIGHT / Balance.PLAYER_VERTICAL_SPEED * ReachabilityValidator.PHYSICS_HZ)
+	var final_definition := StageDatabase.stage(final_stage)
+	var last_tick := int(float(final_definition.get("target_height", Balance.STAGE_HEIGHT * final_stage)) / Balance.PLAYER_VERTICAL_SPEED * ReachabilityValidator.PHYSICS_HZ)
 	for tick in range(0, last_tick + 1, RANDOM_ACTION_TICKS):
 		while event_index < events.size() and int(events[event_index].tick) <= tick:
 			if not _route_survives(events[event_index].encounter, route):
@@ -92,7 +93,7 @@ static func _hazard_events(variant: String, final_stage: int) -> Array:
 		if int(stage.number) > final_stage:
 			continue
 		for encounter: Dictionary in stage.encounters:
-			var height := float(int(stage.number) - 1) * Balance.STAGE_HEIGHT + float(encounter.anchor)
+			var height := float(stage.start_height) + float(encounter.anchor)
 			events.append({"tick": int(round(height / Balance.PLAYER_VERTICAL_SPEED * ReachabilityValidator.PHYSICS_HZ)), "encounter": encounter})
 	return events
 

@@ -6,9 +6,10 @@ const REACTION_SECONDS := 0.35
 const COMMAND_GAP_SECONDS := 0.45
 
 static func solve_stages_1_to_5(variant: String) -> Dictionary:
-	var stages := StageDatabase.stages_for_variant(variant)
-	if stages.size() != 5 or Engine.physics_ticks_per_second != PHYSICS_HZ:
+	var all_stages := StageDatabase.stages_for_variant(variant)
+	if all_stages.size() < 5 or Engine.physics_ticks_per_second != PHYSICS_HZ:
 		return {"valid": false, "commands": []}
+	var stages := all_stages.slice(0, 5)
 	var commands: Array = []
 	var route := 1
 	var transition_count := 0
@@ -20,7 +21,7 @@ static func solve_stages_1_to_5(variant: String) -> Dictionary:
 			# Stage 1-2 beans lock to the player's lane when their warning starts,
 			# so the solver must choose a different reachable trunk lane after it.
 			var target := (route + 1) % 3 if int(stage.number) < 3 else int(encounter.witness)
-			var warning_world_height := float(int(stage.number) - 1) * Balance.STAGE_HEIGHT + float(encounter.warning_height)
+			var warning_world_height := float(stage.start_height) + float(encounter.warning_height)
 			var reaction_tick := int(round((warning_world_height / Balance.PLAYER_VERTICAL_SPEED + REACTION_SECONDS) * PHYSICS_HZ))
 			var issue_ticks: Array[int] = []
 			var cursor_route := route
@@ -73,7 +74,7 @@ static func solve_stages_1_to_5(variant: String) -> Dictionary:
 
 static func _routes_connected_at_tick(stage: Dictionary, from_route: int, to_route: int, tick: int) -> bool:
 	var world_height := float(tick) / PHYSICS_HZ * Balance.PLAYER_VERTICAL_SPEED
-	var local_height := world_height - float(int(stage.number) - 1) * Balance.STAGE_HEIGHT
+	var local_height := world_height - float(stage.start_height)
 	for encounter: Dictionary in stage.encounters:
 		if String(encounter.recipe.kind) != "FORK":
 			continue

@@ -166,7 +166,7 @@ func _draw_foreground_foliage(camera_top: float) -> void:
 func _draw_trunk(camera_top: float) -> void:
 	# One continuous ribbon becomes the middle Stage 3 vine. Because the width,
 	# centerline, UV and glaze all live in this draw call, there is no fork seam.
-	var transition_top_y := -Balance.STAGE_HEIGHT * 2.0 - STAGE_3_ENTRY_HEIGHT
+	var transition_top_y := _stage_3_bottom_y() - STAGE_3_ENTRY_HEIGHT
 	var visible_top := maxf(transition_top_y, camera_top - 64.0 - SURFACE_CACHE_MARGIN_PX)
 	var visible_bottom := minf(740.0, camera_top + 620.0 + SURFACE_CACHE_MARGIN_PX)
 	if visible_bottom <= visible_top:
@@ -187,7 +187,7 @@ func _trunk_widths(points: PackedVector2Array) -> PackedFloat32Array:
 	return widths
 
 func _main_stem_center_x(world_y: float) -> float:
-	var stage_3_bottom := -Balance.STAGE_HEIGHT * 2.0
+	var stage_3_bottom := _stage_3_bottom_y()
 	if world_y >= stage_3_bottom:
 		return _trunk_center_x(world_y)
 	var t := clampf((stage_3_bottom - world_y) / STAGE_3_ENTRY_HEIGHT, 0.0, 1.0)
@@ -195,7 +195,7 @@ func _main_stem_center_x(world_y: float) -> float:
 	return lerpf(_trunk_center_x(stage_3_bottom), _branch_visual_x(1, stage_3_bottom - STAGE_3_ENTRY_HEIGHT), smooth)
 
 func _main_stem_width(world_y: float) -> float:
-	var stage_3_bottom := -Balance.STAGE_HEIGHT * 2.0
+	var stage_3_bottom := _stage_3_bottom_y()
 	if world_y >= stage_3_bottom:
 		return _trunk_half_width(world_y) * 2.0
 	var t := clampf((stage_3_bottom - world_y) / STAGE_3_ENTRY_HEIGHT, 0.0, 1.0)
@@ -232,7 +232,7 @@ func _draw_branch_segment(stage_number: int, route: int, start_progress: float, 
 	var stage_length := stages.stage_length(stage_number)
 	var cap_start := start_progress > 0.0 and show_start_tip
 	if stage_number == 3 and route == 1 and start_progress <= 0.0:
-		start_progress = STAGE_3_ENTRY_HEIGHT / Balance.STAGE_HEIGHT
+		start_progress = STAGE_3_ENTRY_HEIGHT / stage_length
 	var start_y := stage_bottom - start_progress * stage_length
 	var end_y := stage_bottom - end_progress * stage_length
 	var points := PackedVector2Array()
@@ -439,7 +439,7 @@ func _draw_textured_ribbon(points: PackedVector2Array, widths: PackedFloat32Arra
 			var left_u := _surface_u(left.x, left_v)
 			var right_u := _surface_u(right.x, right_v)
 			if blend_to_branch_material:
-				var stage_3_bottom := -Balance.STAGE_HEIGHT * 2.0
+				var stage_3_bottom := _stage_3_bottom_y()
 				var mix_amount := clampf((stage_3_bottom - points[index].y) / STAGE_3_ENTRY_HEIGHT, 0.0, 1.0)
 				mix_amount = mix_amount * mix_amount * (3.0 - 2.0 * mix_amount)
 				var local_half_u := widths[index] * 0.5 / 512.0
@@ -612,7 +612,7 @@ func qa_visual_contract() -> Dictionary:
 		"stage_3_layout": "continuous_middle_with_separate_side_vines",
 		"split_union_count": 0,
 		"transfer_bridge_count": 0,
-		"side_vine_entry_world_y": -Balance.STAGE_HEIGHT * 2.0 + maxf(SIDE_VINE_MIN_ENTRY_DEPTH, absf(SIDE_VINE_OFFSCREEN_X - float(Balance.ROUTE_X[2])) * SIDE_VINE_ENTRY_DEPTH_PER_X),
+		"side_vine_entry_world_y": _stage_3_bottom_y() + maxf(SIDE_VINE_MIN_ENTRY_DEPTH, absf(SIDE_VINE_OFFSCREEN_X - float(Balance.ROUTE_X[2])) * SIDE_VINE_ENTRY_DEPTH_PER_X),
 		"side_vine_entry_world_x": [-SIDE_VINE_OFFSCREEN_X, SIDE_VINE_OFFSCREEN_X],
 		"foliage_atlas": "res://assets/art/world/foliage_atlas.png",
 		"procedural_circle_cloud_count": 0,
@@ -621,3 +621,8 @@ func qa_visual_contract() -> Dictionary:
 		"gameplay_branch_tip_foliage_count": 0,
 		"atmosphere_layers": ["painted_far_plate", "distant_bean_silhouettes", "cream_clouds_in_plate", "imagegen_foreground_foliage"],
 	}
+
+func _stage_3_bottom_y() -> float:
+	if stages != null:
+		return stages.stage_bottom_y(3)
+	return -float(StageDatabase.stage(3).start_height)

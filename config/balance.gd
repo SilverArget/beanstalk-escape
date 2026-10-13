@@ -31,8 +31,10 @@ const SPIDER_PRESSURE_BANDS := [
 	{"from": 30, "to": 30, "g_lo": 264.0, "pressure": 12.0},
 ]
 const ROUTE_X := [-150.0, 0.0, 150.0]
+## Legacy fallback only; runtime stage durations come from StageDatabase lengths.
 const STAGE_DURATION_SECONDS := 22.4
 const STAGE_COUNT := 30
+## Legacy fallback only; runtime geometry comes from each stage's length.
 const STAGE_HEIGHT := 2800.0
 const PATTERN_SEED := 20260923
 const BEAN_WARNING_SECONDS := 1.60

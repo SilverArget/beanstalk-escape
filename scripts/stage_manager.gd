@@ -164,6 +164,7 @@ func pattern_hash(seed_value: int) -> int: return hash(var_to_str(generate_patte
 func patterns_are_reachable(candidate: Array) -> bool:
 	var reachable_routes: Array[int] = []
 	for segment: Dictionary in candidate:
+		var stage_duration := float(segment.get("length", Balance.STAGE_HEIGHT)) / Balance.PLAYER_VERTICAL_SPEED
 		if segment.open_routes.size() < 1:
 			return false
 		for progress: float in segment.route_end_progress:
@@ -190,7 +191,7 @@ func patterns_are_reachable(candidate: Array) -> bool:
 		events.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return float(a.progress) < float(b.progress))
 		var previous_progress := 0.0
 		for event: Dictionary in events:
-			var available_seconds := maxf((float(event.progress) - previous_progress) * Balance.STAGE_DURATION_SECONDS, float(event.warning))
+			var available_seconds := maxf((float(event.progress) - previous_progress) * stage_duration, float(event.warning))
 			reachable_routes = _reachable_targets(reachable_routes, event.allowed, available_seconds)
 			if reachable_routes.is_empty():
 				return false
@@ -199,7 +200,7 @@ func patterns_are_reachable(candidate: Array) -> bool:
 		for route in 3:
 			if float(segment.route_end_progress[route]) >= 1.0:
 				end_routes.append(route)
-		reachable_routes = _reachable_targets(reachable_routes, end_routes, (1.0 - previous_progress) * Balance.STAGE_DURATION_SECONDS)
+		reachable_routes = _reachable_targets(reachable_routes, end_routes, (1.0 - previous_progress) * stage_duration)
 		if reachable_routes.is_empty():
 			return false
 	return true
