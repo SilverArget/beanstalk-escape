@@ -2,6 +2,7 @@ class_name PlayerVisual
 extends Node2D
 
 const FRAME_ROOT := "res://assets/art/character_frames"
+const HAIR_LUMA_PATH := "res://tools/hair_masks/hair_luma.json"
 const WING_TEXTURE := preload("res://assets/art/character_rig/wing/time_wings.png")
 const TRANSFER_LEAF_TEXTURE := preload("res://assets/art/fx/transfer_leaf.png")
 const ROCK_FIRE_ATLAS := preload("res://assets/art/hazards/rock_fire_atlas.png")
@@ -36,6 +37,7 @@ var cosmetic_data: Dictionary = {}
 var anchor_data: Dictionary = {}
 var outfit_masks: Dictionary = {}
 var hair_masks: Dictionary = {}
+var hair_luma_data: Dictionary = {}
 var frame_metrics: Dictionary = {}
 var fairy_effect: FairyEffect
 var pet_preview_time := 0.0
@@ -46,6 +48,7 @@ var _last_transfer_direction := 1.0
 
 func _ready() -> void:
 	_build_visual()
+	_load_hair_luma()
 	_load_skin(OS.get_environment("BEANSTALK_SKIN"))
 	_set_frame("hang")
 
@@ -147,6 +150,9 @@ func _set_frame(requested_frame: String) -> void:
 	sprite.texture = frame_textures.get(requested_frame) as Texture2D
 	flash_material.set_shader_parameter("outfit_mask_texture", outfit_masks.get(requested_frame))
 	flash_material.set_shader_parameter("hair_mask_texture", hair_masks.get(requested_frame))
+	var luma: Dictionary = hair_luma_data.get(skin_id.to_lower(), {}).get(requested_frame, {})
+	flash_material.set_shader_parameter("hair_luma_min", float(luma.get("p5", 0.0)))
+	flash_material.set_shader_parameter("hair_luma_max", float(luma.get("p95", 1.0)))
 	_update_cosmetic_anchors()
 
 func set_skin(requested_skin: String) -> bool:
@@ -186,6 +192,15 @@ func _load_skin(requested_skin: String) -> void:
 
 func _skin_exists(requested_skin: String) -> bool:
 	return ResourceLoader.exists("%s/%s/hang.png" % [FRAME_ROOT, requested_skin.to_lower()])
+
+func _load_hair_luma() -> void:
+	hair_luma_data.clear()
+	var file := FileAccess.open(HAIR_LUMA_PATH, FileAccess.READ)
+	if file == null:
+		return
+	var parsed: Variant = JSON.parse_string(file.get_as_text())
+	if parsed is Dictionary:
+		hair_luma_data = (parsed as Dictionary).get("skins", {}).duplicate(true)
 
 func _load_anchors() -> void:
 	anchor_data.clear()
@@ -230,7 +245,11 @@ func set_cosmetics(equipped: Dictionary, catalog: Array) -> void:
 	var hair_enabled := not hair_id.is_empty() and cosmetic_data.has(hair_id)
 	flash_material.set_shader_parameter("hair_enabled", 1.0 if hair_enabled else 0.0)
 	if hair_enabled:
-		flash_material.set_shader_parameter("hair_color", Color(str(cosmetic_data[hair_id].get("tint", "ffffff"))))
+		var ramp: Array = cosmetic_data[hair_id].get("ramp", [])
+		if ramp.size() == 3:
+			flash_material.set_shader_parameter("hair_shadow_color", Color(str(ramp[0])))
+			flash_material.set_shader_parameter("hair_mid_color", Color(str(ramp[1])))
+			flash_material.set_shader_parameter("hair_highlight_color", Color(str(ramp[2])))
 
 func preview_cosmetic(item: Dictionary) -> void:
 	var preview := equipped_cosmetics.duplicate(true)
@@ -369,8 +388,12 @@ uniform float outfit_enabled : hint_range(0.0, 1.0) = 0.0;
 uniform vec4 outfit_color : source_color = vec4(1.0);
 uniform sampler2D outfit_mask_texture : filter_linear;
 uniform float hair_enabled : hint_range(0.0, 1.0) = 0.0;
-uniform vec4 hair_color : source_color = vec4(1.0);
-uniform sampler2D hair_mask_texture : filter_linear;
+uniform vec4 hair_shadow_color : source_color = vec4(0.05, 0.035, 0.027, 1.0);
+uniform vec4 hair_mid_color : source_color = vec4(0.17, 0.11, 0.086, 1.0);
+uniform vec4 hair_highlight_color : source_color = vec4(0.36, 0.27, 0.21, 1.0);
+uniform float hair_luma_min = 0.0;
+uniform float hair_luma_max = 1.0;
+uniform sampler2D hair_mask_texture : filter_nearest;
 uniform vec4 outline_color : source_color = vec4(0.035, 0.043, 0.071, 1.0);
 uniform float outline_source_px = 4.1;
 uniform vec2 shadow_source_offset = vec2(0.0, 7.0);
@@ -404,14 +427,13 @@ void fragment() {
 	float luminance = dot(pixel.rgb, vec3(0.299, 0.587, 0.114));
 	vec3 dyed = outfit_color.rgb * mix(0.42, 1.34, luminance);
 	vec3 outfitted_rgb = mix(pixel.rgb, dyed, cloth_mask * 0.90);
-	// Replace the source hue completely, while retaining its painted light/dark pattern.
+	// Normalize every skin/pose independently, then recolor through a three-stop ramp.
 	float hair_mask = texture(hair_mask_texture, UV).a * hair_enabled * pixel.a;
-	float hair_value = mix(0.35, 1.10, smoothstep(0.05, 0.75, luminance));
-	vec3 dyed_hair = hair_color.rgb * hair_value;
-	// DARK must remain visibly darker even on naturally near-black hair.
-	if (dot(hair_color.rgb, vec3(0.299, 0.587, 0.114)) < 0.18) {
-		dyed_hair *= 0.18;
-	}
+	float normalized_luma = clamp((luminance - hair_luma_min) / max(hair_luma_max - hair_luma_min, 0.001), 0.0, 1.0);
+	normalized_luma = smoothstep(0.0, 1.0, normalized_luma);
+	vec3 dyed_hair = normalized_luma < 0.5
+		? mix(hair_shadow_color.rgb, hair_mid_color.rgb, normalized_luma * 2.0)
+		: mix(hair_mid_color.rgb, hair_highlight_color.rgb, (normalized_luma - 0.5) * 2.0);
 	vec3 recolored_rgb = mix(outfitted_rgb, dyed_hair, hair_mask);
 	vec3 flashed_rgb = mix(recolored_rgb, vec3(1.0), flash_amount);
 	COLOR = vec4(mix(backdrop_color, flashed_rgb, pixel.a), max(pixel.a, backdrop_alpha));

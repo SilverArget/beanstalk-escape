@@ -35,9 +35,9 @@
   "cosmetic_prices": {"COMMON": 150, "RARE": 400, "EPIC": 900},
   "cosmetic_levels": {"COMMON": 1, "RARE": 3, "EPIC": 5},
   "cosmetics": [
-    {"id": "hair_dark", "slot": "HAIR", "name": "DARK", "rarity": "COMMON", "image": "hair_dark.png", "tint": "241b18"},
-    {"id": "hair_blonde", "slot": "HAIR", "name": "BLONDE", "rarity": "RARE", "image": "hair_blonde.png", "tint": "d5a83f"},
-    {"id": "hair_silver", "slot": "HAIR", "name": "SILVER", "rarity": "EPIC", "image": "hair_silver.png", "tint": "b9c3ca", "source": "MAP TREASURE"},
+    {"id": "hair_dark", "slot": "HAIR", "name": "DARK", "rarity": "COMMON", "image": "hair_dark.png", "ramp": ["0d0907", "2b1d16", "5c4436"]},
+    {"id": "hair_blonde", "slot": "HAIR", "name": "BLONDE", "rarity": "RARE", "image": "hair_blonde.png", "ramp": ["8a5a1c", "e2b24a", "fff0a8"]},
+    {"id": "hair_silver", "slot": "HAIR", "name": "SILVER", "rarity": "EPIC", "image": "hair_silver.png", "ramp": ["5e6772", "b6c0ca", "f3f6fa"], "source": "MAP TREASURE"},
     {"id": "trail_leaf", "slot": "TRAIL", "name": "LEAF WAKE", "rarity": "COMMON", "image": "leaf_trail.png"},
     {"id": "trail_cloud", "slot": "TRAIL", "name": "CLOUD WAKE", "rarity": "RARE", "image": "cloud_trail.png"},
     {"id": "trail_star", "slot": "TRAIL", "name": "STAR WAKE", "rarity": "EPIC", "image": "star_trail.png", "source": "MAP TREASURE"},
