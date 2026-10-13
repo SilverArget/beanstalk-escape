@@ -2,6 +2,17 @@ extends SceneTree
 
 const TEST_PATH := "user://qa/test_shop_visual_audio.json"
 const SKINS := ["m1", "m2", "m3", "f1", "f2", "f3"]
+const BACK_FRAMES := ["climb_left", "climb_right", "climb_reach", "hang", "jump", "hurt", "fall", "cheer"]
+const BELT_ROW_HINTS := {
+	"climb_left": 141,
+	"climb_right": 137,
+	"climb_reach": 147,
+	"hang": 137,
+	"jump": 134,
+	"hurt": 144,
+	"fall": 158,
+	"cheer": 139,
+}
 const HAIR_STRAND_POINTS := {
 	"m1": Vector2i(243, 59),
 	"m2": Vector2i(267, 100),
@@ -71,7 +82,8 @@ func _run() -> void:
 		_check(metrics.hair_mask_pixels >= metrics.head_opaque_pixels * 0.35, "%s front hair mask covers at least 35%% of opaque head pixels" % skin.to_upper())
 		_check(_hair_regressions_pass(skin), "%s front hair mask covers strands and excludes the collar" % skin.to_upper())
 		_check(_anchor_inside_outfit(skin, "front", "emblem_center"), "%s front emblem center is inside outfit mask" % skin.to_upper())
-		_check(_anchor_inside_outfit(skin, "hang", "emblem_center"), "%s hang emblem center is inside outfit mask" % skin.to_upper())
+		for frame in BACK_FRAMES:
+			_check(_back_emblem_geometry_pass(skin, frame), "%s %s emblem stays between shoulders and belt at <=40%% tunic width" % [skin.to_upper(), frame])
 		_check(not _pet_overlaps_body(skin, pet_preview, pet_layer), "%s front pet bbox does not overlap body bbox" % skin.to_upper())
 	_check(all_pixels_ok, "front face/hair/outfit isolation for six skins")
 	pet_preview.free()
@@ -180,6 +192,46 @@ func _anchor_inside_outfit(skin: String, frame: String, anchor_name: String) -> 
 	var x := clampi(roundi(float(point[0])), 0, outfit.get_width() - 1)
 	var y := clampi(roundi(float(point[1])), 0, outfit.get_height() - 1)
 	return outfit.get_pixel(x, y).a > 0.5
+
+func _back_emblem_geometry_pass(skin: String, frame: String) -> bool:
+	var anchor_file := FileAccess.open("res://assets/art/character_frames/%s/anchors.json" % skin, FileAccess.READ)
+	if anchor_file == null:
+		return false
+	var parsed: Variant = JSON.parse_string(anchor_file.get_as_text())
+	if not parsed is Dictionary:
+		return false
+	var frame_data: Dictionary = (parsed as Dictionary).get("frames", {}).get(frame, {})
+	var center: Array = frame_data.get("emblem_center", [])
+	if center.size() != 2:
+		return false
+	var emblem_width := float(frame_data.get("emblem_width", 999.0))
+	var head: Array = frame_data.get("head_center", [])
+	var head_width := int(frame_data.get("head_width", 0))
+	if head.size() != 2 or head_width <= 0:
+		return false
+	var source := Image.load_from_file(ProjectSettings.globalize_path("res://assets/art/character_frames/%s/%s.png" % [skin, frame]))
+	if source == null or source.is_empty():
+		return false
+	var body_x := roundi(float(head[0]))
+	var shoulder_row := roundi(float(head[1]))
+	# Literal pose landmarks keep the assertion independent from the metadata
+	# generator's brown-pixel belt detector.
+	var belt_row := int(BELT_ROW_HINTS.get(frame, shoulder_row + head_width / 2))
+	var emblem_y := float(center[1])
+	var torso_height := float(belt_row - shoulder_row)
+	if torso_height <= 0.0 or emblem_y < shoulder_row + torso_height * 0.35 or emblem_y > shoulder_row + torso_height * 0.55:
+		return false
+	if emblem_y + emblem_width * 0.5 > float(belt_row):
+		return false
+	var emblem_row := clampi(roundi(emblem_y), 0, source.get_height() - 1)
+	var tunic_left := body_x
+	var tunic_right := body_x
+	while tunic_left > 0 and source.get_pixel(tunic_left - 1, emblem_row).a > 0.5 and body_x - tunic_left < head_width:
+		tunic_left -= 1
+	while tunic_right + 1 < source.get_width() and source.get_pixel(tunic_right + 1, emblem_row).a > 0.5 and tunic_right - body_x < head_width:
+		tunic_right += 1
+	var tunic_width := float(tunic_right - tunic_left + 1)
+	return tunic_width > 0.0 and emblem_width <= tunic_width * 0.40
 
 func _pet_overlaps_body(skin: String, visual: PlayerVisual, pet_layer: Sprite2D) -> bool:
 	if pet_layer == null or pet_layer.texture == null:

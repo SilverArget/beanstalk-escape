@@ -8,10 +8,10 @@
       "head_width": 72,
       "face_view": "back",
       "emblem_center": [
-        188,
-        153
+        173,
+        111
       ],
-      "emblem_width": 42
+      "emblem_width": 14
     },
     "climb_right": {
       "head_center": [
@@ -21,10 +21,10 @@
       "head_width": 72,
       "face_view": "back",
       "emblem_center": [
-        165,
-        151
+        184,
+        110
       ],
-      "emblem_width": 42
+      "emblem_width": 14
     },
     "climb_reach": {
       "head_center": [
@@ -34,10 +34,10 @@
       "head_width": 72,
       "face_view": "back",
       "emblem_center": [
-        187,
-        162
+        175,
+        119
       ],
-      "emblem_width": 42
+      "emblem_width": 14
     },
     "jump": {
       "head_center": [
@@ -47,10 +47,10 @@
       "head_width": 72,
       "face_view": "back",
       "emblem_center": [
-        170,
-        153
+        182,
+        117
       ],
-      "emblem_width": 42
+      "emblem_width": 14
     },
     "hurt": {
       "head_center": [
@@ -60,10 +60,10 @@
       "head_width": 72,
       "face_view": "front",
       "emblem_center": [
-        187,
-        163
+        190,
+        122
       ],
-      "emblem_width": 42
+      "emblem_width": 14
     },
     "fall": {
       "head_center": [
@@ -73,10 +73,10 @@
       "head_width": 72,
       "face_view": "back",
       "emblem_center": [
-        185,
-        174
+        180,
+        135
       ],
-      "emblem_width": 42
+      "emblem_width": 14
     },
     "cheer": {
       "head_center": [
@@ -86,10 +86,10 @@
       "head_width": 72,
       "face_view": "front",
       "emblem_center": [
-        181,
-        157
+        176,
+        119
       ],
-      "emblem_width": 42
+      "emblem_width": 14
     },
     "hang": {
       "head_center": [
@@ -99,10 +99,10 @@
       "head_width": 72,
       "face_view": "back",
       "emblem_center": [
-        174,
-        152
+        179,
+        115
       ],
-      "emblem_width": 42
+      "emblem_width": 14
     },
     "front": {
       "head_center": [
