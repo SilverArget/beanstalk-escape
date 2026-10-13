@@ -211,11 +211,9 @@ func _layout() -> void:
 	tabs.size = Vector2(width - 16, 38)
 
 func refresh() -> void:
+	_sync_preview_tab(active_tab)
 	if economy == null:
 		return
-	if active_tab != _last_preview_tab:
-		preview_back = active_tab == "EMBLEM"
-		_last_preview_tab = active_tab
 	title_label.text = "STAGE MAP" if mode == "MAP" else ("CHARACTER SELECT" if mode == "SELECT" else "SHOP")
 	gold_label.text = "GOLD %d  ·  LV %d" % [economy.gold, economy.level]
 	start_button.visible = mode == "SELECT"
@@ -226,6 +224,13 @@ func refresh() -> void:
 	_rebuild_cards()
 	_apply_preview()
 	_layout()
+
+func _sync_preview_tab(next_tab: String) -> void:
+	if next_tab != _last_preview_tab:
+		preview_back = next_tab == "EMBLEM"
+		_last_preview_tab = next_tab
+	if preview != null:
+		preview.set_trail_preview_enabled(next_tab == "TRAIL")
 
 func _focus_start_button() -> void:
 	if visible and mode == "SELECT" and start_button.visible and not start_button.disabled:

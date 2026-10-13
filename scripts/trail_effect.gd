@@ -13,6 +13,9 @@ const STAR_RIBBON_WIDTH := 14.0
 const STAR_CORE_WIDTH := 6.0
 const STAR_MIN_RADIUS := 8.0
 const STAR_RIBBON_ALPHA := 0.90
+const CLOUD_BUBBLE_SPACING := 12.0
+const CLOUD_MAX_GAME_BUBBLES := 18
+const CLOUD_RIBBON_WIDTH := 13.0
 
 var trail_id := ""
 var effect_name := ""
@@ -158,8 +161,30 @@ func _draw_leaf_wake() -> void:
 		draw_line(center - axis * 6.0, center + axis * 6.0, Color(0.84, 1.0, 0.55, 0.82 * fade), 1.5)
 
 func _draw_cloud_wake() -> void:
-	# In game every other point, two bubbles each: a third of the draw cost; the shop preview keeps every point.
-	for index in range(points.size() - 1, -1, -1 if _preview_mode else -2):
+	if _preview_mode:
+		_draw_cloud_preview_bubbles()
+		return
+	var path := PackedVector2Array()
+	var fades := PackedFloat32Array()
+	for point in points:
+		path.append(Vector2(point.position))
+		fades.append(_fade(point))
+	_draw_cloud_ribbon(path, fades)
+	var geometry := cloud_wake_geometry(path)
+	var bubble_centers: PackedVector2Array = geometry.bubble_centers
+	for index in bubble_centers.size():
+		var source_index := maxi(points.size() - 1 - index, 0)
+		var point: Dictionary = points[source_index]
+		var fade := _fade(point)
+		var grow := lerpf(0.72, 1.35, float(point.age) / LIFETIME)
+		var radius := (6.0 + float(int(point.seed) % 3) * 0.6) * grow
+		var center := bubble_centers[index]
+		draw_circle(center, radius + 1.5, Color(OUTLINE_COLOR, OUTLINE_COLOR.a * fade))
+		draw_circle(center, radius, Color(0.68, 0.88, 1.0, 0.72 * fade))
+		draw_circle(center, radius * 0.66, Color(0.94, 0.98, 1.0, 0.88 * fade))
+
+func _draw_cloud_preview_bubbles() -> void:
+	for index in range(points.size() - 1, -1, -1):
 		var point: Dictionary = points[index]
 		var fade := _fade(point)
 		var grow := lerpf(0.72, 1.55, float(point.age) / LIFETIME)
@@ -170,6 +195,55 @@ func _draw_cloud_wake() -> void:
 			draw_circle(center + offset, radius + 1.5, Color(OUTLINE_COLOR, OUTLINE_COLOR.a * fade))
 			draw_circle(center + offset, radius, Color(0.68, 0.88, 1.0, 0.72 * fade))
 			draw_circle(center + offset, radius * 0.66, Color(0.94, 0.98, 1.0, 0.88 * fade))
+
+static func cloud_wake_geometry(source_points: PackedVector2Array) -> Dictionary:
+	var bubbles := PackedVector2Array()
+	if source_points.is_empty():
+		return {"ribbon_points": source_points.duplicate(), "bubble_centers": bubbles}
+	bubbles.append(source_points[-1])
+	var distance_since_bubble := 0.0
+	for index in range(source_points.size() - 1, 0, -1):
+		var cursor := source_points[index]
+		var target := source_points[index - 1]
+		var segment_length := cursor.distance_to(target)
+		if segment_length <= 0.001:
+			continue
+		var direction := cursor.direction_to(target)
+		var remaining := segment_length
+		while distance_since_bubble + remaining >= CLOUD_BUBBLE_SPACING and bubbles.size() < CLOUD_MAX_GAME_BUBBLES:
+			var step := CLOUD_BUBBLE_SPACING - distance_since_bubble
+			cursor += direction * step
+			remaining -= step
+			bubbles.append(cursor)
+			distance_since_bubble = 0.0
+		if bubbles.size() >= CLOUD_MAX_GAME_BUBBLES:
+			break
+		distance_since_bubble += remaining
+	return {"ribbon_points": source_points.duplicate(), "bubble_centers": bubbles}
+
+func _draw_cloud_ribbon(path: PackedVector2Array, fades: PackedFloat32Array) -> void:
+	if path.size() < 2:
+		return
+	_draw_tapered_strip(path, fades, CLOUD_RIBBON_WIDTH + 3.0, OUTLINE_COLOR)
+	_draw_tapered_strip(path, fades, CLOUD_RIBBON_WIDTH, Color(0.68, 0.88, 1.0, 0.78))
+	_draw_tapered_strip(path, fades, 5.5, Color(0.94, 0.98, 1.0, 0.90))
+
+func _draw_tapered_strip(path: PackedVector2Array, fades: PackedFloat32Array, width: float, color: Color) -> void:
+	var vertices := PackedVector2Array()
+	var colors := PackedColorArray()
+	for index in path.size():
+		var tangent := path[1] - path[0] if index == 0 else (path[-1] - path[-2] if index == path.size() - 1 else path[index + 1] - path[index - 1])
+		var normal := tangent.normalized().orthogonal()
+		var fade := fades[index]
+		vertices.append(path[index] + normal * width * 0.5 * maxf(fade, 0.08))
+		colors.append(Color(color, color.a * fade))
+	for index in range(path.size() - 1, -1, -1):
+		var tangent := path[1] - path[0] if index == 0 else (path[-1] - path[-2] if index == path.size() - 1 else path[index + 1] - path[index - 1])
+		var normal := tangent.normalized().orthogonal()
+		var fade := fades[index]
+		vertices.append(path[index] - normal * width * 0.5 * maxf(fade, 0.08))
+		colors.append(Color(color, color.a * fade))
+	draw_polygon(vertices, colors)
 
 func _draw_star_wake() -> void:
 	_draw_star_ribbon()

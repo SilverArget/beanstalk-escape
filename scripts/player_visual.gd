@@ -80,6 +80,7 @@ var _transfer_trail_alpha := 0.0
 var _last_transfer_direction := 1.0
 var _time_wings_reveal := 0.0
 var _time_wings_was_active := false
+var _trail_preview_enabled := true
 
 func _ready() -> void:
 	_build_visual()
@@ -373,7 +374,8 @@ func preview_tick(delta: float) -> void:
 	sprite.position = Vector2(0.0, BASE_Y + preview_bob)
 	_update_cosmetic_anchors()
 	var trail_sway := sin(pet_preview_time * 4.2) * 10.0
-	trail_effect.update_preview(Vector2(trail_sway, 24.0 + preview_bob), delta)
+	if _trail_preview_enabled:
+		trail_effect.update_preview(Vector2(trail_sway, 24.0 + preview_bob), delta)
 	var pet := cosmetic_sprites.get("PET") as Sprite2D
 	if pet != null and pet.visible:
 		var bob := sin(pet_preview_time * 4.8) * 2.5
@@ -381,6 +383,11 @@ func preview_tick(delta: float) -> void:
 		pet.position.y += bob
 		pet.scale = pet_preview_scale * Vector2(1.0 + wing_pulse, 1.0 - wing_pulse * 0.55)
 		fairy_effect.position = pet.position
+
+func set_trail_preview_enabled(enabled: bool) -> void:
+	_trail_preview_enabled = enabled
+	if not enabled and trail_effect != null:
+		trail_effect.clear()
 
 func show_front_preview() -> void:
 	_set_frame("front")

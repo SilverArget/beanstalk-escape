@@ -80,9 +80,31 @@ func _init() -> void:
 	_check(TrailEffectScript.STAR_RIBBON_WIDTH >= 10.0 and TrailEffectScript.STAR_CORE_WIDTH >= 4.0 and TrailEffectScript.STAR_RIBBON_ALPHA >= 0.8, "star wake has a wide opaque ribbon with a light-gold core")
 	_check(TrailEffectScript.STAR_MIN_RADIUS >= 5.0, "star wake particles are at least 10 px across")
 
+	var transfer_path := PackedVector2Array([
+		Vector2(0.0, 0.0),
+		Vector2(40.0, 0.0),
+		Vector2(80.0, 0.0),
+		Vector2(120.0, 0.0),
+		Vector2(160.0, 0.0),
+	])
+	var geometry_effect := TrailEffectScript.new()
+	var cloud_geometry: Dictionary = geometry_effect.call("cloud_wake_geometry", transfer_path) if geometry_effect.has_method("cloud_wake_geometry") else {}
+	_check(not cloud_geometry.is_empty(), "cloud wake exposes arc-length geometry")
+	var cloud_bubbles: PackedVector2Array = cloud_geometry.get("bubble_centers", PackedVector2Array())
+	var cloud_ribbon: PackedVector2Array = cloud_geometry.get("ribbon_points", PackedVector2Array())
+	var largest_bubble_gap := 0.0
+	for index in range(1, cloud_bubbles.size()):
+		largest_bubble_gap = maxf(largest_bubble_gap, cloud_bubbles[index - 1].distance_to(cloud_bubbles[index]))
+	_check(cloud_bubbles.size() <= 18 and largest_bubble_gap <= 14.0, "cloud wake fills 40 px transfer samples with at most 18 bubbles and no diameter-sized gaps")
+	_check(cloud_ribbon.size() == transfer_path.size() and (cloud_ribbon.is_empty() or (cloud_ribbon[0] == transfer_path[0] and cloud_ribbon[-1] == transfer_path[-1])), "cloud wake ribbon covers the complete transfer path")
+	geometry_effect.free()
+
 	var shop := MetaShopUIScript.new()
 	shop.size = Vector2(960.0, 540.0)
+	root.add_child(shop)
 	shop.call("_build")
+	if shop.preview.trail_effect == null:
+		shop.preview.call("_build_visual")
 	shop.active_tab = "TRAIL"
 	shop.call("_layout")
 	_check(is_equal_approx(shop.preview.scale.x, 0.82) and shop.preview.position.y <= shop.preview_host.size.y * 0.4, "trail preview shrinks into the host's upper part")
@@ -93,6 +115,19 @@ func _init() -> void:
 	shop.preview_item = {}
 	shop.call("_layout")
 	_check(is_equal_approx(shop.preview.scale.x, 1.45) and is_equal_approx(shop.preview.position.y, shop.preview_host.size.y * 0.52), "non-trail preview keeps its existing scale and position")
+	shop.preview.trail_effect.configure(TRAILS[1])
+	for frame in 8:
+		shop.preview.preview_tick(1.0 / 60.0)
+	_check(shop.preview.trail_snapshot().points > 0, "TRAIL preview accumulates cloud points")
+	shop.call("_sync_preview_tab", "TRAIL")
+	shop.active_tab = "OUTFIT"
+	shop.call("_sync_preview_tab", "OUTFIT")
+	shop.preview.preview_tick(1.0 / 60.0)
+	_check(shop.preview.trail_snapshot().points == 0, "TRAIL to OUTFIT clears the preview trail immediately and keeps it stopped")
+	shop.call("_sync_preview_tab", "TRAIL")
+	for frame in 3:
+		shop.preview.preview_tick(1.0 / 60.0)
+	_check(shop.preview.trail_snapshot().points > 0, "returning to TRAIL restarts the preview trail")
 	shop.free()
 
 	_check(identities.duplicate().reduce(func(unique: Array, identity: String):
