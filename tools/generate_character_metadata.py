@@ -13,6 +13,7 @@ import json
 from collections import Counter
 from pathlib import Path
 
+import cv2
 import numpy as np
 from PIL import Image
 from PIL import ImageDraw
@@ -30,7 +31,7 @@ HEAD_Y = {
     "fall": 112,
     "cheer": 103,
     "hang": 100,
-    "front": 91,
+    "front": 100,
 }
 FRONT_FRAMES = {"cheer", "hurt", "front"}
 
@@ -63,6 +64,47 @@ def head_anchor(rgba: np.ndarray, frame: str) -> tuple[int, int, int]:
     measured = int(candidates.max() - candidates.min() + 1) if candidates.size else 62
     head_width = max(54, min(72, measured))
     return center_x, seed_y, head_width
+
+
+def opaque_bounds(mask: np.ndarray, threshold: int = 127) -> tuple[int, int, int, int]:
+    ys, xs = np.where(mask > threshold)
+    if xs.size == 0:
+        raise RuntimeError("Cannot measure empty mask")
+    return int(xs.min()), int(ys.min()), int(xs.max()) + 1, int(ys.max()) + 1
+
+
+def front_head_anchor(rgba: np.ndarray, outfit: np.ndarray) -> tuple[int, int, int]:
+    """Measure the 512 px portrait instead of reusing 360 px gameplay coordinates."""
+    outfit_x0, outfit_y0, outfit_x1, _ = opaque_bounds(outfit[:, :, 3])
+    center_x = int(round((outfit_x0 + outfit_x1 - 1) * 0.5))
+    alpha = rgba[:, :, 3] > 127
+    widths: list[int] = []
+    for y in range(max(0, outfit_y0 - 105), max(0, outfit_y0 - 28)):
+        xs = np.where(alpha[y] & (np.arange(alpha.shape[1]) >= center_x - 82) & (np.arange(alpha.shape[1]) <= center_x + 82))[0]
+        if xs.size:
+            widths.append(int(xs.max() - xs.min() + 1))
+    head_width = int(round(float(np.percentile(widths, 62)))) if widths else 112
+    return center_x, outfit_y0 - int(round(head_width * 0.55)), max(96, min(132, head_width))
+
+
+def emblem_anchor(outfit: np.ndarray) -> tuple[int, int, int]:
+    """Choose an upper-torso interior point, biased away from straps and edges."""
+    alpha = (outfit[:, :, 3] > 127).astype(np.uint8)
+    x0, y0, x1, y1 = opaque_bounds(outfit[:, :, 3])
+    target_x = (x0 + x1 - 1) * 0.5
+    target_y = y0 + (y1 - y0) * 0.25
+    distance = cv2.distanceTransform(alpha, cv2.DIST_L2, 5)
+    yy, xx = np.indices(alpha.shape)
+    search = (
+        (alpha > 0)
+        & (np.abs(xx - target_x) < 28)
+        & (np.abs(yy - target_y) < 24)
+    )
+    score = distance - np.abs(xx - target_x) * 0.45 - np.abs(yy - target_y) * 0.45
+    score[~search] = -1.0
+    y, x = np.unravel_index(int(np.argmax(score)), score.shape)
+    emblem_width = max(42, min(62, int(round(distance[y, x] * 2.4))))
+    return int(x), int(y), emblem_width
 
 
 def garment_mask(rgba: np.ndarray, anchor: tuple[int, int, int]) -> Image.Image:
@@ -167,6 +209,96 @@ def hair_mask(
     return Image.fromarray(result, "RGBA")
 
 
+def front_hair_mask(rgba: np.ndarray, outfit: np.ndarray, allow_long_hair: bool) -> Image.Image:
+    """Segment portrait hair from its own crown palette and remove the filled face."""
+    outfit_x0, outfit_y0, outfit_x1, _ = opaque_bounds(outfit[:, :, 3])
+    center_x = int(round((outfit_x0 + outfit_x1 - 1) * 0.5))
+    alpha = rgba[:, :, 3] > 127
+    yy, xx = np.indices(alpha.shape)
+    head_alpha = alpha & (yy < outfit_y0)
+    crown_top = int(np.where(head_alpha)[0].min())
+    crown_seed = (
+        alpha
+        & (np.abs(xx - center_x) <= 66)
+        & (yy >= crown_top)
+        & (yy <= min(crown_top + 70, outfit_y0 - 48))
+    )
+    cheek_seed = (
+        alpha
+        & (np.abs(xx - center_x) <= 18)
+        & (yy >= outfit_y0 - 50)
+        & (yy <= outfit_y0 - 25)
+    )
+    lab = cv2.cvtColor(rgba[:, :, :3], cv2.COLOR_RGB2LAB).astype(np.float32)
+    criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 50, 0.2)
+    cv2.setRNGSeed(20261013)
+    _, _, hair_centers = cv2.kmeans(lab[crown_seed], 12, None, criteria, 5, cv2.KMEANS_PP_CENTERS)
+    _, _, skin_centers = cv2.kmeans(lab[cheek_seed], 5, None, criteria, 5, cv2.KMEANS_PP_CENTERS)
+    hair_distance = np.min(np.linalg.norm(lab[:, :, None, :] - hair_centers[None, None, :, :], axis=3), axis=2)
+    skin_distance = np.min(np.linalg.norm(lab[:, :, None, :] - skin_centers[None, None, :, :], axis=3), axis=2)
+
+    face_ellipse = ((xx - center_x) / 48.0) ** 2 + ((yy - (outfit_y0 - 54)) / 59.0) ** 2 < 1.0
+    skin_candidates = ((skin_distance < 19.0) & face_ellipse & alpha).astype(np.uint8)
+    skin_count, skin_labels, skin_stats, _ = cv2.connectedComponentsWithStats(skin_candidates, connectivity=8)
+    skin = np.zeros_like(skin_candidates)
+    if skin_count > 1:
+        central_face = (np.abs(xx - center_x) <= 22) & (yy >= outfit_y0 - 55) & (yy <= outfit_y0 - 25)
+        face_label = max(
+            range(1, skin_count),
+            key=lambda index: int(np.count_nonzero((skin_labels == index) & central_face)),
+        )
+        if int(skin_stats[face_label, cv2.CC_STAT_AREA]) > 150:
+            skin[skin_labels == face_label] = 1
+    skin = cv2.morphologyEx(skin, cv2.MORPH_CLOSE, np.ones((3, 3), dtype=np.uint8))
+    contours, _ = cv2.findContours(skin, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    filled_face = np.zeros_like(skin)
+    face_contours = [contour for contour in contours if cv2.contourArea(contour) > 150.0]
+    if face_contours:
+        cv2.drawContours(filled_face, [max(face_contours, key=cv2.contourArea)], -1, 1, -1)
+
+    long_hair = outfit_y0 + 42 if allow_long_hair else outfit_y0
+    region = (
+        alpha
+        & (outfit[:, :, 3] <= 16)
+        & (np.abs(xx - center_x) <= 102)
+        & (yy < long_hair)
+    )
+    # Below the collar line only side locks/ponytails are eligible.
+    region &= (yy < outfit_y0 - 10) | (np.abs(xx - center_x) > 45)
+    candidates = region & (hair_distance < 31.0) & (filled_face == 0)
+    bang_candidates = (
+        region
+        & (yy < outfit_y0 - 24)
+        & (hair_distance < 25.0)
+        & (hair_distance + 9.0 < skin_distance)
+    )
+    bang_candidates = cv2.morphologyEx(
+        bang_candidates.astype(np.uint8),
+        cv2.MORPH_OPEN,
+        np.ones((2, 2), dtype=np.uint8),
+    ).astype(bool)
+    bang_count, bang_labels, bang_stats, _ = cv2.connectedComponentsWithStats(bang_candidates.astype(np.uint8), connectivity=8)
+    for index in range(1, bang_count):
+        component = bang_labels == index
+        if int(bang_stats[index, cv2.CC_STAT_AREA]) >= 5 and np.any(component & crown_seed):
+            candidates |= component
+    count, labels, stats, _ = cv2.connectedComponentsWithStats(candidates.astype(np.uint8), connectivity=8)
+    selected = np.zeros_like(candidates)
+    for index in range(1, count):
+        area = int(stats[index, cv2.CC_STAT_AREA])
+        if area < 5:
+            continue
+        component = labels == index
+        face_fraction = float(np.count_nonzero(component & (filled_face > 0))) / float(area)
+        if face_fraction > 0.60 and not np.any(component & crown_seed):
+            continue
+        selected |= component
+
+    result = np.zeros_like(rgba)
+    result[selected] = (255, 255, 255, 255)
+    return Image.fromarray(result, "RGBA")
+
+
 def paint_hair_icon(path: Path, base: tuple[int, int, int]) -> None:
     """Draw a compact painted swatch; no character-specific silhouette needed."""
     image = Image.new("RGBA", (192, 192), (0, 0, 0, 0))
@@ -190,24 +322,22 @@ def main() -> None:
         for frame in FRAMES:
             source = ROOT / skin / f"{frame}.png"
             rgba = np.asarray(Image.open(source).convert("RGBA"))
-            anchor = head_anchor(rgba, frame)
+            outfit_path = ROOT / skin / f"{frame}_outfit_mask.png"
+            outfit_image = Image.open(outfit_path).convert("RGBA")
+            outfit = np.asarray(outfit_image)
+            anchor = front_head_anchor(rgba, outfit) if frame == "front" else head_anchor(rgba, frame)
+            emblem_x, emblem_y, emblem_width = emblem_anchor(outfit)
             anchors[frame] = {
                 "head_center": [anchor[0], anchor[1]],
                 "head_width": anchor[2],
                 "face_view": "front" if frame in FRONT_FRAMES else "back",
+                "emblem_center": [emblem_x, emblem_y],
+                "emblem_width": emblem_width,
             }
-            outfit_path = ROOT / skin / f"{frame}_outfit_mask.png"
-            # Existing gameplay outfit masks are art-reviewed product assets;
-            # only synthesize the newly introduced front mask here.
-            outfit_image = garment_mask(rgba, anchor) if frame == "front" else Image.open(outfit_path).convert("RGBA")
             if frame == "front":
-                outfit_image.save(outfit_path, optimize=True)
-            outfit = np.asarray(outfit_image)
-            palette_source = rgba if frame == "hang" else np.asarray(Image.open(ROOT / skin / "hang.png").convert("RGBA"))
-            hang_anchor = head_anchor(palette_source, "hang")
-            hang_outfit = np.asarray(garment_mask(palette_source, hang_anchor))
-            palette = hair_palette(palette_source, hang_anchor, hang_outfit)
-            hair_mask(rgba, anchor, outfit, palette, frame).save(ROOT / skin / f"{frame}_hair_mask.png", optimize=True)
+                _, _, body_x1, body_y1 = opaque_bounds(rgba[:, :, 3])
+                anchors[frame]["pet_anchor"] = [body_x1 + 6, body_y1]
+                front_hair_mask(rgba, outfit, skin == "f1").save(ROOT / skin / "front_hair_mask.png", optimize=True)
         (ROOT / skin / "anchors.json").write_text(
             json.dumps({"frames": anchors}, indent=2) + "\n", encoding="utf-8"
         )

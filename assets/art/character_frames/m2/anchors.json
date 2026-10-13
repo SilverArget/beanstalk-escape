@@ -6,7 +6,12 @@
         91
       ],
       "head_width": 72,
-      "face_view": "back"
+      "face_view": "back",
+      "emblem_center": [
+        183,
+        156
+      ],
+      "emblem_width": 42
     },
     "climb_right": {
       "head_center": [
@@ -14,7 +19,12 @@
         91
       ],
       "head_width": 71,
-      "face_view": "back"
+      "face_view": "back",
+      "emblem_center": [
+        169,
+        155
+      ],
+      "emblem_width": 42
     },
     "climb_reach": {
       "head_center": [
@@ -22,7 +32,12 @@
         98
       ],
       "head_width": 67,
-      "face_view": "back"
+      "face_view": "back",
+      "emblem_center": [
+        188,
+        163
+      ],
+      "emblem_width": 42
     },
     "jump": {
       "head_center": [
@@ -30,7 +45,12 @@
         103
       ],
       "head_width": 72,
-      "face_view": "back"
+      "face_view": "back",
+      "emblem_center": [
+        177,
+        155
+      ],
+      "emblem_width": 42
     },
     "hurt": {
       "head_center": [
@@ -38,7 +58,12 @@
         103
       ],
       "head_width": 72,
-      "face_view": "front"
+      "face_view": "front",
+      "emblem_center": [
+        176,
+        163
+      ],
+      "emblem_width": 42
     },
     "fall": {
       "head_center": [
@@ -46,7 +71,12 @@
         112
       ],
       "head_width": 72,
-      "face_view": "back"
+      "face_view": "back",
+      "emblem_center": [
+        183,
+        165
+      ],
+      "emblem_width": 42
     },
     "cheer": {
       "head_center": [
@@ -54,7 +84,12 @@
         103
       ],
       "head_width": 72,
-      "face_view": "front"
+      "face_view": "front",
+      "emblem_center": [
+        182,
+        158
+      ],
+      "emblem_width": 42
     },
     "hang": {
       "head_center": [
@@ -62,15 +97,29 @@
         100
       ],
       "head_width": 72,
-      "face_view": "back"
+      "face_view": "back",
+      "emblem_center": [
+        172,
+        155
+      ],
+      "emblem_width": 42
     },
     "front": {
       "head_center": [
-        179,
-        91
+        256,
+        99
       ],
-      "head_width": 60,
-      "face_view": "front"
+      "head_width": 124,
+      "face_view": "front",
+      "emblem_center": [
+        257,
+        226
+      ],
+      "emblem_width": 42,
+      "pet_anchor": [
+        349,
+        493
+      ]
     }
   }
 }

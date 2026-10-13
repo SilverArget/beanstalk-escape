@@ -214,13 +214,20 @@ func _update_cosmetic_anchors() -> void:
 	var emblem := cosmetic_sprites.get("EMBLEM") as Sprite2D
 	var pet := cosmetic_sprites.get("PET") as Sprite2D
 	var trail := cosmetic_sprites.get("TRAIL") as Sprite2D
-	var emblem_source_y := head_center.y + head_width * 1.65 if frame_name == "front" else float(used.position.y) + float(used.size.y) * 0.43
-	emblem.position = source_to_local.call(Vector2(head_center.x, emblem_source_y))
+	var emblem_data: Array = frame_anchor.get("emblem_center", [head_center.x, head_center.y + head_width * 1.65])
+	emblem.position = source_to_local.call(Vector2(float(emblem_data[0]), float(emblem_data[1])))
 	trail.position = source_to_local.call(Vector2(head_center.x, float(used.end.y) - float(used.size.y) * 0.08))
-	pet.position = source_to_local.call(Vector2(head_center.x + head_width * 1.65, head_center.y + head_width * 1.75))
+	var pet_data: Array = frame_anchor.get("pet_anchor", [])
+	if frame_name == "front" and pet_data.size() == 2 and pet.texture != null:
+		var pet_bottom_left: Vector2 = source_to_local.call(Vector2(float(pet_data[0]), float(pet_data[1])))
+		var pet_size := pet.texture.get_size() * pet.scale
+		pet.position = pet_bottom_left + Vector2(pet_size.x * 0.5, -pet_size.y * 0.5)
+	else:
+		pet.position = source_to_local.call(Vector2(head_center.x + head_width * 1.65, head_center.y + head_width * 1.75))
 	pet.visible = pet.texture != null and not str(equipped_cosmetics.get("PET", "")).is_empty() and frame_name == "front"
 	if emblem.texture != null:
-		var emblem_scale := head_width * ART_SCALE * 0.85 / maxf(float(emblem.texture.get_width()), 1.0)
+		var emblem_width := float(frame_anchor.get("emblem_width", head_width * 0.85))
+		var emblem_scale := emblem_width * ART_SCALE / maxf(float(emblem.texture.get_width()), 1.0)
 		emblem.scale = Vector2.ONE * emblem_scale
 
 func play_celebration() -> void:

@@ -150,7 +150,7 @@ func _layout() -> void:
 	var preview_width := clampf(width * 0.27, 190.0, 260.0)
 	preview_host.position = Vector2(8, 92)
 	preview_host.size = Vector2(preview_width, maxf(footer_y - 98.0, 120.0))
-	preview.position = Vector2(preview_width * 0.5, preview_host.size.y * 0.52)
+	preview.position = Vector2(preview_width * 0.5, preview_host.size.y * 0.48)
 	var map_mode := mode == "MAP"
 	preview_host.visible = not map_mode
 	scroll.position = Vector2(8, 56) if map_mode else Vector2(preview_width + 16, 92)

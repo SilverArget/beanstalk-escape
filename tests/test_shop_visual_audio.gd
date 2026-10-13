@@ -27,13 +27,19 @@ func _run() -> void:
 	pet_preview.show_front_preview()
 	var pet_layer := pet_preview.cosmetic_sprites.get("PET") as Sprite2D
 	_check(pet_layer != null and pet_layer.visible and pet_layer.texture != null and absf(pet_layer.position.x) <= 92.0, "pet visible inside front preview")
-	pet_preview.queue_free()
 	var all_pixels_ok := true
 	for skin in SKINS:
+		pet_preview.set_skin(skin)
+		pet_preview.show_front_preview()
 		var metrics := _pixel_metrics(skin, "front")
-		print("PIXEL %s/front face DE(hair)=%.2f hair DL=%.2f tunic DE(outfit)=%.2f" % [skin.to_upper(), metrics.face_hair_delta_e, metrics.hair_delta_l, metrics.tunic_outfit_delta_e])
+		print("PIXEL %s/front hair=%d/%d face DE(hair)=%.2f hair DL=%.2f tunic DE(outfit)=%.2f" % [skin.to_upper(), metrics.hair_mask_pixels, metrics.head_opaque_pixels, metrics.face_hair_delta_e, metrics.hair_delta_l, metrics.tunic_outfit_delta_e])
 		all_pixels_ok = all_pixels_ok and metrics.face_hair_delta_e < 3.0 and metrics.hair_delta_l >= 15.0 and metrics.tunic_outfit_delta_e >= 10.0
+		_check(metrics.hair_mask_pixels >= metrics.head_opaque_pixels * 0.35, "%s front hair mask covers at least 35%% of opaque head pixels" % skin.to_upper())
+		_check(_anchor_inside_outfit(skin, "front", "emblem_center"), "%s front emblem center is inside outfit mask" % skin.to_upper())
+		_check(_anchor_inside_outfit(skin, "hang", "emblem_center"), "%s hang emblem center is inside outfit mask" % skin.to_upper())
+		_check(not _pet_overlaps_body(skin, pet_preview, pet_layer), "%s front pet bbox does not overlap body bbox" % skin.to_upper())
 	_check(all_pixels_ok, "front face/hair/outfit isolation for six skins")
+	pet_preview.queue_free()
 	var audio := BeanstalkAudio.new()
 	root.add_child(audio)
 	await process_frame
@@ -81,18 +87,24 @@ func _pixel_metrics(skin: String, frame: String) -> Dictionary:
 	var hair_outfit_delta := 0.0
 	var face_hair_delta := 0.0
 	var face_count := 0
+	var outfit_rect := outfit.get_used_rect()
+	var head_opaque_pixels := 0
 	for y in source.get_height():
 		for x in source.get_width():
 			var pixel := source.get_pixel(x, y)
 			var in_hair := hair.get_pixel(x, y).a > 0.5
 			var in_outfit := outfit.get_pixel(x, y).a > 0.5
+			if y < outfit_rect.position.y and pixel.a > 0.5:
+				head_opaque_pixels += 1
 			var hair_result := _dye_hair(pixel, Color("241b18")) if in_hair else pixel
 			# FERN CHECK is the second OUTFIT card reported by the browser QA pass.
 			var outfit_result := _dye_outfit(pixel, Color("4f8b55")) if in_outfit else pixel
 			var nx := (float(x) - used.position.x) / maxf(used.size.x, 1.0)
 			var ny := (float(y) - used.position.y) / maxf(used.size.y, 1.0)
-			var in_face_box := nx >= 0.36 and nx <= 0.64 and ny >= 0.16 and ny <= 0.32
-			if in_face_box and pixel.a > 0.2:
+			# The upper head box contains the fringe by design. Sample the lower
+			# central face so correct bang coverage is not reported as dyed skin.
+			var in_face_box := nx >= 0.38 and nx <= 0.62 and ny >= 0.22 and ny <= 0.31
+			if in_face_box and pixel.a > 0.2 and _is_skin_tone(pixel):
 				face_count += 1
 				face_hair_delta += _delta_e_rgb(pixel, hair_result)
 			if in_hair:
@@ -112,7 +124,41 @@ func _pixel_metrics(skin: String, frame: String) -> Dictionary:
 		"tunic_hair_delta_e": tunic_hair_delta / outfit_count,
 		"tunic_outfit_delta_e": outfit_delta / outfit_count,
 		"hair_outfit_delta_e": hair_outfit_delta / hair_count,
+		"hair_mask_pixels": hair_count,
+		"head_opaque_pixels": head_opaque_pixels,
 	}
+
+func _anchor_inside_outfit(skin: String, frame: String, anchor_name: String) -> bool:
+	var anchor_path := "res://assets/art/character_frames/%s/anchors.json" % skin
+	var file := FileAccess.open(anchor_path, FileAccess.READ)
+	if file == null:
+		return false
+	var parsed: Variant = JSON.parse_string(file.get_as_text())
+	if not parsed is Dictionary:
+		return false
+	var frame_data: Dictionary = (parsed as Dictionary).get("frames", {}).get(frame, {})
+	var point: Array = frame_data.get(anchor_name, [])
+	if point.size() != 2:
+		return false
+	var mask_path := "res://assets/art/character_frames/%s/%s_outfit_mask.png" % [skin, frame]
+	var outfit := Image.load_from_file(ProjectSettings.globalize_path(mask_path))
+	var x := clampi(roundi(float(point[0])), 0, outfit.get_width() - 1)
+	var y := clampi(roundi(float(point[1])), 0, outfit.get_height() - 1)
+	return outfit.get_pixel(x, y).a > 0.5
+
+func _pet_overlaps_body(skin: String, visual: PlayerVisual, pet_layer: Sprite2D) -> bool:
+	if pet_layer == null or pet_layer.texture == null:
+		return true
+	var body_image := Image.load_from_file(ProjectSettings.globalize_path("res://assets/art/character_frames/%s/front.png" % skin))
+	var pet_path := "res://assets/art/pets/%s" % str(visual.cosmetic_data["pet_squirrel"].image)
+	var pet_image := Image.load_from_file(ProjectSettings.globalize_path(pet_path))
+	var body_used := body_image.get_used_rect()
+	var pet_used := pet_image.get_used_rect()
+	var body_top_left := visual.sprite.position + (Vector2(body_used.position) - Vector2(body_image.get_size()) * 0.5) * PlayerVisual.ART_SCALE
+	var body_rect := Rect2(body_top_left, Vector2(body_used.size) * PlayerVisual.ART_SCALE)
+	var pet_top_left := pet_layer.position + (Vector2(pet_used.position) - Vector2(pet_image.get_size()) * 0.5) * pet_layer.scale
+	var pet_rect := Rect2(pet_top_left, Vector2(pet_used.size) * pet_layer.scale)
+	return body_rect.intersects(pet_rect)
 
 func _dye_hair(pixel: Color, tint: Color) -> Color:
 	var value := lerpf(0.35, 1.10, smoothstep(0.05, 0.75, _luma(pixel) / 100.0))
@@ -128,6 +174,14 @@ func _dye_outfit(pixel: Color, tint: Color) -> Color:
 
 func _luma(pixel: Color) -> float:
 	return (pixel.r * 0.299 + pixel.g * 0.587 + pixel.b * 0.114) * 100.0
+
+func _is_skin_tone(pixel: Color) -> bool:
+	var red := pixel.r * 255.0
+	var green := pixel.g * 255.0
+	var blue := pixel.b * 255.0
+	var cb := 128.0 - 0.168736 * red - 0.331264 * green + 0.5 * blue
+	var cr := 128.0 + 0.5 * red - 0.418688 * green - 0.081312 * blue
+	return cb >= 72.0 and cb <= 132.0 and cr >= 132.0 and cr <= 184.0 and red > green * 0.92
 
 func _delta_e_rgb(a: Color, b: Color) -> float:
 	return Vector3(a.r - b.r, a.g - b.g, a.b - b.b).length() * 100.0
