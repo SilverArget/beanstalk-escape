@@ -23,9 +23,15 @@ const FRAME_ALPHA_BOTTOM := 144.0
 const SAFE_ALPHA_TOP := 43.0
 
 var sprite := Sprite2D.new()
+var web_line := Line2D.new()
 var current_frame := 7
 
 func _ready() -> void:
+	web_line.width = 2.0
+	web_line.default_color = Color(0.88, 0.94, 1.0, 0.72)
+	web_line.antialiased = true
+	web_line.visible = false
+	add_child(web_line)
 	sprite.texture = FRAMES[current_frame]
 	sprite.scale = Vector2(VISUAL_SCALE, VISUAL_SCALE)
 	sprite.position = BASE_POSITION
@@ -43,10 +49,28 @@ func _process(_delta: float) -> void:
 	elif spider.distance_to_player() <= Balance.GAUGE_MAX_DISTANCE * 0.20:
 		frame = 4
 	elif absf(spider.velocity.y) > 1.0:
-		frame = int(Time.get_ticks_msec() / 140) % 4
+		var frame_msec := 75 if spider.is_following_horizontal() and _stage_number(spider) <= 2 else 140
+		frame = int(Time.get_ticks_msec() / frame_msec) % 4
 	current_frame = frame
 	sprite.texture = FRAMES[current_frame]
+	_update_follow_pose(spider)
 	_apply_bottom_edge_framing()
+
+func _stage_number(spider: SpiderController) -> int:
+	if spider.stages == null or spider.player == null:
+		return 1
+	return spider.stages.stage_for_y(spider.player.global_position.y)
+
+func _update_follow_pose(spider: SpiderController) -> void:
+	var moving := spider.is_following_horizontal()
+	var direction := signf(spider.horizontal_motion_speed)
+	var stage_number := _stage_number(spider)
+	var lean := 0.16 if stage_number >= 3 else 0.10
+	sprite.rotation = direction * lean if moving else move_toward(sprite.rotation, 0.0, 0.035)
+	web_line.visible = moving and stage_number >= 3
+	if web_line.visible:
+		var sway := clampf(spider.horizontal_motion_speed / 900.0, -1.0, 1.0)
+		web_line.points = PackedVector2Array([Vector2(-sway * 34.0, -280.0), Vector2(0.0, -38.0)])
 
 func visibility_snapshot() -> Dictionary:
 	if sprite.texture == null or not is_inside_tree():

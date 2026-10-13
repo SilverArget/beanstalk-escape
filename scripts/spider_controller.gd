@@ -6,6 +6,11 @@ var boost_start_count := 0
 var speed_ratio := Balance.SPIDER_SPEED_RATIO
 var catchup_active := false
 var catchup_blend := 0.0
+var target_x := 0.0
+var horizontal_motion_speed := 0.0
+var _follow_start_x := 0.0
+var _follow_elapsed := 0.0
+var _follow_delay_remaining := 0.0
 @onready var player: PlayerController = get_parent().get_node_or_null("Player") as PlayerController
 @onready var stages: StageManager = get_parent().get_node_or_null("StageManager") as StageManager
 @onready var game: GameManager = get_parent() as GameManager
@@ -25,17 +30,52 @@ func _physics_process(delta: float) -> void:
 		var time_scale := Balance.TIME_WINGS_SLOW_SCALE if player != null and player.time_wings_active else 1.0
 		speed += float(profile.pressure) * pressure_c * (float(nightmare_modifiers.get("spider_pressure_scale", 1.0)) - 1.0) * time_scale
 	speed_ratio = speed / Balance.PLAYER_VERTICAL_SPEED
+	_update_horizontal_follow(delta, stage_number)
 	velocity = Vector2(0.0, -speed)
 	move_and_slide()
 
 func reset_run(at_position: Vector2) -> void:
-	global_position = at_position
+	var reset_x := player.global_position.x if player != null else at_position.x
+	global_position = Vector2(reset_x, at_position.y)
 	velocity = Vector2.ZERO
 	boost_remaining = 0.0
 	boost_start_count = 0
 	speed_ratio = Balance.SPIDER_SPEED_RATIO
 	catchup_active = false
 	catchup_blend = 0.0
+	target_x = reset_x
+	horizontal_motion_speed = 0.0
+	_follow_start_x = reset_x
+	_follow_elapsed = 0.0
+	_follow_delay_remaining = 0.0
+
+func _update_horizontal_follow(delta: float, stage_number: int) -> void:
+	if player == null:
+		horizontal_motion_speed = 0.0
+		return
+	var previous_x := global_position.x
+	if stage_number <= 2:
+		target_x = player.global_position.x
+		global_position.x = move_toward(global_position.x, target_x, Balance.SPIDER_TRUNK_FOLLOW_SPEED * delta)
+	else:
+		var target_branch := player.transition_to if player.movement_mode == PlayerController.MovementMode.TRANSITION else player.active_branch
+		var desired_x := float(Balance.ROUTE_X[clampi(target_branch, 0, Balance.ROUTE_X.size() - 1)])
+		if not is_equal_approx(desired_x, target_x):
+			target_x = desired_x
+			_follow_start_x = global_position.x
+			_follow_elapsed = 0.0
+			_follow_delay_remaining = Balance.SPIDER_FOLLOW_DELAY_SECONDS
+		if _follow_delay_remaining > 0.0:
+			_follow_delay_remaining = maxf(_follow_delay_remaining - delta, 0.0)
+		else:
+			_follow_elapsed = minf(_follow_elapsed + delta, Balance.SPIDER_FOLLOW_SECONDS)
+			var progress := _follow_elapsed / Balance.SPIDER_FOLLOW_SECONDS
+			var eased := progress * progress * (3.0 - 2.0 * progress)
+			global_position.x = lerpf(_follow_start_x, target_x, eased)
+	horizontal_motion_speed = (global_position.x - previous_x) / maxf(delta, 0.000001)
+
+func is_following_horizontal() -> bool:
+	return absf(horizontal_motion_speed) > 0.5
 
 func apply_bean_boost() -> void:
 	boost_remaining = Balance.SPIDER_BOOST_SECONDS
