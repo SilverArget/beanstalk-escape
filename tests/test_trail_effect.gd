@@ -86,10 +86,10 @@ func _init() -> void:
 	shop.active_tab = "TRAIL"
 	shop.call("_layout")
 	_check(is_equal_approx(shop.preview.scale.x, 0.82) and shop.preview.position.y <= shop.preview_host.size.y * 0.4, "trail preview shrinks into the host's upper part")
-	shop.active_tab = "PET"
+	shop.active_tab = "OUTFIT"
 	shop.preview_item = {"slot": "TRAIL"}
 	shop.call("_layout")
-	_check(is_equal_approx(shop.preview.scale.x, 0.82), "focused trail item keeps the compact trail layout")
+	_check(is_equal_approx(shop.preview.scale.x, 1.45), "leaving the TRAIL tab restores the full-size preview")
 	shop.preview_item = {}
 	shop.call("_layout")
 	_check(is_equal_approx(shop.preview.scale.x, 1.45) and is_equal_approx(shop.preview.position.y, shop.preview_host.size.y * 0.52), "non-trail preview keeps its existing scale and position")

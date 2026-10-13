@@ -158,8 +158,8 @@ func _draw_leaf_wake() -> void:
 		draw_line(center - axis * 6.0, center + axis * 6.0, Color(0.84, 1.0, 0.55, 0.82 * fade), 1.5)
 
 func _draw_cloud_wake() -> void:
-	# Every other point, two bubbles each: keeps the chain continuous at a third of the draw cost.
-	for index in range(points.size() - 1, -1, -2):
+	# In game every other point, two bubbles each: a third of the draw cost; the shop preview keeps every point.
+	for index in range(points.size() - 1, -1, -1 if _preview_mode else -2):
 		var point: Dictionary = points[index]
 		var fade := _fade(point)
 		var grow := lerpf(0.72, 1.55, float(point.age) / LIFETIME)
