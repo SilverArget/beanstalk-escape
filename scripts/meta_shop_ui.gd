@@ -6,6 +6,24 @@ signal run_started
 
 const SLOTS := ["CHARACTERS", "OUTFIT", "EMBLEM", "PET", "TRAIL"]
 
+class TurnIcon:
+	extends Control
+
+	func _draw() -> void:
+		var center := Vector2(9, 9)
+		var radius := 5.5
+		var end_angle := TAU - 0.55
+		var color := Color("f2d06b")
+		draw_arc(center, radius, 0.35, end_angle, 24, color, 2.0, true)
+		var radial := Vector2(cos(end_angle), sin(end_angle))
+		var tangent := Vector2(-radial.y, radial.x)
+		var tip := center + radial * 7.0
+		draw_colored_polygon(PackedVector2Array([
+			tip,
+			center + radial * 3.2 + tangent * 2.8,
+			center + radial * 3.2 - tangent * 2.8,
+		]), color)
+
 var economy: EconomyManager
 var platform_services: Node
 var player_visual: PlayerVisual
@@ -114,8 +132,26 @@ func _build() -> void:
 	preview.scale = Vector2.ONE * 1.45
 	preview_host.add_child(preview)
 	view_toggle_button = Button.new()
-	view_toggle_button.text = "BACK"
-	view_toggle_button.custom_minimum_size = Vector2(96, 32)
+	view_toggle_button.text = "TURN"
+	view_toggle_button.custom_minimum_size = Vector2(110, 34)
+	var turn_style := StyleBoxFlat.new()
+	turn_style.bg_color = Color("173d32")
+	turn_style.border_color = Color("d0a83c")
+	turn_style.set_border_width_all(2)
+	turn_style.set_corner_radius_all(8)
+	var turn_hover_style := turn_style.duplicate() as StyleBoxFlat
+	turn_hover_style.bg_color = Color("245244")
+	var turn_pressed_style := turn_style.duplicate() as StyleBoxFlat
+	turn_pressed_style.bg_color = Color("0d2822")
+	view_toggle_button.add_theme_stylebox_override("normal", turn_style)
+	view_toggle_button.add_theme_stylebox_override("hover", turn_hover_style)
+	view_toggle_button.add_theme_stylebox_override("pressed", turn_pressed_style)
+	var turn_icon := TurnIcon.new()
+	turn_icon.name = "TurnIcon"
+	turn_icon.position = Vector2(10, 8)
+	turn_icon.size = Vector2(18, 18)
+	turn_icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	view_toggle_button.add_child(turn_icon)
 	view_toggle_button.pressed.connect(_toggle_preview_view)
 	panel.add_child(view_toggle_button)
 	scroll = ScrollContainer.new()
@@ -162,8 +198,8 @@ func _layout() -> void:
 	var map_mode := mode == "MAP"
 	preview_host.position = Vector2(8, 92)
 	preview_host.size = Vector2(preview_width, maxf(footer_y - 128.0, 120.0))
-	view_toggle_button.position = Vector2(8.0 + (preview_width - 96.0) * 0.5, preview_host.position.y + preview_host.size.y + 4.0)
-	view_toggle_button.size = Vector2(96, 32)
+	view_toggle_button.position = Vector2(8.0 + (preview_width - 110.0) * 0.5, preview_host.position.y + preview_host.size.y + 4.0)
+	view_toggle_button.size = Vector2(110, 34)
 	view_toggle_button.visible = not map_mode
 	var trail_preview := active_tab == "TRAIL"
 	preview.scale = Vector2.ONE * (0.82 if trail_preview else (2.90 if preview_back else 1.45))
@@ -445,7 +481,7 @@ func _apply_preview() -> void:
 		preview.show_back_preview()
 	else:
 		preview.show_front_preview()
-	view_toggle_button.text = "FRONT" if preview_back else "BACK"
+	view_toggle_button.text = "TURN"
 	if player_visual != null:
 		player_visual.set_skin(str(economy.shop.selected_character))
 		player_visual.set_cosmetics(economy.shop.equipped, economy.cosmetic_catalog())

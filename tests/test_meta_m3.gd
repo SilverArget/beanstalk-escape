@@ -49,6 +49,20 @@ func _init() -> void:
 	var loaded := EconomyManager.new()
 	var load_ok := loaded.initialize(loaded_save)
 	_check(load_ok and loaded.shop.owned.has("emblem_leaf") and loaded.shop.equipped.EMBLEM == "emblem_leaf" and loaded.gold == 0, "save and load")
+	var shop := MetaShopUI.new()
+	root.add_child(shop)
+	await process_frame
+	shop.size = Vector2(960, 540)
+	shop.setup(economy, null)
+	var preview_was_back := shop.preview_back
+	var exit_button_kept_back := false
+	for child in shop.footer.get_children():
+		if child is Button and child != shop.view_toggle_button and child.text == "BACK":
+			exit_button_kept_back = true
+	shop.view_toggle_button.pressed.emit()
+	var has_drawn_turn_icon := shop.view_toggle_button.get_node_or_null("TurnIcon") != null
+	_check(shop.view_toggle_button.text == "TURN" and shop.preview_back != preview_was_back and exit_button_kept_back and has_drawn_turn_icon, "preview TURN icon toggles view while exit stays BACK")
+	shop.queue_free()
 	_write_legacy_hat_profile()
 	var legacy_save := SaveManager.new(TEST_PATH)
 	var legacy_profile := legacy_save.load_profile()
