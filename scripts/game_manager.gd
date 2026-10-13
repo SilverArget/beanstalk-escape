@@ -107,12 +107,11 @@ var pet_follower: Node2D
 
 func _ready() -> void:
 	process_physics_priority = 10
+	save_manager.profile_loaded.connect(_apply_loaded_profile)
 	save_manager.configure_platform(platform_services)
 	if not economy.initialize(save_manager):
 		push_error("Economy config could not be loaded")
-	meta_settings = save_manager.meta_systems_snapshot().settings
-	audio.set_sound_enabled(bool(meta_settings.sound))
-	audio.set_music_enabled(bool(meta_settings.music))
+	_apply_loaded_profile({"meta_systems": save_manager.meta_systems_snapshot()})
 	_apply_debug_meta_overrides()
 	save_manager.profile_loaded.connect(economy.reload_profile)
 	economy.level_up.connect(_on_level_up)
@@ -803,6 +802,19 @@ func _save_meta_settings() -> void:
 	save_manager.write_settings(meta_settings)
 	_refresh_settings_text()
 	_update_hud()
+
+func _apply_loaded_profile(loaded_profile: Dictionary) -> void:
+	var systems: Dictionary = loaded_profile.get("meta_systems", {}) if loaded_profile.get("meta_systems", {}) is Dictionary else {}
+	var settings: Dictionary = systems.get("settings", {}) if systems.get("settings", {}) is Dictionary else {}
+	meta_settings = {
+		"sound": bool(settings.get("sound", true)),
+		"music": bool(settings.get("music", true)),
+		"ghost": bool(settings.get("ghost", true)),
+	}
+	if audio != null:
+		audio.set_sound_enabled(bool(meta_settings.sound))
+		audio.set_music_enabled(bool(meta_settings.music))
+	_refresh_settings_text()
 
 func _refresh_settings_text() -> void:
 	if not has_node("HUD/SettingsSound"):

@@ -204,12 +204,15 @@ func shop_snapshot() -> Dictionary:
 	return profile.get("shop", _default_shop()).duplicate(true)
 
 func _write_profile() -> bool:
+	var local_write_ok := _write_local_profile()
 	if OS.has_feature("web") and platform_service != null:
 		if bridge_loaded:
 			platform_service.storage_set(profile.duplicate(true))
 		else:
 			pending_bridge_write = true
-		return true
+	return local_write_ok
+
+func _write_local_profile() -> bool:
 	var directory := save_path.get_base_dir()
 	if not DirAccess.dir_exists_absolute(directory):
 		DirAccess.make_dir_recursive_absolute(directory)
@@ -217,6 +220,8 @@ func _write_profile() -> bool:
 	if file == null:
 		return false
 	file.store_string(JSON.stringify(profile, "\t"))
+	file.flush()
+	file.close()
 	return true
 
 func _default_profile() -> Dictionary:
@@ -302,8 +307,9 @@ func _sanitize_daily(value: Variant) -> Dictionary:
 
 func _on_bridge_profile_loaded(success: bool, value: Variant) -> void:
 	bridge_loaded = true
-	if success and value is Dictionary:
+	if success and value is Dictionary and not pending_bridge_write:
 		profile = _sanitize_profile(value)
+		_write_local_profile()
 		profile_loaded.emit(profile.duplicate(true))
 	if pending_bridge_write:
 		pending_bridge_write = false

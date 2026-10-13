@@ -9,6 +9,8 @@ func _init() -> void:
 	call_deferred("_run")
 
 func _run() -> void:
+	if FileAccess.file_exists(TEST_PATH):
+		DirAccess.remove_absolute(ProjectSettings.globalize_path(TEST_PATH))
 	var save := SaveManager.new(TEST_PATH)
 	var economy := EconomyManager.new()
 	_check(economy.initialize(save), "economy loads")
@@ -44,6 +46,18 @@ func _run() -> void:
 	_check(audio.music.volume_db <= -60.0, "music off silences music")
 	audio.set_music_enabled(true)
 	_check(audio.music.volume_db > -60.0, "music on restores music")
+	_check(save.write_settings({"sound": false, "music": false, "ghost": true}), "audio settings save immediately")
+	var reloaded := SaveManager.new(TEST_PATH)
+	var reloaded_settings: Dictionary = reloaded.meta_systems_snapshot().settings
+	_check(not bool(reloaded_settings.sound) and not bool(reloaded_settings.music), "new SaveManager reads muted settings")
+	var game := GameManager.new()
+	game.audio = audio
+	var can_apply_loaded_audio := game.has_method("_apply_loaded_profile")
+	_check(can_apply_loaded_audio, "startup profile applies audio settings")
+	if can_apply_loaded_audio:
+		game.call("_apply_loaded_profile", reloaded.load_profile())
+		_check(AudioServer.is_bus_mute(master) and audio.music.volume_db <= -60.0, "startup profile mutes Master and music")
+	game.free()
 	print("test_shop_visual_audio.gd: %d PASS / %d FAIL" % [passed, failed])
 	audio.free()
 	if FileAccess.file_exists(TEST_PATH):
