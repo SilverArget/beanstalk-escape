@@ -178,7 +178,7 @@ func _draw_trunk(camera_top: float) -> void:
 		y = maxf(y - 32.0, visible_top)
 	if centers.is_empty() or centers[centers.size() - 1].y != visible_top:
 		centers.append(Vector2(_main_stem_center_x(visible_top), visible_top))
-	_draw_textured_ribbon(centers, _trunk_widths(centers), -visible_bottom / MODULE_HEIGHT, true, true)
+	_draw_textured_ribbon(centers, _trunk_widths(centers), -visible_bottom / MODULE_HEIGHT, true, true, false, 0, 0, false, true)
 
 func _trunk_widths(points: PackedVector2Array) -> PackedFloat32Array:
 	var widths := PackedFloat32Array()
@@ -393,7 +393,7 @@ func _flush_branch_details() -> void:
 	var mesh := _build_ribbon_mesh(detail_vertices, detail_uvs, detail_indices)
 	draw_mesh(mesh, BRANCH_DETAILS_TEXTURE)
 
-func _draw_textured_ribbon(points: PackedVector2Array, widths: PackedFloat32Array, texture_phase: float, draw_outline := true, world_locked_v := false, tangent_uv := false, outline_start_trim := 0, outline_end_trim := 0, branch_material := false) -> void:
+func _draw_textured_ribbon(points: PackedVector2Array, widths: PackedFloat32Array, texture_phase: float, draw_outline := true, world_locked_v := false, tangent_uv := false, outline_start_trim := 0, outline_end_trim := 0, branch_material := false, blend_to_branch_material := false) -> void:
 	if points.size() < 2:
 		return
 	var distances := PackedFloat32Array([0.0])
@@ -436,8 +436,17 @@ func _draw_textured_ribbon(points: PackedVector2Array, widths: PackedFloat32Arra
 		elif world_locked_v:
 			var left_v := -left.y / MODULE_HEIGHT
 			var right_v := -right.y / MODULE_HEIGHT
-			mesh_uvs.append(Vector2(_surface_u(left.x, left_v), left_v))
-			mesh_uvs.append(Vector2(_surface_u(right.x, right_v), right_v))
+			var left_u := _surface_u(left.x, left_v)
+			var right_u := _surface_u(right.x, right_v)
+			if blend_to_branch_material:
+				var stage_3_bottom := -Balance.STAGE_HEIGHT * 2.0
+				var mix_amount := clampf((stage_3_bottom - points[index].y) / STAGE_3_ENTRY_HEIGHT, 0.0, 1.0)
+				mix_amount = mix_amount * mix_amount * (3.0 - 2.0 * mix_amount)
+				var local_half_u := widths[index] * 0.5 / 512.0
+				left_u = lerpf(left_u, 0.19 - local_half_u, mix_amount)
+				right_u = lerpf(right_u, 0.19 + local_half_u, mix_amount)
+			mesh_uvs.append(Vector2(left_u, left_v))
+			mesh_uvs.append(Vector2(right_u, right_v))
 		else:
 			mesh_uvs.append(Vector2(_surface_u(left.x, center_v), center_v))
 			mesh_uvs.append(Vector2(_surface_u(right.x, center_v), center_v))

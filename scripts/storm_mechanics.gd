@@ -292,18 +292,47 @@ func _world_y(climbed: float) -> float:
 func _draw_wind() -> void:
 	var center_y := _world_y(float(wind.anchor) + 110.0)
 	var direction := float(wind.direction)
-	var flow := fposmod(Time.get_ticks_msec() * 0.16, 120.0)
-	for index in 9:
-		var y := center_y - 136.0 + float(index) * 34.0
-		var start_x := -440.0 + flow if direction > 0.0 else 440.0 - flow
-		var start := Vector2(start_x, y)
-		var finish := start + Vector2(direction * (620.0 + float(index % 2) * 80.0), -8.0)
-		draw_line(start, finish, Color(0.78, 0.94, 0.88, 0.72), 3.0, true)
-		draw_circle(finish, 6.0, Color(0.52, 0.72, 0.31, 0.92))
+	_draw_wind_field(center_y, direction)
 	var arrow_origin := player.global_position + Vector2(-76.0 * direction, -54.0)
 	var tip := arrow_origin + Vector2(direction * 72.0, 0.0)
 	draw_line(arrow_origin, tip, Color(1.0, 0.91, 0.42), 8.0, true)
 	draw_colored_polygon(PackedVector2Array([tip, tip + Vector2(-direction * 22.0, -15.0), tip + Vector2(-direction * 22.0, 15.0)]), Color(1.0, 0.91, 0.42))
+
+func _draw_wind_field(center_y: float, direction: float) -> void:
+	var tick := Time.get_ticks_msec() * 0.001
+	var y_offsets := PackedFloat32Array([-132.0, -70.0, -12.0, 58.0, 126.0])
+	var lengths := PackedFloat32Array([420.0, 330.0, 510.0, 365.0, 455.0])
+	var wind_color := Color(0.76, 0.93, 0.86, 0.42)
+	for index in 5:
+		var travel := fposmod(tick * 150.0 + float(index) * 223.0, 1120.0)
+		var start_x := -560.0 + travel if direction > 0.0 else 560.0 - travel
+		var curve := sin(tick * 1.7 + float(index) * 1.31) * 12.0
+		var start := Vector2(start_x, center_y + y_offsets[index])
+		var finish := start + Vector2(direction * lengths[index], curve * 0.35)
+		var sweep := PackedVector2Array([
+			start,
+			start + Vector2(direction * lengths[index] * 0.28, curve),
+			start + Vector2(direction * lengths[index] * 0.72, -curve * 0.45),
+			finish,
+		])
+		for segment in 3:
+			var width := 2.6 if segment == 1 else 1.15
+			draw_line(sweep[segment], sweep[segment + 1], wind_color, width, true)
+	for leaf_index in 3:
+		var leaf_travel := fposmod(tick * 185.0 + float(leaf_index) * 367.0, 1120.0)
+		var leaf_x := -560.0 + leaf_travel if direction > 0.0 else 560.0 - leaf_travel
+		var flutter := sin(tick * 4.2 + float(leaf_index) * 2.4)
+		var leaf_center := Vector2(leaf_x, center_y - 92.0 + float(leaf_index) * 91.0 + flutter * 14.0)
+		var heading := Vector2(direction, flutter * 0.28).normalized()
+		var normal := Vector2(-heading.y, heading.x)
+		var leaf := PackedVector2Array([
+			leaf_center + heading * 11.0,
+			leaf_center + normal * 6.0,
+			leaf_center - heading * 9.0,
+			leaf_center - normal * 6.0,
+		])
+		var leaf_color := Color(0.46, 0.69 - float(leaf_index) * 0.05, 0.27, 0.58)
+		draw_colored_polygon(leaf, leaf_color)
 
 func _draw_breakable() -> void:
 	var x := _lane_x(int(breakable.lane))
@@ -383,6 +412,7 @@ func _update_campaign(delta: float) -> void:
 					stages.set_runtime_web(int(slot.stage), int(slot.lane), anchor, end_height, false)
 
 func _draw_campaign() -> void:
+	var wind_drawn := false
 	for slot: Dictionary in campaign_slots:
 		var climbed := float(slot.stage_bottom_y) - player.global_position.y if player != null else -INF
 		var anchor := float(slot.anchor)
@@ -392,7 +422,9 @@ func _draw_campaign() -> void:
 		var y1 := float(slot.stage_bottom_y) - float(slot.occupancy[1])
 		var kind := String(slot.kind)
 		if kind == "V":
-			_draw_campaign_wind(slot, (y0 + y1) * 0.5)
+			if not wind_drawn:
+				_draw_campaign_wind(slot, (y0 + y1) * 0.5)
+				wind_drawn = true
 		elif kind == "K":
 			_draw_campaign_break(slot, y0, y1)
 		elif kind == "WEB":
@@ -400,13 +432,7 @@ func _draw_campaign() -> void:
 
 func _draw_campaign_wind(slot: Dictionary, center_y: float) -> void:
 	var direction := float(slot.direction)
-	var flow := fposmod(Time.get_ticks_msec() * 0.16, 120.0)
-	for index in 9:
-		var y := center_y - 136.0 + float(index) * 34.0
-		var start_x := -440.0 + flow if direction > 0.0 else 440.0 - flow
-		var finish := Vector2(start_x, y) + Vector2(direction * (620.0 + float(index % 2) * 80.0), -8.0)
-		draw_line(Vector2(start_x, y), finish, Color(0.78, 0.94, 0.88, 0.72), 3.0, true)
-		draw_circle(finish, 6.0, Color(0.52, 0.72, 0.31, 0.92))
+	_draw_wind_field(center_y, direction)
 	if player != null:
 		var origin := player.global_position + Vector2(-76.0 * direction, -54.0)
 		var tip := origin + Vector2(direction * 72.0, 0.0)
