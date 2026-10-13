@@ -33,6 +33,7 @@ func _run() -> void:
 	await process_frame
 	_check(scene.has_node("HUD/Settings") and scene.has_node("HUD/HowToPlay") and scene.has_node("HUD/Credits"), "required menu actions exist")
 	_check(_menu_layout_is_clear(scene, Vector2(960, 540)) and _menu_layout_is_clear(scene, Vector2(844, 390)), "menu grid clears logo prompt daily and ad actions")
+	_check(_ghost_is_distinct_and_behind_player(scene), "ghost uses a visible pale silhouette and outline behind the player")
 	scene._start_onboarding()
 	_check(scene.tutorial_active and scene.stages.current_stage == 1 and scene.stages.stage_for_y(scene.player.global_position.y) >= 3 and scene.player.transition_state_name() == "ATTACHED", "tutorial uses a separate three-branch practice segment before stage 1")
 	var accepted: bool = scene.dispatch_command("move_left", "test")
@@ -60,6 +61,8 @@ func _menu_layout_is_clear(game: Node, size: Vector2) -> bool:
 	var rects: Array[Rect2] = []
 	for node_name in names:
 		var control := game.get_node("HUD/%s" % node_name) as Control
+		if not control.visible:
+			continue
 		for rect in rects:
 			if rect.intersects(Rect2(control.position, control.size), true):
 				return false
@@ -68,16 +71,33 @@ func _menu_layout_is_clear(game: Node, size: Vector2) -> bool:
 	for rect in rects:
 		if rect.intersects(Rect2(daily.position, daily.size), true):
 			return false
-	var first_row := [game.get_node("HUD/NewRun"), game.get_node("HUD/Shop"), game.get_node("HUD/Map"), game.get_node("HUD/Nightmare")]
+	var first_row: Array = [game.get_node("HUD/NewRun"), game.get_node("HUD/Shop"), game.get_node("HUD/Map")]
+	if game.get_node("HUD/Nightmare").visible:
+		first_row.append(game.get_node("HUD/Nightmare"))
 	var row_left: float = first_row[0].position.x
 	var row_right: float = first_row[-1].position.x + first_row[-1].size.x
-	return absf((row_left + row_right) * 0.5 - size.x * 0.5) < 1.0
+	if absf((row_left + row_right) * 0.5 - size.x * 0.5) >= 1.0:
+		return false
+	var commerce: Array = [game.get_node("HUD/GetMoreGold"), game.get_node("HUD/RemoveAds")].filter(func(control): return control.visible)
+	if not commerce.is_empty():
+		var commerce_left: float = commerce[0].position.x
+		var commerce_right: float = commerce[-1].position.x + commerce[-1].size.x
+		if absf((commerce_left + commerce_right) * 0.5 - size.x * 0.5) >= 1.0:
+			return false
+	return true
+
+func _ghost_is_distinct_and_behind_player(game: Node) -> bool:
+	var ghost := game.ghost_sprite as Sprite2D
+	var outline := ghost.get_node("Outline") as Sprite2D
+	return ghost.modulate.a >= 0.39 and ghost.modulate.b > ghost.modulate.r and outline.modulate.a > ghost.modulate.a and ghost.z_index < game.player.z_index
 
 func _tutorial_panel_clears_hud(game: Node, size: Vector2) -> bool:
 	game.layout_hud_for_viewport(size)
 	game._update_hud()
 	var panel := game.get_node("HUD/TutorialPanel") as Control
 	var skip := game.get_node("HUD/TutorialSkip") as Control
+	if panel.position.y + panel.size.y > 112.0 or skip.position.y + skip.size.y > 172.0:
+		return false
 	if Rect2(panel.position, panel.size).intersects(Rect2(skip.position, skip.size), true):
 		return false
 	for node_name in ["GoldStatus", "XPStatus", "XPBar", "Gauge", "MiniMap", "StageCounter", "TouchLeft", "TouchRight"]:

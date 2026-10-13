@@ -95,6 +95,7 @@ var tutorial_catch_triggered := false
 var tutorial_bean: BeanProjectile
 var result_badges: Array[Label] = []
 var ghost_sprite: Sprite2D
+var ghost_outline: Sprite2D
 var ghost_trace: Array = []
 var ghost_playback: Array = []
 var ghost_stage := 1
@@ -1048,6 +1049,7 @@ func _update_ghost(delta: float) -> void:
 	var body := player.get_node_or_null("Body") as PlayerVisual
 	if body != null and body.sprite != null:
 		ghost_sprite.texture = body.sprite.texture
+		ghost_outline.texture = body.sprite.texture
 
 func _show_tutorial_for_stage(stage_number: int) -> void:
 	if is_nightmare_mode():
@@ -1262,10 +1264,19 @@ func _setup_hud() -> void:
 	ghost_sprite = Sprite2D.new()
 	ghost_sprite.name = "StageGhost"
 	ghost_sprite.scale = Vector2.ONE * 0.49
-	ghost_sprite.modulate = Color(0.42, 0.92, 1.0, 0.24)
+	ghost_sprite.modulate = Color(0.72, 0.94, 1.0, 0.40)
 	ghost_sprite.z_index = 4
 	ghost_sprite.visible = false
 	add_child(ghost_sprite)
+	ghost_outline = Sprite2D.new()
+	ghost_outline.name = "Outline"
+	ghost_outline.show_behind_parent = true
+	ghost_outline.scale = Vector2.ONE * 1.10
+	ghost_outline.modulate = Color(0.88, 0.98, 1.0, 0.72)
+	ghost_sprite.add_child(ghost_outline)
+	# Keep the replay above the world but below the live character when their
+	# sampled positions match exactly.
+	player.z_index = 5
 	economy.changed.connect(func(_snapshot): _refresh_daily_card())
 	_refresh_daily_card()
 	_refresh_settings_text()
@@ -1366,19 +1377,27 @@ func layout_hud_for_viewport(viewport_size: Vector2) -> void:
 	$HUD/SkipStageAd.size = Vector2(death_width, 52.0)
 	$HUD/DoubleStageReward.position = Vector2((width - 230.0) * 0.5, 188.0)
 	$HUD/DoubleStageReward.size = Vector2(230.0, 52.0)
-	var commerce_width := minf(240.0, (width - 42.0) * 0.5)
-	var commerce_x := (width - commerce_width * 2.0 - 10.0) * 0.5
-	$HUD/GetMoreGold.position = Vector2(commerce_x, menu_action_y)
-	$HUD/GetMoreGold.size = Vector2(commerce_width, 48.0)
-	$HUD/RemoveAds.position = Vector2(commerce_x + commerce_width + 10.0, menu_action_y)
-	$HUD/RemoveAds.size = Vector2(commerce_width, 48.0)
+	var commerce_buttons: Array[Button] = []
+	if platform_services.is_rewarded_supported():
+		commerce_buttons.append($HUD/GetMoreGold)
+	if platform_services.is_payments_supported() and not platform_services.remove_ads_owned:
+		commerce_buttons.append($HUD/RemoveAds)
+	var commerce_width := minf(240.0, (width - 42.0) / maxf(float(commerce_buttons.size()), 1.0))
+	var commerce_total := commerce_width * commerce_buttons.size() + 10.0 * maxi(commerce_buttons.size() - 1, 0)
+	var commerce_x := (width - commerce_total) * 0.5
+	for index in commerce_buttons.size():
+		commerce_buttons[index].position = Vector2(commerce_x + index * (commerce_width + 10.0), menu_action_y)
+		commerce_buttons[index].size = Vector2(commerce_width, 48.0)
 	var menu_width := minf(220.0, width * 0.34)
 	var menu_gap := 8.0
-	menu_width = minf(menu_width, (width - 32.0 - menu_gap * 3.0) / 4.0)
-	var menu_row_width := menu_width * 4.0 + menu_gap * 3.0
+	var primary_buttons: Array[Button] = [$HUD/NewRun, $HUD/Shop, $HUD/Map]
+	if bool(save_manager.replay_snapshot().nightmare_unlocked):
+		primary_buttons.append($HUD/Nightmare)
+	menu_width = minf(menu_width, (width - 32.0 - menu_gap * (primary_buttons.size() - 1)) / primary_buttons.size())
+	var menu_row_width := menu_width * primary_buttons.size() + menu_gap * (primary_buttons.size() - 1)
 	var menu_x := (width - menu_row_width) * 0.5
-	for index in 4:
-		var menu_button: Button = [$HUD/NewRun, $HUD/Shop, $HUD/Map, $HUD/Nightmare][index]
+	for index in primary_buttons.size():
+		var menu_button: Button = primary_buttons[index]
 		menu_button.position = Vector2(menu_x + index * (menu_width + menu_gap), 158.0 if compact else 240.0)
 		menu_button.size = Vector2(menu_width, 44.0 if compact else 48.0)
 	var secondary_width := minf(220.0, (width - 32.0 - menu_gap * 2.0) / 3.0)
@@ -1402,9 +1421,9 @@ func layout_hud_for_viewport(viewport_size: Vector2) -> void:
 	$HUD/InfoBack.position = Vector2((width - 220.0) * 0.5, height - 76.0)
 	$HUD/InfoBack.size = Vector2(220.0, 52.0)
 	var tutorial_width := minf(640.0, width - 48.0)
-	$HUD/TutorialPanel.position = Vector2((width - tutorial_width) * 0.5, height - 164.0)
-	$HUD/TutorialPanel.size = Vector2(tutorial_width, 104.0)
-	$HUD/TutorialSkip.position = Vector2((width - 190.0) * 0.5, height - 48.0)
+	$HUD/TutorialPanel.position = Vector2((width - tutorial_width) * 0.5, 12.0)
+	$HUD/TutorialPanel.size = Vector2(tutorial_width, 88.0)
+	$HUD/TutorialSkip.position = Vector2((width - 190.0) * 0.5, 120.0)
 	$HUD/TutorialSkip.size = Vector2(190.0, 40.0)
 	_layout_centered_label($HUD/RewardToast, width, 154.0, 30.0, 190.0)
 	# Stage completion can show this together with the 188..240 double-reward
