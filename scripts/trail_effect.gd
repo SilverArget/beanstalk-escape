@@ -158,12 +158,14 @@ func _draw_leaf_wake() -> void:
 		draw_line(center - axis * 6.0, center + axis * 6.0, Color(0.84, 1.0, 0.55, 0.82 * fade), 1.5)
 
 func _draw_cloud_wake() -> void:
-	for point in points:
+	# Every other point, two bubbles each: keeps the chain continuous at a third of the draw cost.
+	for index in range(points.size() - 1, -1, -2):
+		var point: Dictionary = points[index]
 		var fade := _fade(point)
 		var grow := lerpf(0.72, 1.55, float(point.age) / LIFETIME)
 		var center := Vector2(point.position)
-		for bubble in 3:
-			var offset := Vector2(float(bubble - 1) * 5.2, -absf(float(bubble - 1)) * 1.8)
+		for bubble in 2:
+			var offset := Vector2((float(bubble) - 0.5) * 6.0, -absf(float(bubble) - 0.5) * 1.8)
 			var radius := (6.0 + float((int(point.seed) + bubble) % 3) * 1.2) * grow
 			draw_circle(center + offset, radius + 1.5, Color(OUTLINE_COLOR, OUTLINE_COLOR.a * fade))
 			draw_circle(center + offset, radius, Color(0.68, 0.88, 1.0, 0.72 * fade))

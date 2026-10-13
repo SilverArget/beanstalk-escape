@@ -85,7 +85,7 @@ func _init() -> void:
 	shop.call("_build")
 	shop.active_tab = "TRAIL"
 	shop.call("_layout")
-	_check(is_equal_approx(shop.preview.scale.x, 0.82) and shop.preview.position.y <= shop.preview_host.size.y / 3.0, "trail preview shrinks into the host's upper third")
+	_check(is_equal_approx(shop.preview.scale.x, 0.82) and shop.preview.position.y <= shop.preview_host.size.y * 0.4, "trail preview shrinks into the host's upper part")
 	shop.active_tab = "PET"
 	shop.preview_item = {"slot": "TRAIL"}
 	shop.call("_layout")

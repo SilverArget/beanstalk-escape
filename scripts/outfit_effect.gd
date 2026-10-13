@@ -13,9 +13,8 @@ var body_size := BASE_BODY_SIZE
 
 
 func _init() -> void:
-	var light_material := CanvasItemMaterial.new()
-	light_material.blend_mode = CanvasItemMaterial.BLEND_MODE_MIX
-	material = light_material
+	# Default MIX blending; no per-instance material so the canvas batches stay merged.
+	material = null
 
 
 func configure(item: Dictionary, draw_behind := false) -> void:
