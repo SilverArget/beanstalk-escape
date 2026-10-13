@@ -13,6 +13,7 @@ var time_wings_active := false
 var fire_wings_active := false
 var rock_penalty_count := 0
 var knockback_speed := Balance.BEAN_KNOCKBACK_SPEED
+var rock_knockback_requires_support := false
 var active_branch := 1
 var transition_from := 1
 var transition_to := 1
@@ -41,6 +42,8 @@ func _ready() -> void:
 
 func _physics_process(delta: float) -> void:
 	knockback_remaining = maxf(knockback_remaining - delta, 0.0)
+	if knockback_remaining <= 0.0:
+		rock_knockback_requires_support = false
 	stun_remaining = maxf(stun_remaining - delta, 0.0)
 	_sync_stage_mode()
 	if support_state == SupportState.FALLING_RECOVERY:
@@ -61,7 +64,11 @@ func _physics_process(delta: float) -> void:
 		velocity.y = 0.0
 	else:
 		velocity.y = -climb_speed()
+	var supported_position_before_move := global_position
 	move_and_slide()
+	if rock_knockback_requires_support and movement_mode == MovementMode.ATTACHED and support_state == SupportState.SUPPORTED and not branch_graph.has_support(stages, active_branch, global_position.y):
+		global_position.y = supported_position_before_move.y
+		velocity.y = 0.0
 	if movement_mode == MovementMode.TRUNK:
 		global_position.x = clampf(global_position.x, -Balance.TRUNK_HALF_WIDTH, Balance.TRUNK_HALF_WIDTH)
 	elif support_state == SupportState.SUPPORTED:
@@ -261,6 +268,7 @@ func reset_run(at_position: Vector2) -> void:
 	fire_wings_active = false
 	rock_penalty_count = 0
 	knockback_speed = Balance.BEAN_KNOCKBACK_SPEED
+	rock_knockback_requires_support = false
 	active_branch = stages.route_for_x(at_position.x) if stages != null else 1
 	transition_from = active_branch
 	transition_to = active_branch
@@ -282,6 +290,7 @@ func reset_run(at_position: Vector2) -> void:
 
 func apply_bean_hit() -> void:
 	bean_penalty_count += 1
+	rock_knockback_requires_support = false
 	if movement_mode == MovementMode.TRANSITION:
 		_begin_falling_recovery()
 	knockback_remaining = Balance.BEAN_KNOCKBACK_SECONDS
@@ -290,6 +299,7 @@ func apply_bean_hit() -> void:
 
 func apply_rock_hit(_hit_id: String) -> void:
 	rock_penalty_count += 1
+	rock_knockback_requires_support = movement_mode == MovementMode.ATTACHED and support_state == SupportState.SUPPORTED
 	if movement_mode == MovementMode.TRANSITION:
 		_begin_falling_recovery()
 	knockback_remaining = Balance.ROCK_KNOCKBACK_SECONDS
