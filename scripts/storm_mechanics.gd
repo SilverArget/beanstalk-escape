@@ -292,32 +292,30 @@ func _world_y(climbed: float) -> float:
 func _draw_wind() -> void:
 	var center_y := _world_y(float(wind.anchor) + 110.0)
 	var direction := float(wind.direction)
-	_draw_wind_field(center_y, direction)
-	var arrow_origin := player.global_position + Vector2(-76.0 * direction, -54.0)
-	var tip := arrow_origin + Vector2(direction * 72.0, 0.0)
-	draw_line(arrow_origin, tip, Color(1.0, 0.91, 0.42), 8.0, true)
-	draw_colored_polygon(PackedVector2Array([tip, tip + Vector2(-direction * 22.0, -15.0), tip + Vector2(-direction * 22.0, 15.0)]), Color(1.0, 0.91, 0.42))
+	_draw_wind_field(center_y, direction, true)
+	_draw_wind_arrow(direction, true)
 
-func _draw_wind_field(center_y: float, direction: float) -> void:
+func _draw_wind_field(center_y: float, direction: float, active: bool) -> void:
 	var tick := Time.get_ticks_msec() * 0.001
 	var y_offsets := PackedFloat32Array([-132.0, -70.0, -12.0, 58.0, 126.0])
 	var lengths := PackedFloat32Array([420.0, 330.0, 510.0, 365.0, 455.0])
-	var wind_color := Color(0.76, 0.93, 0.86, 0.42)
+	var wind_color := Color(0.86, 0.98, 1.0, 0.72 if active else 0.56)
+	var width_scale := 1.0 if active else 0.82
 	for index in 5:
 		var travel := fposmod(tick * 150.0 + float(index) * 223.0, 1120.0)
 		var start_x := -560.0 + travel if direction > 0.0 else 560.0 - travel
-		var curve := sin(tick * 1.7 + float(index) * 1.31) * 12.0
 		var start := Vector2(start_x, center_y + y_offsets[index])
-		var finish := start + Vector2(direction * lengths[index], curve * 0.35)
-		var sweep := PackedVector2Array([
-			start,
-			start + Vector2(direction * lengths[index] * 0.28, curve),
-			start + Vector2(direction * lengths[index] * 0.72, -curve * 0.45),
-			finish,
-		])
-		for segment in 3:
-			var width := 2.6 if segment == 1 else 1.15
-			draw_line(sweep[segment], sweep[segment + 1], wind_color, width, true)
+		var curve_height := (28.0 + float(index) * 3.0) * (1.0 if index % 2 == 0 else -1.0)
+		curve_height += sin(tick * 1.7 + float(index) * 1.31) * 8.0
+		var sweep := PackedVector2Array()
+		for point_index in 10:
+			var t := float(point_index) / 9.0
+			var arc := sin(t * PI) * curve_height
+			var ripple := sin(t * TAU + tick * 1.5 + float(index)) * 5.0
+			sweep.append(start + Vector2(direction * lengths[index] * t, arc + ripple))
+		draw_polyline(PackedVector2Array([sweep[0], sweep[1], sweep[2], sweep[3]]), wind_color, 2.3 * width_scale, true)
+		draw_polyline(PackedVector2Array([sweep[3], sweep[4], sweep[5], sweep[6]]), wind_color, 5.2 * width_scale, true)
+		draw_polyline(PackedVector2Array([sweep[6], sweep[7], sweep[8], sweep[9]]), wind_color, 2.3 * width_scale, true)
 	for leaf_index in 3:
 		var leaf_travel := fposmod(tick * 185.0 + float(leaf_index) * 367.0, 1120.0)
 		var leaf_x := -560.0 + leaf_travel if direction > 0.0 else 560.0 - leaf_travel
@@ -326,13 +324,22 @@ func _draw_wind_field(center_y: float, direction: float) -> void:
 		var heading := Vector2(direction, flutter * 0.28).normalized()
 		var normal := Vector2(-heading.y, heading.x)
 		var leaf := PackedVector2Array([
-			leaf_center + heading * 11.0,
-			leaf_center + normal * 6.0,
-			leaf_center - heading * 9.0,
-			leaf_center - normal * 6.0,
+			leaf_center + heading * 15.0,
+			leaf_center + normal * 8.0,
+			leaf_center - heading * 12.0,
+			leaf_center - normal * 8.0,
 		])
-		var leaf_color := Color(0.46, 0.69 - float(leaf_index) * 0.05, 0.27, 0.58)
+		var leaf_color := Color(0.46, 0.69 - float(leaf_index) * 0.05, 0.27, 0.72 if active else 0.58)
 		draw_colored_polygon(leaf, leaf_color)
+
+func _draw_wind_arrow(direction: float, active: bool) -> void:
+	if player == null:
+		return
+	var origin := player.global_position + Vector2(-132.0 * direction, -62.0)
+	var tip := origin + Vector2(direction * 66.0, 0.0)
+	var color := Color(1.0, 0.91, 0.42, 1.0 if active else 0.82)
+	draw_line(origin, tip, color, 9.0 if active else 7.0, true)
+	draw_colored_polygon(PackedVector2Array([tip, tip + Vector2(-direction * 25.0, -17.0), tip + Vector2(-direction * 25.0, 17.0)]), color)
 
 func _draw_breakable() -> void:
 	var x := _lane_x(int(breakable.lane))
@@ -412,7 +419,8 @@ func _update_campaign(delta: float) -> void:
 					stages.set_runtime_web(int(slot.stage), int(slot.lane), anchor, end_height, false)
 
 func _draw_campaign() -> void:
-	var wind_drawn := false
+	var wind_slot: Dictionary = {}
+	var wind_center_y := 0.0
 	for slot: Dictionary in campaign_slots:
 		var climbed := float(slot.stage_bottom_y) - player.global_position.y if player != null else -INF
 		var anchor := float(slot.anchor)
@@ -422,22 +430,21 @@ func _draw_campaign() -> void:
 		var y1 := float(slot.stage_bottom_y) - float(slot.occupancy[1])
 		var kind := String(slot.kind)
 		if kind == "V":
-			if not wind_drawn:
-				_draw_campaign_wind(slot, (y0 + y1) * 0.5)
-				wind_drawn = true
+			if wind_slot.is_empty() or (bool(slot.active) and not bool(wind_slot.active)):
+				wind_slot = slot
+				wind_center_y = (y0 + y1) * 0.5
 		elif kind == "K":
 			_draw_campaign_break(slot, y0, y1)
 		elif kind == "WEB":
 			_draw_campaign_web(slot, y0, y1)
+	if not wind_slot.is_empty():
+		_draw_campaign_wind(wind_slot, wind_center_y)
 
 func _draw_campaign_wind(slot: Dictionary, center_y: float) -> void:
 	var direction := float(slot.direction)
-	_draw_wind_field(center_y, direction)
-	if player != null:
-		var origin := player.global_position + Vector2(-76.0 * direction, -54.0)
-		var tip := origin + Vector2(direction * 72.0, 0.0)
-		draw_line(origin, tip, Color(1.0, 0.91, 0.42), 8.0, true)
-		draw_colored_polygon(PackedVector2Array([tip, tip + Vector2(-direction * 22.0, -15.0), tip + Vector2(-direction * 22.0, 15.0)]), Color(1.0, 0.91, 0.42))
+	var active := bool(slot.active)
+	_draw_wind_field(center_y, direction, active)
+	_draw_wind_arrow(direction, active)
 
 func _draw_campaign_break(slot: Dictionary, y0: float, y1: float) -> void:
 	var x := _lane_x(int(slot.lane))
