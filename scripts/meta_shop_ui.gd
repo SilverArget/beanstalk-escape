@@ -48,6 +48,7 @@ func open_shop() -> void:
 
 func open_character_select() -> void:
 	mode = "SELECT"
+	preview_back = false
 	active_gender = "MALE" if str(economy.shop.selected_character).begins_with("M") else "FEMALE"
 	visible = true
 	refresh()
@@ -63,6 +64,7 @@ func open_map() -> void:
 func close() -> void:
 	preview_character_id = ""
 	preview_item = {}
+	preview_back = false
 	_apply_preview()
 	visible = false
 	closed.emit()
@@ -112,7 +114,7 @@ func _build() -> void:
 	preview.scale = Vector2.ONE * 1.45
 	preview_host.add_child(preview)
 	view_toggle_button = Button.new()
-	view_toggle_button.text = "ARKA"
+	view_toggle_button.text = "BACK"
 	view_toggle_button.custom_minimum_size = Vector2(96, 32)
 	view_toggle_button.pressed.connect(_toggle_preview_view)
 	panel.add_child(view_toggle_button)
@@ -443,7 +445,7 @@ func _apply_preview() -> void:
 		preview.show_back_preview()
 	else:
 		preview.show_front_preview()
-	view_toggle_button.text = "ÖN" if preview_back else "ARKA"
+	view_toggle_button.text = "FRONT" if preview_back else "BACK"
 	if player_visual != null:
 		player_visual.set_skin(str(economy.shop.selected_character))
 		player_visual.set_cosmetics(economy.shop.equipped, economy.cosmetic_catalog())
