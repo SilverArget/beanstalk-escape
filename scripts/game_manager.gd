@@ -59,6 +59,10 @@ var last_stage_gold_reward := 0
 var death_count_by_stage := {}
 var continue_used_this_run := false
 var continue_checkpoint := {}
+var max_lives := 3
+var current_lives := 3
+var hit_invulnerability_remaining := 0.0
+var ad_revives_by_stage := {}
 var completed_since_interstitial := 0
 var platform_pause_active := false
 var paused_by_platform := false
@@ -114,6 +118,8 @@ func _ready() -> void:
 	save_manager.configure_platform(platform_services)
 	if not economy.initialize(save_manager):
 		push_error("Economy config could not be loaded")
+	max_lives = maxi(int(economy.config.get("lives_per_run", 3)), 1)
+	current_lives = max_lives
 	_apply_loaded_profile({"meta_systems": save_manager.meta_systems_snapshot()})
 	_apply_debug_meta_overrides()
 	save_manager.profile_loaded.connect(economy.reload_profile)
@@ -141,6 +147,7 @@ func _ready() -> void:
 	_show_menu()
 
 func _physics_process(delta: float) -> void:
+	_update_hit_invulnerability(delta)
 	reward_toast_remaining = maxf(reward_toast_remaining - delta, 0.0)
 	time_wings_notice_remaining = maxf(time_wings_notice_remaining - delta, 0.0)
 	level_up_remaining = maxf(level_up_remaining - delta, 0.0)
@@ -343,6 +350,9 @@ func restart() -> void:
 	death_count_by_stage.clear()
 	continue_used_this_run = false
 	continue_checkpoint = {}
+	current_lives = max_lives
+	hit_invulnerability_remaining = 0.0
+	ad_revives_by_stage.clear()
 	completed_since_interstitial = 0
 	challenge_eligible = mode == MODE_NORMAL and debug_start_stage == 1 and debug_sandbox.is_empty()
 	damage_events = 0
@@ -490,6 +500,10 @@ func restart_stage() -> void:
 	audio.play_sfx("ui_click")
 	_clear_direction_inputs()
 	var stage_number := stages.current_stage
+	current_lives = max_lives
+	hit_invulnerability_remaining = 0.0
+	continue_used_this_run = false
+	ad_revives_by_stage.erase(stage_number)
 	challenge_eligible = false
 	var start_y := stages.stage_bottom_y(stage_number)
 	for child in get_tree().get_nodes_in_group("run_transient"): child.free()
@@ -704,6 +718,33 @@ func dispatch_command(command: String, source := "runtime") -> bool:
 func _die(cause: DeathCause = DeathCause.CAUGHT) -> void:
 	if app_state == AppState.PLAYER_DEAD:
 		return
+	if not tutorial_active:
+		if hit_invulnerability_remaining > 0.0:
+			_respawn_at_continue_checkpoint()
+			return
+		_lose_life(cause, true)
+		return
+	_enter_player_dead(cause)
+
+func _lose_life(cause: DeathCause, respawn_from_checkpoint: bool) -> bool:
+	if tutorial_active or app_state != AppState.PLAYING or hit_invulnerability_remaining > 0.0 or current_lives <= 0:
+		return false
+	current_lives -= 1
+	damage_events += 1
+	challenge_eligible = false
+	hit_invulnerability_remaining = float(economy.config.get("hit_invulnerability_seconds", 1.5))
+	if not reduced_motion:
+		shake_remaining = 0.20
+	if current_lives <= 0:
+		_enter_player_dead(cause)
+	elif respawn_from_checkpoint:
+		_respawn_at_continue_checkpoint()
+	else:
+		_update_hud()
+		_publish_readonly_web_state()
+	return true
+
+func _enter_player_dead(cause: DeathCause) -> void:
 	state = State.PLAYER_DEAD
 	app_state = AppState.PLAYER_DEAD
 	death_cause = cause
@@ -726,6 +767,39 @@ func _die(cause: DeathCause = DeathCause.CAUGHT) -> void:
 	_update_hud()
 	call_deferred("_focus_default_death_action")
 	_publish_readonly_web_state()
+
+func _respawn_at_continue_checkpoint() -> void:
+	var safe_position: Vector2 = continue_checkpoint.get("position", player.global_position)
+	safe_position = _validated_continue_position(safe_position)
+	continue_checkpoint = {"position": safe_position, "stage": stages.stage_for_y(safe_position.y)}
+	player.reset_run(safe_position)
+	var safe_stage := stages.stage_for_y(safe_position.y)
+	spider.reset_run(safe_position + Vector2(0, _spider_start_gap(safe_stage)))
+	rocks.sync_after_player_teleport()
+	gauge.update_from_positions(player.global_position.y, spider.global_position.y)
+	_update_hud()
+	_publish_readonly_web_state()
+
+func _validated_continue_position(candidate: Vector2) -> Vector2:
+	var stage_number := stages.stage_for_y(candidate.y)
+	var preferred_route := stages.route_for_x(candidate.x)
+	if stages.can_enter_route_at(stage_number, preferred_route, stages.progress_in_stage(candidate.y)):
+		return candidate
+	for step in range(1, 25):
+		var sample_y := candidate.y + float(step) * 24.0
+		if stages.stage_for_y(sample_y) != stage_number:
+			break
+		for route in [preferred_route, 1, 0, 2]:
+			if stages.can_enter_route_at(stage_number, route, stages.progress_in_stage(sample_y)):
+				return Vector2(stages.branch_x_at(route, sample_y), sample_y)
+	return Vector2(0.0, stages.stage_bottom_y(stage_number))
+
+func _update_hit_invulnerability(delta: float) -> void:
+	if app_state == AppState.PLAYING and hit_invulnerability_remaining > 0.0:
+		hit_invulnerability_remaining = maxf(hit_invulnerability_remaining - delta, 0.0)
+		player.modulate.a = 0.30 if int(hit_invulnerability_remaining * 12.0) % 2 == 0 else 1.0
+	else:
+		player.modulate.a = 1.0
 
 func _request_confirm() -> void:
 	if tutorial_active and app_state == AppState.PLAYER_DEAD:
@@ -874,19 +948,25 @@ func _start_selected_run() -> void:
 	start_game()
 
 func _continue_with_ad() -> void:
-	if app_state != AppState.PLAYER_DEAD or continue_used_this_run:
+	if app_state != AppState.PLAYER_DEAD or not _can_offer_ad_revive():
 		return
 	platform_services.show_rewarded("continue_in_stage", _continue_after_reward)
 
 func _continue_after_reward() -> void:
 	if app_state != AppState.PLAYER_DEAD:
 		return
+	var stage_number := stages.stage_for_y(player.global_position.y)
+	ad_revives_by_stage[stage_number] = int(ad_revives_by_stage.get(stage_number, 0)) + 1
 	continue_used_this_run = true
-	var safe_position: Vector2 = continue_checkpoint.get("position", player.global_position)
-	player.reset_run(safe_position)
-	var safe_stage := stages.stage_for_y(safe_position.y)
-	spider.reset_run(safe_position + Vector2(0, _spider_start_gap(safe_stage)))
+	current_lives = mini(max_lives, maxi(int(economy.config.get("ad_revive_lives", 1)), 1))
+	hit_invulnerability_remaining = float(economy.config.get("hit_invulnerability_seconds", 1.5))
+	_respawn_at_continue_checkpoint()
 	_resume_after_death()
+
+func _can_offer_ad_revive() -> bool:
+	var stage_number := stages.stage_for_y(player.global_position.y)
+	var maximum := maxi(int(economy.config.get("ad_revive_max_per_stage", 0)), 0)
+	return maximum == 0 or int(ad_revives_by_stage.get(stage_number, 0)) < maximum
 
 func _remember_continue_checkpoint() -> void:
 	if app_state != AppState.PLAYING or not player.on_support or player.support_state != PlayerController.SupportState.SUPPORTED:
@@ -915,6 +995,14 @@ func _restart_run_from_death() -> void:
 	if app_state == AppState.PLAYER_DEAD:
 		restart()
 		_begin_intro()
+
+func _restart_from_death() -> void:
+	if app_state != AppState.PLAYER_DEAD:
+		return
+	if str(economy.config.get("restart_mode", "stage")) == "game":
+		restart()
+	else:
+		restart_stage()
 
 func _menu_from_death() -> void:
 	if app_state == AppState.PLAYER_DEAD:
@@ -1126,14 +1214,14 @@ func on_bean_hit() -> void:
 		tutorial_bean = null
 		$HUD/TutorialPanel.text = "2 / 3  TRY AGAIN\nThe bean hit this branch. Wait for the warning, then change branch once."
 		return
-	damage_events += 1
-	if not reduced_motion:
-		shake_remaining = 0.20
+	_lose_life(DeathCause.OBSTACLE, false)
 
 func on_rock_hit() -> void:
-	damage_events += 1
-	if not reduced_motion:
-		shake_remaining = 0.20
+	_lose_life(DeathCause.OBSTACLE, false)
+
+func on_environment_hit(kind: String, respawn_from_checkpoint := false) -> void:
+	var cause := DeathCause.FALL if kind == "branch_break" else DeathCause.OBSTACLE
+	_lose_life(cause, respawn_from_checkpoint)
 
 func is_nightmare_mode() -> bool:
 	return mode == MODE_NIGHTMARE
@@ -1228,6 +1316,10 @@ func _setup_hud() -> void:
 	_add_label("Pause", Vector2(315, 235), "PAUSED - ESC TO RESUME", 22)
 	_add_label("StageBanner", Vector2(360, 90), "", 20)
 	_add_label("StageCounter", Vector2(16, 62), "STAGE 1 / 30", 14)
+	var lives_label := _add_label("Lives", Vector2(14, 8), "", 30)
+	lives_label.add_theme_color_override("font_color", Color("ff5b6e"))
+	lives_label.add_theme_color_override("font_outline_color", Color("142b39"))
+	lives_label.add_theme_constant_override("outline_size", 4)
 	_add_label("Tutorial", Vector2(360, 130), "", 22)
 	_add_label("TimeWings", Vector2(690, 22), "", 16)
 	_add_label("FireWings", Vector2(690, 44), "", 16)
@@ -1240,8 +1332,8 @@ func _setup_hud() -> void:
 	$HUD.add_child(xp_bar)
 	_add_label("RewardToast", Vector2(300, 152), "", 20)
 	_add_label("LevelUpCard", Vector2(300, 202), "", 28)
-	_add_action_button("ContinueAd", "CONTINUE (AD)", _continue_with_ad)
-	_add_action_button("RetryStage", "RETRY STAGE", restart_stage)
+	_add_action_button("ContinueAd", "WATCH AD — CONTINUE", _continue_with_ad)
+	_add_action_button("RetryStage", "RESTART", _restart_from_death)
 	_add_action_button("RestartRun", "RESTART RUN", _restart_run_from_death)
 	_add_action_button("DeathMenu", "MENU", _menu_from_death)
 	_add_action_button("SkipStageAd", "SKIP STAGE (AD)", _skip_stage_with_ad)
@@ -1401,6 +1493,8 @@ func layout_hud_for_viewport(viewport_size: Vector2) -> void:
 	prompt.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	$HUD/Mute.position = Vector2(width - 124.0, 10.0)
 	$HUD/Mute.size = Vector2(112.0, 46.0)
+	$HUD/Lives.position = Vector2(14.0, 8.0)
+	$HUD/Lives.size = Vector2(180.0, 42.0)
 	var skill := $HUD/TimeWings as Label
 	var skill_orb := $HUD/TimeWingsOrb as TextureRect
 	var skill_y := maxf(height - (226.0 if DisplayServer.is_touchscreen_available() else 84.0), 126.0)
@@ -1714,15 +1808,16 @@ func _update_hud() -> void:
 	$HUD/TimeWingsOrb.visible = normal_playing
 	$HUD/TimeWingsBar.visible = normal_playing and time_wings_remaining > 0.0
 	$HUD/FireWings.visible = normal_playing
+	$HUD/Lives.visible = normal_playing
 	$HUD/GoldStatus.visible = meta_visible
 	$HUD/XPStatus.visible = meta_visible
 	$HUD/XPBar.visible = meta_visible
 	$HUD/RewardToast.visible = meta_visible and reward_toast_remaining > 0.0
 	$HUD/LevelUpCard.visible = meta_visible and level_up_remaining > 0.0
 	var death_visible := app_state == AppState.PLAYER_DEAD and not tutorial_active
-	$HUD/ContinueAd.visible = death_visible and not continue_used_this_run and platform_services.is_rewarded_supported()
+	$HUD/ContinueAd.visible = death_visible and _can_offer_ad_revive() and platform_services.is_rewarded_supported()
 	$HUD/RetryStage.visible = death_visible
-	$HUD/RestartRun.visible = death_visible
+	$HUD/RestartRun.visible = false
 	$HUD/DeathMenu.visible = death_visible
 	var dead_stage := stages.stage_for_y(player.global_position.y)
 	$HUD/SkipStageAd.visible = death_visible and dead_stage < Balance.STAGE_COUNT and int(death_count_by_stage.get(dead_stage, 0)) >= economy.value("skip_stage_death_count") and platform_services.is_rewarded_supported()
@@ -1744,6 +1839,7 @@ func _update_hud() -> void:
 	$HUD/TimeWingsBar.max_value = Balance.TIME_WINGS_SECONDS
 	$HUD/TimeWingsBar.value = time_wings_remaining
 	$HUD/FireWings.text = _fire_wings_status()
+	$HUD/Lives.text = "♥".repeat(current_lives) + "♡".repeat(max_lives - current_lives)
 	var meta := economy.snapshot()
 	$HUD/GoldStatus.text = "GOLD %d" % meta.gold
 	$HUD/XPStatus.text = "LV %d · XP %d/%d" % [meta.level, meta.xp, meta.xp_threshold]
@@ -1894,6 +1990,9 @@ func _readonly_state_snapshot() -> Dictionary:
 		"ghost": {"enabled": bool(meta_settings.ghost), "visible": ghost_sprite != null and ghost_sprite.visible, "stage_best_time": ghost_best_time},
 		"final": {"active": app_state == AppState.FINAL_CINEMATIC, "t": final_t, "duration": FINAL_CINEMATIC_SECONDS},
 		"death_cause": DeathCause.keys()[death_cause],
+		"lives": {"current": current_lives, "max": max_lives, "invulnerable_remaining": hit_invulnerability_remaining},
+		"revive_panel": app_state == AppState.PLAYER_DEAD and current_lives <= 0,
+		"fake_ad": platform_services.fake_ad_snapshot(),
 		"stage": stages.stage_for_y(player.global_position.y),
 		"player": {"x": player.global_position.x, "y": player.global_position.y, "vy": player.velocity.y},
 		"player_visual": player_visual,

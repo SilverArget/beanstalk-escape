@@ -15,11 +15,15 @@ var language := "en"
 var remove_ads_owned := false
 var _pending_reward: Callable
 var _pending_placement := ""
-var _fake_ads := true
+var _fake_ads := false
+var _fake_ad_active := false
+var _fake_ad_remaining := 0.0
+var _fake_ad_layer: CanvasLayer
+var _fake_ad_label: Label
 var _game_ready_sent := false
 
 func _ready() -> void:
-	_fake_ads = not OS.has_feature("web") or (_url_fragment_has("debug") and not _url_fragment_has("bridgeAds"))
+	_fake_ads = _should_use_fake_rewarded()
 	if not _bridge_ready():
 		return
 	language = str(Bridge.platform.language)
@@ -31,12 +35,18 @@ func _ready() -> void:
 		Bridge.payments.get_purchases(_on_purchases_loaded)
 	call_deferred("_send_game_ready")
 
-func _process(_delta: float) -> void:
+func _process(delta: float) -> void:
 	if not _game_ready_sent:
 		_send_game_ready()
+	if _fake_ad_active:
+		_fake_ad_remaining = maxf(_fake_ad_remaining - delta, 0.0)
+		if _fake_ad_label != null:
+			_fake_ad_label.text = "AD\n%d" % maxi(int(ceil(_fake_ad_remaining)), 0)
+		if _fake_ad_remaining <= 0.0:
+			_finish_fake_ad(true)
 
 func is_rewarded_supported() -> bool:
-	return _fake_ads or (_bridge_ready() and bool(Bridge.advertisement.is_rewarded_supported))
+	return true
 
 func is_payments_supported() -> bool:
 	return _bridge_ready() and bool(Bridge.payments.is_supported)
@@ -47,13 +57,67 @@ func is_platform_audio_enabled() -> bool:
 func show_rewarded(placement: String, on_rewarded: Callable) -> bool:
 	if placement not in REWARDED_PLACEMENTS or not is_rewarded_supported() or _pending_reward.is_valid():
 		return false
-	if _fake_ads:
-		on_rewarded.call()
-		return true
 	_pending_placement = placement
 	_pending_reward = on_rewarded
+	_fake_ads = _should_use_fake_rewarded()
+	if _fake_ads:
+		_start_fake_ad()
+		return true
 	Bridge.advertisement.show_rewarded(placement)
 	return true
+
+func fake_ad_snapshot() -> Dictionary:
+	return {"active": _fake_ad_active, "remaining": _fake_ad_remaining}
+
+func _start_fake_ad() -> void:
+	_ensure_fake_ad_ui()
+	_fake_ad_active = true
+	_fake_ad_remaining = 3.0
+	_fake_ad_layer.visible = true
+	_fake_ad_label.text = "AD\n3"
+	platform_pause_changed.emit(true)
+
+func _finish_fake_ad(rewarded: bool) -> void:
+	if not _fake_ad_active:
+		return
+	_fake_ad_active = false
+	_fake_ad_remaining = 0.0
+	if _fake_ad_layer != null:
+		_fake_ad_layer.visible = false
+	platform_pause_changed.emit(false)
+	var reward := _pending_reward
+	_pending_reward = Callable()
+	_pending_placement = ""
+	if rewarded and reward.is_valid():
+		reward.call()
+
+func _ensure_fake_ad_ui() -> void:
+	if _fake_ad_layer != null:
+		return
+	_fake_ad_layer = CanvasLayer.new()
+	_fake_ad_layer.name = "FakeRewardedAd"
+	_fake_ad_layer.layer = 1000
+	add_child(_fake_ad_layer)
+	var shade := ColorRect.new()
+	shade.color = Color(0.0, 0.0, 0.0, 0.92)
+	shade.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	shade.mouse_filter = Control.MOUSE_FILTER_STOP
+	_fake_ad_layer.add_child(shade)
+	var card := VBoxContainer.new()
+	card.set_anchors_preset(Control.PRESET_CENTER)
+	card.position = Vector2(-110.0, -80.0)
+	card.size = Vector2(220.0, 160.0)
+	card.alignment = BoxContainer.ALIGNMENT_CENTER
+	shade.add_child(card)
+	_fake_ad_label = Label.new()
+	_fake_ad_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_fake_ad_label.add_theme_font_size_override("font_size", 42)
+	card.add_child(_fake_ad_label)
+	var close := Button.new()
+	close.text = "CLOSE"
+	close.custom_minimum_size = Vector2(220.0, 52.0)
+	close.pressed.connect(func(): _finish_fake_ad(false))
+	card.add_child(close)
 
 func show_interstitial(placement: String) -> bool:
 	if remove_ads_owned or _fake_ads or not _bridge_ready() or not Bridge.advertisement.is_interstitial_supported:
@@ -117,6 +181,11 @@ func _set_remove_ads_owned(value: bool) -> void:
 
 func _bridge_ready() -> bool:
 	return get_node_or_null("/root/Bridge") != null and Bridge.platform != null
+
+func _should_use_fake_rewarded() -> bool:
+	if not OS.has_feature("web") or _url_fragment_has("fakeads") or _url_fragment_has("debug"):
+		return true
+	return not _bridge_ready() or not bool(Bridge.advertisement.is_rewarded_supported)
 
 func _url_fragment_has(flag: String) -> bool:
 	if not OS.has_feature("web"):

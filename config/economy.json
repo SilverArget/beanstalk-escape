@@ -24,6 +24,11 @@
   "interstitial_min_stage": 3,
   "interstitial_completed_stage_interval": 2,
   "interstitial_min_delay_seconds": 90,
+  "lives_per_run": 3,
+  "hit_invulnerability_seconds": 1.5,
+  "ad_revive_lives": 1,
+  "ad_revive_max_per_stage": 0,
+  "restart_mode": "stage",
   "characters": {
     "M1": {"gender": "MALE", "name": "CLASSIC ADVENTURER", "level": 1, "price": 0},
     "M2": {"gender": "MALE", "name": "CLOUD SCOUT", "level": 3, "price": 300},

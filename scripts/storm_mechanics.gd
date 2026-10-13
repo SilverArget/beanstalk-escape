@@ -17,9 +17,9 @@ const WEB_DISSOLVE_SECONDS := 0.25
 var sandbox_active := false
 var stage_number := 3
 var stage_bottom_y := 0.0
-var wind := {"lane": 1, "anchor": 260.0, "direction": 1.0, "gain": 1.0, "length": 220.0}
-var breakable := {"lane": 1, "anchor": 760.0, "length": 160.0, "touched": false, "clock": 0.0, "broken": false}
-var web := {"lane": 2, "anchor": 1280.0, "length": 180.0, "warning": false, "fired": false, "active": false, "clock": 0.0, "dissolve": 0.0}
+var wind := {"lane": 1, "anchor": 260.0, "direction": 1.0, "gain": 1.0, "length": 220.0, "life_spent": false}
+var breakable := {"lane": 1, "anchor": 760.0, "length": 160.0, "touched": false, "clock": 0.0, "broken": false, "life_spent": false}
+var web := {"lane": 2, "anchor": 1280.0, "length": 180.0, "warning": false, "fired": false, "active": false, "clock": 0.0, "dissolve": 0.0, "life_spent": false}
 var rain := {"lane": 0, "anchor": 1900.0, "warned": false, "released": [false, false, false], "beans": []}
 var wind_audio_announced := false
 var break_audio_announced := false
@@ -47,14 +47,17 @@ func configure_sandbox(for_stage := 3) -> void:
 	queue_redraw()
 
 func reset_run() -> void:
+	wind.life_spent = false
 	breakable.touched = false
 	breakable.clock = 0.0
 	breakable.broken = false
+	breakable.life_spent = false
 	web.warning = false
 	web.fired = false
 	web.active = false
 	web.clock = 0.0
 	web.dissolve = 0.0
+	web.life_spent = false
 	rain.warned = false
 	rain.released = [false, false, false]
 	rain.beans = []
@@ -76,6 +79,7 @@ func reset_run() -> void:
 				slot["touched"] = false
 				slot["active"] = false
 				slot["finished"] = false
+				slot["life_spent"] = false
 				slot["warning_visible_seconds"] = 0.0
 				stage_slots.append(slot)
 			campaign_slots_by_stage[int(pattern.stage)] = stage_slots
@@ -100,6 +104,7 @@ func _physics_process(delta: float) -> void:
 	_update_breakable(delta, climbed)
 	_update_web(delta, climbed)
 	_update_rain(climbed)
+	_update_sandbox_contacts(climbed)
 	_update_visual_redraw(delta, true)
 
 func _update_visual_redraw(delta: float, visual_active: bool) -> void:
@@ -202,6 +207,9 @@ func _update_breakable(delta: float, climbed: float) -> void:
 	if float(breakable.clock) >= BREAK_SECONDS:
 		breakable.broken = true
 		stages.set_runtime_break(stage_number, int(breakable.lane), float(breakable.anchor), float(breakable.anchor) + float(breakable.length), true)
+		if inside and player.active_branch == int(breakable.lane) and not bool(breakable.life_spent):
+			breakable.life_spent = true
+			_notify_environment_hit("branch_break", true)
 		if audio != null:
 			audio.announce_storm_role("branch_break")
 
@@ -242,6 +250,20 @@ func _update_rain(climbed: float) -> void:
 			var bean := rain.beans[index] as BeanProjectile
 			if is_instance_valid(bean):
 				bean.request_release()
+
+func _update_sandbox_contacts(climbed: float) -> void:
+	if wind_envelope(climbed) > 0.0 and absf(player.support_offset) >= SUPPORT_OFFSET_LIMIT - 0.05 and not bool(wind.life_spent):
+		wind.life_spent = true
+		_notify_environment_hit("wind")
+	var in_web := climbed >= float(web.anchor) and climbed <= float(web.anchor) + float(web.length)
+	if bool(web.active) and in_web and player.active_branch == int(web.lane) and not bool(web.life_spent):
+		web.life_spent = true
+		_notify_environment_hit("web")
+
+func _notify_environment_hit(kind: String, respawn_from_checkpoint := false) -> void:
+	var game := get_parent() as GameManager
+	if game != null:
+		game.on_environment_hit(kind, respawn_from_checkpoint)
 
 func snapshot() -> Dictionary:
 	var campaign: Array = []
@@ -397,6 +419,9 @@ func _update_campaign(delta: float) -> void:
 			slot.warning_visible_seconds = float(slot.warning_visible_seconds) + delta
 		if kind == "V":
 			slot.active = climbed >= anchor and climbed <= end_height
+			if bool(slot.active) and absf(player.support_offset) >= SUPPORT_OFFSET_LIMIT - 0.05 and not bool(slot.life_spent):
+				slot.life_spent = true
+				_notify_environment_hit("wind")
 			continue
 		if bool(slot.finished):
 			continue
@@ -411,12 +436,19 @@ func _update_campaign(delta: float) -> void:
 					slot.finished = true
 					slot.active = false
 					stages.set_runtime_break(int(slot.stage), int(slot.lane), anchor, end_height, true)
+					if inside and player.active_branch == int(slot.lane) and not bool(slot.life_spent):
+						slot.life_spent = true
+						_notify_environment_hit("branch_break", true)
 		elif kind == "WEB":
 			if climbed >= anchor and not bool(slot.active):
 				slot.active = true
 				slot.clock = WEB_SECONDS * nightmare_scale("web_duration_scale")
 				stages.set_runtime_web(int(slot.stage), int(slot.lane), anchor, end_height, true)
 			if bool(slot.active):
+				var caught_in_web := climbed >= anchor and climbed <= end_height and player.active_branch == int(slot.lane)
+				if caught_in_web and not bool(slot.life_spent):
+					slot.life_spent = true
+					_notify_environment_hit("web")
 				slot.clock = maxf(float(slot.clock) - delta * threat_scale(player.time_wings_active), 0.0)
 				if float(slot.clock) <= 0.0:
 					slot.active = false
