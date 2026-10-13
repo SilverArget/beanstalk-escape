@@ -156,6 +156,7 @@ func _layout() -> void:
 	scroll.position = Vector2(8, 56) if map_mode else Vector2(preview_width + 16, 92)
 	scroll.size = Vector2(width - 16 if map_mode else width - preview_width - 24, maxf(footer_y - scroll.position.y - 6.0, 120.0))
 	grid.columns = (6 if scroll.size.x >= 720.0 else 3) if map_mode else (3 if scroll.size.x >= 450.0 else 2)
+	tabs.size = Vector2(width - 16, 38)
 
 func refresh() -> void:
 	if economy == null:
@@ -191,7 +192,9 @@ func _cycle_character(direction: int) -> void:
 	call_deferred("_focus_start_button")
 
 func _rebuild_tabs() -> void:
-	for child in tabs.get_children(): child.queue_free()
+	for child in tabs.get_children():
+		tabs.remove_child(child)
+		child.queue_free()
 	tabs.visible = mode != "MAP"
 	if mode == "MAP":
 		return
@@ -216,7 +219,9 @@ func _rebuild_tabs() -> void:
 			tabs.add_child(button)
 
 func _rebuild_cards() -> void:
-	for child in grid.get_children(): child.queue_free()
+	for child in grid.get_children():
+		grid.remove_child(child)
+		child.queue_free()
 	if mode == "MAP":
 		for stage_number in range(1, 31):
 			grid.add_child(_map_node_card(stage_number))

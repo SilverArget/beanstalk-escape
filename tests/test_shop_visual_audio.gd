@@ -47,7 +47,26 @@ func _run() -> void:
 	var shop_preview := MetaShopUI.new()
 	root.add_child(shop_preview)
 	shop_preview.size = Vector2(960, 540)
+	economy.grant_gold(1000)
 	shop_preview.setup(economy, null)
+	await process_frame
+	var tabs_stay_fixed := _shop_tabs_fit(shop_preview)
+	shop_preview.active_tab = "HAIR"
+	shop_preview.refresh()
+	await process_frame
+	tabs_stay_fixed = tabs_stay_fixed and _shop_tabs_fit(shop_preview)
+	shop_preview.call("_preview_item", economy.cosmetic_catalog("HAIR")[0])
+	await process_frame
+	tabs_stay_fixed = tabs_stay_fixed and _shop_tabs_fit(shop_preview)
+	var bought_hair := economy.buy("hair_dark")
+	tabs_stay_fixed = tabs_stay_fixed and bought_hair
+	await process_frame
+	tabs_stay_fixed = tabs_stay_fixed and _shop_tabs_fit(shop_preview)
+	var equipped_hair := economy.equip("hair_dark")
+	tabs_stay_fixed = tabs_stay_fixed and equipped_hair
+	await process_frame
+	tabs_stay_fixed = tabs_stay_fixed and _shop_tabs_fit(shop_preview)
+	_check(tabs_stay_fixed, "shop tabs stay inside 960 px after refresh, tab change, preview, buy, and equip")
 	var pets_fit := true
 	var pets_clear_body := true
 	var pets_grounded := true
@@ -260,6 +279,18 @@ func _preview_rects(shop: MetaShopUI, skin: String, item: Dictionary) -> Diction
 		"body": Rect2(visual.position + body_top_left * visual.scale, Vector2(body_used.size) * PlayerVisual.ART_SCALE * visual.scale),
 		"pet": Rect2(visual.position + pet_top_left * visual.scale, Vector2(pet_used.size) * pet_layer.scale * visual.scale),
 	}
+
+func _shop_tabs_fit(shop: MetaShopUI) -> bool:
+	if not is_equal_approx(shop.tabs.size.x, shop.size.x - 16.0):
+		return false
+	var buttons := shop.tabs.get_children()
+	if buttons.size() != MetaShopUI.SLOTS.size():
+		return false
+	for button in buttons:
+		var rect := (button as Control).get_global_rect()
+		if rect.position.x < 0.0 or rect.end.x > shop.size.x:
+			return false
+	return true
 
 func _visible_rect(image: Image, minimum_alpha: float) -> Rect2i:
 	var minimum := Vector2i(image.get_width(), image.get_height())
