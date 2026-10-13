@@ -1839,6 +1839,18 @@ func _readonly_state_snapshot() -> Dictionary:
 				"y": bean.global_position.y,
 				"warning_visible_seconds": bean.warning_visible_seconds,
 			})
+	var state_gold := []
+	for placement: Dictionary in golds.placements_by_stage.get(stage_number, []):
+		var position: Vector2 = placement.position
+		var route := int(placement.route)
+		state_gold.append({
+			"id": String(placement.id),
+			"x": position.x,
+			"visual_x": position.x + ScaleLock.vine_visual_offset(route, position.y) if stage_number >= 3 else position.x,
+			"y": position.y,
+			"route": route,
+			"collected": golds.collected_ids.has(String(placement.id)),
+		})
 	return {
 		"app_state": AppState.keys()[app_state],
 		"mode": mode,
@@ -1860,6 +1872,7 @@ func _readonly_state_snapshot() -> Dictionary:
 		"rocks": rocks.snapshot(),
 		"audio_events": audio.audio_event_snapshot(),
 		"gold_fx": golds.active_feedback_snapshot(),
+		"gold": state_gold,
 		"tempo": {"stage_seconds": Balance.STAGE_DURATION_SECONDS, "events_in_stage": stages.pattern_for_stage(stage_number).encounters.size()},
 		"fx": {"shake": shake_remaining, "close_text": close_text_remaining},
 		"beans": state_beans,
