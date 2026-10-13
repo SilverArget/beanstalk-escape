@@ -40,7 +40,7 @@ const EMBLEM_VISIBLE_BOUNDS := {
 	"emblem_crown.png": Rect2(20, 11, 212, 213),
 	"emblem_leaf.png": Rect2(13, 19, 243, 221),
 	"emblem_spider.png": Rect2(22, 0, 218, 231),
-	"emblem_star.png": Rect2(0, 11, 243, 245),
+	"emblem_star.png": Rect2(52, 37, 135, 141),
 	"emblem_sun.png": Rect2(1, 9, 247, 238),
 }
 
