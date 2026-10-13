@@ -41,8 +41,38 @@ func _init() -> void:
 		_check(migrated.owned.has(new_id), "%s owned migration" % new_id)
 	_check(str(migrated.equipped.PET) == "fairy_firefly", "equipped pet migration")
 
+	var effect := FairyEffect.new()
+	var effect_material := effect.material as CanvasItemMaterial
+	_check(effect_material != null and effect_material.blend_mode == CanvasItemMaterial.BLEND_MODE_ADD, "fairy effects use additive light blending")
+
+	var follower := PetFollower.new()
+	follower._ready()
+	_check(follower.sprite.texture_filter == CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS, "game fairy uses linear mipmap filtering")
+	var preview := PlayerVisual.new()
+	preview._build_visual()
+	var preview_pet := preview.cosmetic_sprites.get("PET") as Sprite2D
+	_check(preview_pet.texture_filter == CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS, "preview fairy uses linear mipmap filtering")
+
+	var economy := EconomyManager.new()
+	economy.initialize(save)
+	var shop := MetaShopUI.new()
+	shop.economy = economy
+	var pet_card := shop._cosmetic_card(pets[0])
+	var pet_icon := (pet_card.get_child(0) as VBoxContainer).get_child(2) as TextureRect
+	_check(pet_icon.texture_filter == CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS, "shop fairy uses linear mipmap filtering")
+
+	for pet in pets:
+		var import_file := FileAccess.open("res://assets/art/pets/%s.import" % str(pet.image), FileAccess.READ)
+		_check(import_file != null and import_file.get_as_text().contains("mipmaps/generate=true"), "%s generates mipmaps" % str(pet.id))
+
+	pet_card.free()
+	shop.free()
+	preview.free()
+	follower.free()
+	effect.free()
+
 	if failures == 0:
-		print("PASS: fairy economy and save migration")
+		print("PASS: fairy effects and filtering")
 	quit(failures)
 
 func _check(condition: bool, label: String) -> void:

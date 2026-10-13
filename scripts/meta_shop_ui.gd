@@ -373,6 +373,8 @@ func _cosmetic_card(item: Dictionary) -> Control:
 	icon.custom_minimum_size = Vector2(112, 88 if is_pet else 104)
 	icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	if is_pet:
+		icon.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
 	var art_folder := "pets" if str(item.get("slot", "")) == "PET" else "cosmetics"
 	icon.texture = load("res://assets/art/%s/%s" % [art_folder, item.image])
 	body.add_child(icon)

@@ -24,6 +24,7 @@ func _ready() -> void:
 	add_child(effect)
 	sprite = Sprite2D.new()
 	sprite.name = "Sprite"
+	sprite.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
 	sprite.z_index = 4
 	add_child(sprite)
 
@@ -39,6 +40,7 @@ func setup(player: PlayerController, final_character: Sprite2D) -> void:
 		cinematic_anchor.add_child(cinematic_effect)
 		cinematic_sprite = Sprite2D.new()
 		cinematic_sprite.name = "Pet"
+		cinematic_sprite.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
 		cinematic_sprite.position = Vector2(-92.0, -18.0)
 		cinematic_sprite.z_index = -1
 		cinematic_anchor.add_child(cinematic_sprite)
