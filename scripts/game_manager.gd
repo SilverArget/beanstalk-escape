@@ -267,10 +267,45 @@ func _physics_process(delta: float) -> void:
 	_publish_readonly_web_state()
 
 func _input(event: InputEvent) -> void:
+	if app_state == AppState.PLAYER_DEAD and _handle_death_panel_keyboard(event):
+		get_viewport().set_input_as_handled()
+		return
 	var is_time_wings_key: bool = event.is_action_pressed("time_wings") or (event is InputEventKey and event.physical_keycode == KEY_F and event.pressed)
 	if app_state == AppState.PLAYING and is_time_wings_key and not (event is InputEventKey and event.echo):
 		dispatch_command("time_wings", "keyboard")
 		get_viewport().set_input_as_handled()
+
+func _handle_death_panel_keyboard(event: InputEvent) -> bool:
+	if not (event is InputEventKey) or not event.pressed or event.echo:
+		return false
+	if event.is_action_pressed("ui_accept"):
+		_request_confirm()
+		return true
+	var direction := 0
+	if event.is_action_pressed("ui_right") or event.is_action_pressed("ui_down") or event.is_action_pressed("move_right"):
+		direction = 1
+	elif event.is_action_pressed("ui_left") or event.is_action_pressed("ui_up") or event.is_action_pressed("move_left"):
+		direction = -1
+	if direction == 0:
+		return false
+	var actions := _visible_death_actions()
+	if actions.is_empty():
+		return true
+	var focused := get_viewport().gui_get_focus_owner() as Button
+	var focused_index := actions.find(focused)
+	if focused_index < 0:
+		focused_index = 0 if direction > 0 else actions.size() - 1
+	else:
+		focused_index = wrapi(focused_index + direction, 0, actions.size())
+	actions[focused_index].grab_focus()
+	return true
+
+func _visible_death_actions() -> Array[Button]:
+	var visible_actions: Array[Button] = []
+	for button: Button in [$HUD/ContinueAd, $HUD/RetryStage, $HUD/RestartRun, $HUD/DeathMenu, $HUD/SkipStageAd]:
+		if button.visible and not button.disabled:
+			visible_actions.append(button)
+	return visible_actions
 
 func _unhandled_input(event: InputEvent) -> void:
 	if app_state == AppState.INTRO and _is_intro_skip_event(event):
@@ -1766,6 +1801,11 @@ func _apply_theme() -> void:
 	normal.border_color = Palette.ACCENT_PROGRESS
 	theme.set_stylebox("normal", "Button", normal)
 	theme.set_stylebox("hover", "Button", normal)
+	var focus := normal.duplicate() as StyleBoxFlat
+	focus.bg_color = Color("47705eff")
+	focus.border_color = Palette.ACCENT_PROGRESS_LIGHT
+	focus.set_border_width_all(4)
+	theme.set_stylebox("focus", "Button", focus)
 	theme.set_color("font_color", "Button", Palette.UI_TEXT)
 	ui_theme = theme
 	for control in [$HUD/Title, $HUD/Hint, $HUD/Dead, $HUD/Complete, $HUD/Gauge]:
