@@ -64,6 +64,7 @@ var cosmetic_sprites: Dictionary = {}
 var equipped_cosmetics := {"OUTFIT": "", "EMBLEM": "", "PET": "", "TRAIL": ""}
 var cosmetic_data: Dictionary = {}
 var anchor_data: Dictionary = {}
+var emblem_layout: Dictionary = {}
 var frame_metrics: Dictionary = {}
 var fairy_effect: FairyEffect
 var trail_effect: TrailEffect
@@ -225,6 +226,7 @@ func _load_skin(requested_skin: String) -> void:
 			"used": Rect2i(Vector2i.ZERO, Vector2i(int(texture_size.x), int(texture_size.y * 0.75))),
 		}
 	_load_anchors()
+	_load_emblem_layout()
 	_load_outfit_art()
 	var current := frame_name
 	frame_name = ""
@@ -242,6 +244,16 @@ func _load_anchors() -> void:
 	var parsed: Variant = JSON.parse_string(file.get_as_text())
 	if parsed is Dictionary:
 		anchor_data = (parsed as Dictionary).get("frames", {}).duplicate(true)
+
+func _load_emblem_layout() -> void:
+	emblem_layout.clear()
+	var path := "%s/emblem_layout.json" % FRAME_ROOT
+	var file := FileAccess.open(path, FileAccess.READ)
+	if file == null:
+		return
+	var parsed: Variant = JSON.parse_string(file.get_as_text())
+	if parsed is Dictionary:
+		emblem_layout = (parsed as Dictionary).get(skin_id.to_lower(), {}).duplicate(true)
 
 func set_cosmetics(equipped: Dictionary, catalog: Array) -> void:
 	equipped_cosmetics = equipped.duplicate(true)
@@ -299,9 +311,11 @@ func _update_cosmetic_anchors() -> void:
 		return sprite.position + (source_point - texture_size * 0.5) * ART_SCALE
 	var emblem := cosmetic_sprites.get("EMBLEM") as Sprite2D
 	var pet := cosmetic_sprites.get("PET") as Sprite2D
-	var emblem_data: Array = frame_anchor.get("emblem_center", [head_center.x, head_center.y + head_width * 1.65])
-	var emblem_anchor: Vector2 = source_to_local.call(Vector2(float(emblem_data[0]), float(emblem_data[1])))
-	emblem.position = emblem_anchor
+	var emblem_measurement: Dictionary = emblem_layout.get(frame_name, {})
+	var emblem_data: Array = emblem_measurement.get("emblem_center", [])
+	var has_emblem_layout := emblem_data.size() == 2 \
+		and float(emblem_measurement.get("emblem_width", 0.0)) > 0.0 \
+		and bool(emblem_measurement.get("emblem_visible", false))
 	var pet_data: Array = frame_anchor.get("pet_anchor", [])
 	if frame_name == "front" and pet_data.size() == 2 and pet.texture != null:
 		var pet_bottom_left: Vector2 = source_to_local.call(Vector2(float(pet_data[0]), float(pet_data[1])))
@@ -339,14 +353,16 @@ func _update_cosmetic_anchors() -> void:
 		outfit_effect.position = sprite.position
 		outfit_effect.set_body_box(effect_size)
 		outfit_effect.visible = not outfit_effect.effect_name.is_empty()
-	if emblem.texture != null:
-		var emblem_width := float(frame_anchor.get("emblem_width", head_width * 0.85))
+	if emblem.texture != null and has_emblem_layout:
+		var emblem_anchor: Vector2 = source_to_local.call(Vector2(float(emblem_data[0]), float(emblem_data[1])))
+		var emblem_width := float(emblem_measurement.get("emblem_width", 0.0))
 		var visible_width: float = emblem_visible_bounds.size.x if emblem_visible_bounds.size.x > 0.0 else float(emblem.texture.get_width())
 		var emblem_scale: float = emblem_width * ART_SCALE / maxf(visible_width, 1.0)
 		emblem.scale = Vector2.ONE * emblem_scale
 		var visible_center_offset: Vector2 = emblem_visible_bounds.get_center() - emblem.texture.get_size() * 0.5
 		emblem.position = emblem_anchor - visible_center_offset * emblem_scale
-	emblem.visible = emblem.texture != null and not str(equipped_cosmetics.get("EMBLEM", "")).is_empty() and frame_name in BACK_EMBLEM_FRAMES
+	emblem.visible = emblem.texture != null and not str(equipped_cosmetics.get("EMBLEM", "")).is_empty() \
+		and has_emblem_layout and frame_name in BACK_EMBLEM_FRAMES
 
 func play_celebration() -> void:
 	celebrate_remaining = 0.75
