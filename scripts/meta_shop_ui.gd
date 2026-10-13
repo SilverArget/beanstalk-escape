@@ -21,11 +21,14 @@ var grid: GridContainer
 var scroll: ScrollContainer
 var preview_host: Control
 var preview: PlayerVisual
+var view_toggle_button: Button
 var footer: HBoxContainer
 var gold_label: Label
 var start_button: Button
 var double_treasure_button: Button
 var pending_double_gold := 0
+var preview_back := false
+var _last_preview_tab := ""
 
 func setup(manager: EconomyManager, gameplay_visual: PlayerVisual, services: Node = null) -> void:
 	economy = manager
@@ -107,6 +110,11 @@ func _build() -> void:
 	preview.name = "LivePreview"
 	preview.scale = Vector2.ONE * 1.45
 	preview_host.add_child(preview)
+	view_toggle_button = Button.new()
+	view_toggle_button.text = "ARKA"
+	view_toggle_button.custom_minimum_size = Vector2(96, 32)
+	view_toggle_button.pressed.connect(_toggle_preview_view)
+	panel.add_child(view_toggle_button)
 	scroll = ScrollContainer.new()
 	panel.add_child(scroll)
 	grid = GridContainer.new()
@@ -148,10 +156,14 @@ func _layout() -> void:
 	footer.position = Vector2(8, footer_y)
 	footer.size = Vector2(width - 16, 42)
 	var preview_width := clampf(width * 0.27, 190.0, 260.0)
-	preview_host.position = Vector2(8, 92)
-	preview_host.size = Vector2(preview_width, maxf(footer_y - 98.0, 120.0))
-	preview.position = Vector2(preview_width * (0.5 if active_tab == "OUTFIT" else 0.262), preview_host.size.y * 0.48)
 	var map_mode := mode == "MAP"
+	preview_host.position = Vector2(8, 92)
+	preview_host.size = Vector2(preview_width, maxf(footer_y - 128.0, 120.0))
+	view_toggle_button.position = Vector2(8.0 + (preview_width - 96.0) * 0.5, preview_host.position.y + preview_host.size.y + 4.0)
+	view_toggle_button.size = Vector2(96, 32)
+	view_toggle_button.visible = not map_mode
+	preview.scale = Vector2.ONE * (2.90 if preview_back else 1.45)
+	preview.position = Vector2(preview_width * (0.5 if preview_back or active_tab == "OUTFIT" else 0.262), preview_host.size.y * 0.52)
 	preview_host.visible = not map_mode
 	scroll.position = Vector2(8, 56) if map_mode else Vector2(preview_width + 16, 92)
 	scroll.size = Vector2(width - 16 if map_mode else width - preview_width - 24, maxf(footer_y - scroll.position.y - 6.0, 120.0))
@@ -161,6 +173,9 @@ func _layout() -> void:
 func refresh() -> void:
 	if economy == null:
 		return
+	if active_tab != _last_preview_tab:
+		preview_back = active_tab == "EMBLEM"
+		_last_preview_tab = active_tab
 	title_label.text = "STAGE MAP" if mode == "MAP" else ("CHARACTER SELECT" if mode == "SELECT" else "SHOP")
 	gold_label.text = "GOLD %d  ·  LV %d" % [economy.gold, economy.level]
 	start_button.visible = mode == "SELECT"
@@ -410,6 +425,8 @@ func _preview_character(character_id: String) -> void:
 
 func _preview_item(item: Dictionary) -> void:
 	preview_item = item.duplicate(true)
+	if str(item.get("slot", "")) == "EMBLEM":
+		preview_back = true
 	_apply_preview()
 
 func _apply_preview() -> void:
@@ -417,10 +434,19 @@ func _apply_preview() -> void:
 	preview.set_cosmetics(economy.shop.equipped, economy.cosmetic_catalog())
 	if not preview_item.is_empty():
 		preview.preview_cosmetic(preview_item)
-	preview.show_front_preview()
+	if preview_back:
+		preview.show_back_preview()
+	else:
+		preview.show_front_preview()
+	view_toggle_button.text = "ÖN" if preview_back else "ARKA"
 	if player_visual != null:
 		player_visual.set_skin(str(economy.shop.selected_character))
 		player_visual.set_cosmetics(economy.shop.equipped, economy.cosmetic_catalog())
+
+func _toggle_preview_view() -> void:
+	preview_back = not preview_back
+	_apply_preview()
+	_layout()
 
 func _start_run() -> void:
 	_apply_preview()

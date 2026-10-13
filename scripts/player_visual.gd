@@ -26,6 +26,7 @@ const BACK_FRAME_WIDTHS := {
 	"hang": 112.0, "jump": 189.0, "hurt": 129.0, "fall": 191.0, "cheer": 136.0,
 }
 const FRAME_NAMES := ["climb_left", "climb_right", "climb_reach", "hang"]
+const BACK_EMBLEM_FRAMES := ["climb_left", "climb_right", "climb_reach", "hang", "jump", "fall"]
 const SKIN_IDS := ["M1", "M2", "M3", "F1", "F2", "F3"]
 const FRAME_RATE := 8.0
 const ART_SCALE := 0.49
@@ -63,6 +64,7 @@ var outfit_back_sprite: Sprite2D
 var outfit_front_texture: Texture2D
 var pet_preview_time := 0.0
 var pet_preview_scale := Vector2.ONE
+var emblem_visible_bounds := Rect2()
 var _was_transferring := false
 var _transfer_trail_alpha := 0.0
 var _last_transfer_direction := 1.0
@@ -246,7 +248,11 @@ func set_cosmetics(equipped: Dictionary, catalog: Array) -> void:
 		if layer.visible:
 			var image_name := str(cosmetic_data[item_id].get("image", ""))
 			var art_folder := "pets" if slot == "PET" else "cosmetics"
-			layer.texture = load("res://assets/art/%s/%s" % [art_folder, image_name])
+			var art_path := "res://assets/art/%s/%s" % [art_folder, image_name]
+			layer.texture = load(art_path)
+			if slot == "EMBLEM" and layer.texture != null:
+				var emblem_image := Image.load_from_file(ProjectSettings.globalize_path(art_path))
+				emblem_visible_bounds = _alpha_used_rect(emblem_image)
 			if slot == "PET" and layer.texture != null:
 				var preview_bounds: Rect2 = PET_PREVIEW_BOUNDS.get(image_name, Rect2(Vector2.ZERO, layer.texture.get_size()))
 				var pet_scale := PET_PREVIEW_HEIGHT / maxf(preview_bounds.size.y, 1.0)
@@ -293,7 +299,8 @@ func _update_cosmetic_anchors() -> void:
 	var pet := cosmetic_sprites.get("PET") as Sprite2D
 	var trail := cosmetic_sprites.get("TRAIL") as Sprite2D
 	var emblem_data: Array = frame_anchor.get("emblem_center", [head_center.x, head_center.y + head_width * 1.65])
-	emblem.position = source_to_local.call(Vector2(float(emblem_data[0]), float(emblem_data[1])))
+	var emblem_anchor: Vector2 = source_to_local.call(Vector2(float(emblem_data[0]), float(emblem_data[1])))
+	emblem.position = emblem_anchor
 	trail.position = source_to_local.call(Vector2(head_center.x, float(used.end.y) - float(used.size.y) * 0.08))
 	var pet_data: Array = frame_anchor.get("pet_anchor", [])
 	if frame_name == "front" and pet_data.size() == 2 and pet.texture != null:
@@ -315,7 +322,7 @@ func _update_cosmetic_anchors() -> void:
 		var art_bounds: Rect2 = OUTFIT_BACK_BOUNDS.get(back_outfit_id, Rect2(64, 64, 128, 128))
 		var target_width := float(outfit_anchor_data[2]) if outfit_anchor_data.size() >= 3 else head_width * 1.45
 		var art_scale := ART_SCALE * target_width / maxf(art_bounds.size.x, 1.0)
-		var shoulder := source_to_local.call(Vector2(float(outfit_anchor_data[0]), float(outfit_anchor_data[1])))
+		var shoulder: Vector2 = source_to_local.call(Vector2(float(outfit_anchor_data[0]), float(outfit_anchor_data[1])))
 		var visible_center_x := art_bounds.get_center().x - float(outfit_back_sprite.texture.get_width()) * 0.5 if outfit_back_sprite.texture != null else 0.0
 		var visible_top_y := art_bounds.position.y - float(outfit_back_sprite.texture.get_height()) * 0.5 if outfit_back_sprite.texture != null else 0.0
 		outfit_back_sprite.position = shoulder - Vector2(visible_center_x, visible_top_y) * art_scale
@@ -334,15 +341,19 @@ func _update_cosmetic_anchors() -> void:
 		outfit_effect.visible = not outfit_effect.effect_name.is_empty()
 	if emblem.texture != null:
 		var emblem_width := float(frame_anchor.get("emblem_width", head_width * 0.85))
-		var emblem_scale := emblem_width * ART_SCALE / maxf(float(emblem.texture.get_width()), 1.0)
+		var visible_width: float = emblem_visible_bounds.size.x if emblem_visible_bounds.size.x > 0.0 else float(emblem.texture.get_width())
+		var emblem_scale: float = emblem_width * ART_SCALE / maxf(visible_width, 1.0)
 		emblem.scale = Vector2.ONE * emblem_scale
+		var visible_center_offset: Vector2 = emblem_visible_bounds.get_center() - emblem.texture.get_size() * 0.5
+		emblem.position = emblem_anchor - visible_center_offset * emblem_scale
+	emblem.visible = emblem.texture != null and not str(equipped_cosmetics.get("EMBLEM", "")).is_empty() and frame_name in BACK_EMBLEM_FRAMES
 
 func play_celebration() -> void:
 	celebrate_remaining = 0.75
 
 func preview_tick(delta: float) -> void:
 	pet_preview_time += delta
-	show_front_preview()
+	_update_cosmetic_anchors()
 	var pet := cosmetic_sprites.get("PET") as Sprite2D
 	if pet != null and pet.visible:
 		var bob := sin(pet_preview_time * 4.8) * 2.5
@@ -355,6 +366,28 @@ func show_front_preview() -> void:
 	_set_frame("front")
 	sprite.position = Vector2(0.0, BASE_Y)
 	_update_cosmetic_anchors()
+
+func show_back_preview() -> void:
+	_set_frame("hang")
+	sprite.position = Vector2(0.0, BASE_Y)
+	_update_cosmetic_anchors()
+
+func _alpha_used_rect(image: Image) -> Rect2:
+	if image == null or image.is_empty():
+		return Rect2()
+	var minimum := Vector2i(image.get_width(), image.get_height())
+	var maximum := Vector2i(-1, -1)
+	for y in image.get_height():
+		for x in image.get_width():
+			if image.get_pixel(x, y).a <= 0.0:
+				continue
+			minimum.x = mini(minimum.x, x)
+			minimum.y = mini(minimum.y, y)
+			maximum.x = maxi(maximum.x, x)
+			maximum.y = maxi(maximum.y, y)
+	if maximum.x < minimum.x:
+		return Rect2()
+	return Rect2(minimum, maximum - minimum + Vector2i.ONE)
 
 func _load_outfit_art() -> void:
 	outfit_front_texture = null
