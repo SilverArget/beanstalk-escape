@@ -2,6 +2,9 @@ class_name TrailEffect
 extends Node2D
 
 const MAX_POINTS := 48
+const GAME_MAX_POINTS := 24
+const GAME_LEAF_PARTICLES := 9
+const GAME_STAR_PARTICLES := 6
 const LIFETIME := 1.1
 const SAMPLE_INTERVAL := 0.035
 const MIN_DISTANCE := 5.0
@@ -14,7 +17,7 @@ const STAR_CORE_WIDTH := 6.0
 const STAR_MIN_RADIUS := 8.0
 const STAR_RIBBON_ALPHA := 0.90
 const CLOUD_BUBBLE_SPACING := 12.0
-const CLOUD_MAX_GAME_BUBBLES := 18
+const CLOUD_MAX_GAME_BUBBLES := 8
 const CLOUD_RIBBON_WIDTH := 13.0
 
 var trail_id := ""
@@ -52,7 +55,7 @@ func update_trail(world_position: Vector2, moving: bool, transferring: bool, del
 		points.append({"position": local_position, "age": 0.0, "seed": _sequence, "transfer": transferring})
 		_sequence += 1
 		_sample_elapsed = 0.0
-		while points.size() > MAX_POINTS:
+		while points.size() > _point_limit():
 			points.pop_front()
 	queue_redraw()
 
@@ -65,6 +68,8 @@ func set_preview_mode(enabled: bool) -> void:
 	z_as_relative = enabled
 	z_index = PREVIEW_Z_OFFSET if enabled else WORLD_Z_INDEX
 	position = Vector2.ZERO
+	while points.size() > _point_limit():
+		points.pop_front()
 
 func update_preview(local_emitter_position: Vector2, delta: float) -> void:
 	set_preview_mode(true)
@@ -122,6 +127,26 @@ func snapshot() -> Dictionary:
 		"preview": _preview_mode,
 	}
 
+func render_profile() -> Dictionary:
+	var particle_limit := MAX_POINTS if _preview_mode else GAME_LEAF_PARTICLES
+	var max_draw_calls := 0
+	match trail_id:
+		"trail_leaf":
+			particle_limit = MAX_POINTS if _preview_mode else GAME_LEAF_PARTICLES
+			max_draw_calls = (MAX_POINTS - 1) * 2 + MAX_POINTS * 3 if _preview_mode else 2 + GAME_LEAF_PARTICLES * 3
+		"trail_cloud":
+			particle_limit = MAX_POINTS if _preview_mode else CLOUD_MAX_GAME_BUBBLES
+			max_draw_calls = MAX_POINTS * 6 if _preview_mode else 3 + CLOUD_MAX_GAME_BUBBLES * 3
+		"trail_star":
+			particle_limit = MAX_POINTS if _preview_mode else GAME_STAR_PARTICLES
+			max_draw_calls = (MAX_POINTS - 1) * 3 + MAX_POINTS * 4 if _preview_mode else 3 + GAME_STAR_PARTICLES * 4
+	return {
+		"point_limit": _point_limit(),
+		"particle_limit": particle_limit,
+		"max_draw_calls": max_draw_calls,
+		"preview": _preview_mode,
+	}
+
 func effective_z_index() -> int:
 	var result := z_index
 	var item: CanvasItem = self
@@ -148,7 +173,8 @@ func _draw() -> void:
 
 func _draw_leaf_wake() -> void:
 	_draw_ribbon(Color(0.24, 0.86, 0.28, 0.82), 10.0)
-	for point in points:
+	var draw_points: Array[Dictionary] = points if _preview_mode else _sampled_points(GAME_LEAF_PARTICLES)
+	for point in draw_points:
 		var fade := _fade(point)
 		var seed := float(int(point.seed))
 		var center := Vector2(point.position) + Vector2(sin(seed * 1.7 + float(point.age) * 8.0) * 5.0, float(point.age) * 18.0)
@@ -247,7 +273,8 @@ func _draw_tapered_strip(path: PackedVector2Array, fades: PackedFloat32Array, wi
 
 func _draw_star_wake() -> void:
 	_draw_star_ribbon()
-	for point in points:
+	var draw_points: Array[Dictionary] = points if _preview_mode else _sampled_points(GAME_STAR_PARTICLES)
+	for point in draw_points:
 		var fade := _fade(point)
 		var center := Vector2(point.position)
 		var radius := STAR_MIN_RADIUS + float(int(point.seed) % 3)
@@ -261,21 +288,52 @@ func _draw_star_wake() -> void:
 func _draw_star_ribbon() -> void:
 	if points.size() < 2:
 		return
-	for index in range(1, points.size()):
-		var alpha := minf(_fade(points[index - 1]), _fade(points[index]))
-		var from := Vector2(points[index - 1].position)
-		var to := Vector2(points[index].position)
-		draw_line(from, to, Color(OUTLINE_COLOR, OUTLINE_COLOR.a * alpha), STAR_RIBBON_WIDTH + 3.0, true)
-		draw_line(from, to, Color(1.0, 0.66, 0.08, STAR_RIBBON_ALPHA * alpha), STAR_RIBBON_WIDTH, true)
-		draw_line(from, to, Color(1.0, 0.94, 0.48, 0.94 * alpha), STAR_CORE_WIDTH, true)
+	if _preview_mode:
+		for index in range(1, points.size()):
+			var alpha := minf(_fade(points[index - 1]), _fade(points[index]))
+			var from := Vector2(points[index - 1].position)
+			var to := Vector2(points[index].position)
+			draw_line(from, to, Color(OUTLINE_COLOR, OUTLINE_COLOR.a * alpha), STAR_RIBBON_WIDTH + 3.0, true)
+			draw_line(from, to, Color(1.0, 0.66, 0.08, STAR_RIBBON_ALPHA * alpha), STAR_RIBBON_WIDTH, true)
+			draw_line(from, to, Color(1.0, 0.94, 0.48, 0.94 * alpha), STAR_CORE_WIDTH, true)
+		return
+	_draw_batched_ribbon(OUTLINE_COLOR, STAR_RIBBON_WIDTH + 3.0)
+	_draw_batched_ribbon(Color(1.0, 0.66, 0.08, STAR_RIBBON_ALPHA), STAR_RIBBON_WIDTH)
+	_draw_batched_ribbon(Color(1.0, 0.94, 0.48, 0.94), STAR_CORE_WIDTH)
 
 func _draw_ribbon(color: Color, width: float) -> void:
 	if points.size() < 2:
 		return
-	for index in range(1, points.size()):
-		var alpha := minf(_fade(points[index - 1]), _fade(points[index]))
-		draw_line(Vector2(points[index - 1].position), Vector2(points[index].position), Color(OUTLINE_COLOR, OUTLINE_COLOR.a * alpha), width + 3.0, true)
-		draw_line(Vector2(points[index - 1].position), Vector2(points[index].position), Color(color, color.a * alpha), width, true)
+	if _preview_mode:
+		for index in range(1, points.size()):
+			var alpha := minf(_fade(points[index - 1]), _fade(points[index]))
+			draw_line(Vector2(points[index - 1].position), Vector2(points[index].position), Color(OUTLINE_COLOR, OUTLINE_COLOR.a * alpha), width + 3.0, true)
+			draw_line(Vector2(points[index - 1].position), Vector2(points[index].position), Color(color, color.a * alpha), width, true)
+		return
+	_draw_batched_ribbon(OUTLINE_COLOR, width + 3.0)
+	_draw_batched_ribbon(color, width)
+
+func _draw_batched_ribbon(color: Color, width: float) -> void:
+	var path := PackedVector2Array()
+	var colors := PackedColorArray()
+	for point in points:
+		path.append(Vector2(point.position))
+		colors.append(Color(color, color.a * _fade(point)))
+	draw_polyline_colors(path, colors, width, false)
+
+func _sampled_points(limit: int) -> Array[Dictionary]:
+	if points.size() <= limit:
+		return points
+	var sampled: Array[Dictionary] = []
+	var stride := ceili(float(points.size()) / float(limit))
+	for index in range(points.size() - 1, -1, -stride):
+		sampled.append(points[index])
+		if sampled.size() >= limit:
+			break
+	return sampled
+
+func _point_limit() -> int:
+	return MAX_POINTS if _preview_mode else GAME_MAX_POINTS
 
 func _draw_closed_outline(vertices: PackedVector2Array, fade: float) -> void:
 	var outline := vertices.duplicate()

@@ -369,6 +369,10 @@ func play_celebration() -> void:
 	celebrate_remaining = 0.75
 
 func preview_tick(delta: float) -> void:
+	if outfit_aura != null:
+		outfit_aura.set_preview_mode(true)
+	if outfit_effect != null:
+		outfit_effect.set_preview_mode(true)
 	pet_preview_time += delta
 	var preview_bob := sin(pet_preview_time * 3.2) * 5.0
 	sprite.position = Vector2(0.0, BASE_Y + preview_bob)
