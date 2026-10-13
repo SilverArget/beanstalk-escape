@@ -4,12 +4,12 @@ extends Control
 signal closed
 signal run_started
 
-const SLOTS := ["CHARACTERS", "HAIR", "FACE", "TRAIL", "OUTFIT"]
+const SLOTS := ["HAIR", "FACE", "TRAIL", "OUTFIT"]
 
 var economy: EconomyManager
 var player_visual: PlayerVisual
 var mode := "SHOP"
-var active_tab := "CHARACTERS"
+var active_tab := "HAIR"
 var active_gender := "MALE"
 var panel: Panel
 var title_label: Label
@@ -31,7 +31,7 @@ func setup(manager: EconomyManager, gameplay_visual: PlayerVisual) -> void:
 
 func open_shop() -> void:
 	mode = "SHOP"
-	active_tab = "CHARACTERS"
+	active_tab = "HAIR"
 	visible = true
 	refresh()
 
@@ -184,7 +184,7 @@ func _rebuild_tabs() -> void:
 
 func _rebuild_cards() -> void:
 	for child in grid.get_children(): child.queue_free()
-	if mode == "SELECT" or active_tab == "CHARACTERS":
+	if mode == "SELECT":
 		for character_id in economy.character_catalog():
 			var data: Dictionary = economy.character_catalog()[character_id]
 			if mode == "SELECT" and str(data.gender) != active_gender:
