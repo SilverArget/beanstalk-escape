@@ -31,7 +31,6 @@ var anchor_data: Dictionary = {}
 var outfit_masks: Dictionary = {}
 var hair_masks: Dictionary = {}
 var frame_metrics: Dictionary = {}
-var face_strap: Line2D
 var face_knot: Polygon2D
 
 func _ready() -> void:
@@ -133,9 +132,13 @@ func _load_skin(requested_skin: String) -> void:
 	for requested_frame in ["climb_left", "climb_right", "climb_reach", "jump", "hurt", "fall", "cheer", "hang"]:
 		var frame_texture := load("%s/%s/%s.png" % [FRAME_ROOT, skin_id.to_lower(), requested_frame]) as Texture2D
 		frame_textures[requested_frame] = frame_texture
-		# Texture readback is allowed once while the skin loads, never in _process.
-		var image := frame_texture.get_image()
-		frame_metrics[requested_frame] = {"texture_size": frame_texture.get_size(), "used": image.get_used_rect()}
+		# Keep the WebGL path GPU-only: texture readback emits INVALID_OPERATION on
+		# some compatibility renderers while the shop preview is being rebuilt.
+		var texture_size := frame_texture.get_size()
+		frame_metrics[requested_frame] = {
+			"texture_size": texture_size,
+			"used": Rect2i(Vector2i.ZERO, Vector2i(int(texture_size.x), int(texture_size.y * 0.75))),
+		}
 		var mask_path := "%s/%s/%s_outfit_mask.png" % [FRAME_ROOT, skin_id.to_lower(), requested_frame]
 		if ResourceLoader.exists(mask_path):
 			outfit_masks[requested_frame] = load(mask_path)
@@ -214,22 +217,18 @@ func _update_cosmetic_anchors() -> void:
 	var face_equipped := not str(equipped_cosmetics.get("FACE", "")).is_empty()
 	var face_front := str(frame_anchor.get("face_view", "back")) == "front"
 	face.visible = face_equipped and face_front
-	face_strap.visible = face_equipped and not face_front
-	face_knot.visible = face_strap.visible
-	if face_strap.visible:
+	face_knot.visible = face_equipped and not face_front
+	if face_knot.visible:
 		var local_head_width := head_width * ART_SCALE
-		face_strap.position = source_to_local.call(head_center + Vector2(0.0, head_width * 0.02))
-		face_strap.points = PackedVector2Array([
-			Vector2(-local_head_width * 0.42, 0.0),
-			Vector2(0.0, local_head_width * 0.09),
-			Vector2(local_head_width * 0.42, 0.0),
-		])
-		face_strap.width = maxf(2.2, local_head_width * 0.09)
-		face_knot.position = face_strap.position + Vector2(local_head_width * 0.32, local_head_width * 0.03)
-		var knot_size := maxf(2.8, local_head_width * 0.12)
+		face_knot.position = source_to_local.call(head_center + Vector2(head_width * 0.44, head_width * 0.18))
+		var knot_size := maxf(3.2, local_head_width * 0.14)
 		face_knot.polygon = PackedVector2Array([
-			Vector2(-knot_size, 0.0), Vector2(0.0, -knot_size),
-			Vector2(knot_size, 0.0), Vector2(0.0, knot_size),
+			Vector2(-knot_size * 1.25, -knot_size * 0.55),
+			Vector2(0.0, 0.0),
+			Vector2(-knot_size * 1.05, knot_size * 0.75),
+			Vector2(knot_size * 0.95, knot_size * 1.55),
+			Vector2(knot_size * 0.55, knot_size * 0.15),
+			Vector2(knot_size * 1.35, -knot_size * 0.75),
 		])
 
 func play_celebration() -> void:
@@ -346,16 +345,8 @@ void fragment() {
 		layer.visible = false
 		add_child(layer)
 		cosmetic_sprites[slot] = layer
-	face_strap = Line2D.new()
-	face_strap.name = "FaceBackStrap"
-	face_strap.default_color = Color("365f45")
-	face_strap.begin_cap_mode = Line2D.LINE_CAP_ROUND
-	face_strap.end_cap_mode = Line2D.LINE_CAP_ROUND
-	face_strap.z_index = 2
-	face_strap.visible = false
-	add_child(face_strap)
 	face_knot = Polygon2D.new()
-	face_knot.name = "FaceBackKnot"
+	face_knot.name = "FaceBackBandanaKnot"
 	face_knot.color = Color("284a38")
 	face_knot.z_index = 2
 	face_knot.visible = false
