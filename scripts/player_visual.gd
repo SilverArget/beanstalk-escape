@@ -7,6 +7,8 @@ const WING_TEXTURE := preload("res://assets/art/character_rig/wing/time_wings.pn
 const TRANSFER_LEAF_TEXTURE := preload("res://assets/art/fx/transfer_leaf.png")
 const ROCK_FIRE_ATLAS := preload("res://assets/art/hazards/rock_fire_atlas.png")
 const FAIRY_EFFECT := preload("res://scripts/fairy_effect.gd")
+const OUTFIT_EFFECT := preload("res://scripts/outfit_effect.gd")
+const OUTFIT_ROOT := "res://assets/art/outfits"
 const FRAME_NAMES := ["climb_left", "climb_right", "climb_reach", "hang"]
 const SKIN_IDS := ["M1", "M2", "M3", "F1", "F2", "F3"]
 const FRAME_RATE := 8.0
@@ -35,11 +37,13 @@ var cosmetic_sprites: Dictionary = {}
 var equipped_cosmetics := {"HAIR": "", "OUTFIT": "", "EMBLEM": "", "PET": "", "TRAIL": ""}
 var cosmetic_data: Dictionary = {}
 var anchor_data: Dictionary = {}
-var outfit_masks: Dictionary = {}
 var hair_masks: Dictionary = {}
 var hair_luma_data: Dictionary = {}
 var frame_metrics: Dictionary = {}
 var fairy_effect: FairyEffect
+var outfit_effect: OutfitEffect
+var outfit_back_sprite: Sprite2D
+var outfit_front_texture: Texture2D
 var pet_preview_time := 0.0
 var pet_preview_scale := Vector2.ONE
 var _was_transferring := false
@@ -144,11 +148,13 @@ func _set_mode(new_mode: String, requested_frame: String) -> void:
 	_set_frame(requested_frame)
 
 func _set_frame(requested_frame: String) -> void:
-	if frame_name == requested_frame and sprite.texture != null:
+	var requested_texture := frame_textures.get(requested_frame) as Texture2D
+	if requested_frame == "front" and outfit_front_texture != null:
+		requested_texture = outfit_front_texture
+	if frame_name == requested_frame and sprite.texture == requested_texture:
 		return
 	frame_name = requested_frame
-	sprite.texture = frame_textures.get(requested_frame) as Texture2D
-	flash_material.set_shader_parameter("outfit_mask_texture", outfit_masks.get(requested_frame))
+	sprite.texture = requested_texture
 	flash_material.set_shader_parameter("hair_mask_texture", hair_masks.get(requested_frame))
 	var luma: Dictionary = hair_luma_data.get(skin_id.to_lower(), {}).get(requested_frame, {})
 	flash_material.set_shader_parameter("hair_luma_min", float(luma.get("p5", 0.0)))
@@ -167,7 +173,6 @@ func _load_skin(requested_skin: String) -> void:
 	skin_id = normalized if normalized in SKIN_IDS and _skin_exists(normalized) else "M1"
 	frame_textures.clear()
 	frame_metrics.clear()
-	outfit_masks.clear()
 	hair_masks.clear()
 	for requested_frame in ["climb_left", "climb_right", "climb_reach", "jump", "hurt", "fall", "cheer", "hang", "front"]:
 		var frame_texture := load("%s/%s/%s.png" % [FRAME_ROOT, skin_id.to_lower(), requested_frame]) as Texture2D
@@ -179,13 +184,11 @@ func _load_skin(requested_skin: String) -> void:
 			"texture_size": texture_size,
 			"used": Rect2i(Vector2i.ZERO, Vector2i(int(texture_size.x), int(texture_size.y * 0.75))),
 		}
-		var mask_path := "%s/%s/%s_outfit_mask.png" % [FRAME_ROOT, skin_id.to_lower(), requested_frame]
-		if ResourceLoader.exists(mask_path):
-			outfit_masks[requested_frame] = load(mask_path)
 		var hair_mask_path := "%s/%s/%s_hair_mask.png" % [FRAME_ROOT, skin_id.to_lower(), requested_frame]
 		if ResourceLoader.exists(hair_mask_path):
 			hair_masks[requested_frame] = load(hair_mask_path)
 	_load_anchors()
+	_load_outfit_art()
 	var current := frame_name
 	frame_name = ""
 	_set_frame(current)
@@ -235,12 +238,10 @@ func set_cosmetics(equipped: Dictionary, catalog: Array) -> void:
 	if fairy_effect != null:
 		var pet_id := str(equipped_cosmetics.get("PET", ""))
 		fairy_effect.configure(cosmetic_data.get(pet_id, {}))
-	_update_cosmetic_anchors()
-	var outfit_id := str(equipped_cosmetics.get("OUTFIT", ""))
-	var outfit_enabled := not outfit_id.is_empty() and cosmetic_data.has(outfit_id)
-	flash_material.set_shader_parameter("outfit_enabled", 1.0 if outfit_enabled else 0.0)
-	if outfit_enabled:
-		flash_material.set_shader_parameter("outfit_color", Color(str(cosmetic_data[outfit_id].get("tint", "ffffff"))))
+	_load_outfit_art()
+	var current := frame_name
+	frame_name = ""
+	_set_frame(current)
 	var hair_id := str(equipped_cosmetics.get("HAIR", ""))
 	var hair_enabled := not hair_id.is_empty() and cosmetic_data.has(hair_id)
 	flash_material.set_shader_parameter("hair_enabled", 1.0 if hair_enabled else 0.0)
@@ -291,6 +292,14 @@ func _update_cosmetic_anchors() -> void:
 	if fairy_effect != null:
 		fairy_effect.position = pet.position
 		fairy_effect.visible = pet.visible and not fairy_effect.effect_name.is_empty()
+	if outfit_back_sprite != null:
+		var outfit_anchor_data: Array = frame_anchor.get("outfit_back", [head_center.x, head_center.y + head_width * 0.95])
+		outfit_back_sprite.position = source_to_local.call(Vector2(float(outfit_anchor_data[0]), float(outfit_anchor_data[1])))
+		outfit_back_sprite.scale = Vector2.ONE * ART_SCALE * 0.82
+		outfit_back_sprite.visible = outfit_back_sprite.texture != null and frame_name != "front"
+	if outfit_effect != null:
+		outfit_effect.position = sprite.position + Vector2(0.0, -8.0)
+		outfit_effect.visible = not outfit_effect.effect_name.is_empty()
 	if emblem.texture != null:
 		var emblem_width := float(frame_anchor.get("emblem_width", head_width * 0.85))
 		var emblem_scale := emblem_width * ART_SCALE / maxf(float(emblem.texture.get_width()), 1.0)
@@ -314,6 +323,25 @@ func show_front_preview() -> void:
 	_set_frame("front")
 	sprite.position = Vector2(0.0, BASE_Y)
 	_update_cosmetic_anchors()
+
+func _load_outfit_art() -> void:
+	outfit_front_texture = null
+	if outfit_back_sprite != null:
+		outfit_back_sprite.texture = null
+	var outfit_id := str(equipped_cosmetics.get("OUTFIT", ""))
+	var item: Dictionary = cosmetic_data.get(outfit_id, {})
+	if outfit_id.is_empty() or item.is_empty():
+		if outfit_effect != null:
+			outfit_effect.configure({})
+		return
+	var front_path := "%s/front/%s/%s.png" % [OUTFIT_ROOT, skin_id.to_lower(), outfit_id]
+	var back_path := "%s/back/%s.png" % [OUTFIT_ROOT, outfit_id]
+	if ResourceLoader.exists(front_path):
+		outfit_front_texture = load(front_path) as Texture2D
+	if outfit_back_sprite != null and ResourceLoader.exists(back_path):
+		outfit_back_sprite.texture = load(back_path) as Texture2D
+	if outfit_effect != null:
+		outfit_effect.configure(item)
 
 func visual_snapshot() -> Dictionary:
 	return {"mode": mode, "frame": frame_name, "skin": skin_id}
@@ -384,9 +412,6 @@ func _build_visual() -> void:
 	shader.code = """
 shader_type canvas_item;
 uniform float flash_amount : hint_range(0.0, 1.0) = 0.0;
-uniform float outfit_enabled : hint_range(0.0, 1.0) = 0.0;
-uniform vec4 outfit_color : source_color = vec4(1.0);
-uniform sampler2D outfit_mask_texture : filter_linear;
 uniform float hair_enabled : hint_range(0.0, 1.0) = 0.0;
 uniform vec4 hair_shadow_color : source_color = vec4(0.05, 0.035, 0.027, 1.0);
 uniform vec4 hair_mid_color : source_color = vec4(0.17, 0.11, 0.086, 1.0);
@@ -421,12 +446,7 @@ void fragment() {
 	float border_alpha = max(outline_alpha - pixel.a, 0.0);
 	float backdrop_alpha = max(border_alpha, shadow_alpha * (1.0 - outline_alpha));
 	vec3 backdrop_color = mix(vec3(0.02, 0.025, 0.035), outline_color.rgb, step(shadow_alpha, border_alpha));
-	// Offline masks isolate the original garment pixels for every skin/pose.
-	// Hair, skin, face, gloves, boots, bag and the dark outline remain untouched.
-	float cloth_mask = texture(outfit_mask_texture, UV).a * outfit_enabled * pixel.a;
 	float luminance = dot(pixel.rgb, vec3(0.299, 0.587, 0.114));
-	vec3 dyed = outfit_color.rgb * mix(0.42, 1.34, luminance);
-	vec3 outfitted_rgb = mix(pixel.rgb, dyed, cloth_mask * 0.90);
 	// Normalize every skin/pose independently, then recolor through a three-stop ramp.
 	float hair_mask = texture(hair_mask_texture, UV).a * hair_enabled * pixel.a;
 	float normalized_luma = clamp((luminance - hair_luma_min) / max(hair_luma_max - hair_luma_min, 0.001), 0.0, 1.0);
@@ -434,7 +454,7 @@ void fragment() {
 	vec3 dyed_hair = normalized_luma < 0.5
 		? mix(hair_shadow_color.rgb, hair_mid_color.rgb, normalized_luma * 2.0)
 		: mix(hair_mid_color.rgb, hair_highlight_color.rgb, (normalized_luma - 0.5) * 2.0);
-	vec3 recolored_rgb = mix(outfitted_rgb, dyed_hair, hair_mask);
+	vec3 recolored_rgb = mix(pixel.rgb, dyed_hair, hair_mask);
 	vec3 flashed_rgb = mix(recolored_rgb, vec3(1.0), flash_amount);
 	COLOR = vec4(mix(backdrop_color, flashed_rgb, pixel.a), max(pixel.a, backdrop_alpha));
 }
@@ -442,6 +462,12 @@ void fragment() {
 	flash_material.shader = shader
 	sprite.material = flash_material
 	add_child(sprite)
+	outfit_back_sprite = Sprite2D.new()
+	outfit_back_sprite.name = "OutfitBack"
+	outfit_back_sprite.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+	outfit_back_sprite.z_index = 1
+	outfit_back_sprite.visible = false
+	add_child(outfit_back_sprite)
 	for slot in ["TRAIL", "EMBLEM", "PET"]:
 		var layer := Sprite2D.new()
 		layer.name = "%sCosmetic" % slot.capitalize()
@@ -458,6 +484,11 @@ void fragment() {
 	fairy_effect.z_index = 1
 	fairy_effect.visible = false
 	add_child(fairy_effect)
+	outfit_effect = OUTFIT_EFFECT.new()
+	outfit_effect.name = "OutfitEffect"
+	outfit_effect.z_index = -1
+	outfit_effect.visible = false
+	add_child(outfit_effect)
 
 func _build_transfer_motion_trails() -> void:
 	var paths := [
