@@ -70,7 +70,15 @@ func _process(delta: float) -> void:
 	var body := target.get_node_or_null("Body") as PlayerVisual
 	if body != null and body.sprite != null:
 		death_drop = maxf(body.sprite.position.y - PlayerVisual.BASE_Y, 0.0)
-	var desired := target.global_position + FOLLOW_OFFSET + Vector2(0.0, death_drop)
+	var follow_offset := FOLLOW_OFFSET
+	if target.support_state == PlayerController.SupportState.TRANSFERRING:
+		var direction := signf(Balance.ROUTE_X[target.transition_to] - Balance.ROUTE_X[target.transition_from])
+		if direction != 0.0:
+			follow_offset.x = -direction * absf(FOLLOW_OFFSET.x)
+		sprite.flip_h = direction < 0.0
+	else:
+		sprite.flip_h = false
+	var desired := target.global_position + follow_offset + Vector2(0.0, death_drop)
 	global_position = global_position.lerp(desired, 1.0 - exp(-FOLLOW_SPEED * delta))
 	var bob := sin(motion_time * 4.8) * 3.0
 	var wing_pulse := sin(motion_time * 16.0) * 0.045

@@ -25,6 +25,7 @@ var frame_textures: Dictionary = {}
 var sprite: Sprite2D
 var time_wings: Sprite2D
 var fire_wings: Sprite2D
+var takeoff_particles: CPUParticles2D
 var fire_trails: Array[Polygon2D] = []
 var flash_material: ShaderMaterial
 var cosmetic_sprites: Dictionary = {}
@@ -37,6 +38,7 @@ var frame_metrics: Dictionary = {}
 var fairy_effect: FairyEffect
 var pet_preview_time := 0.0
 var pet_preview_scale := Vector2.ONE
+var _was_transferring := false
 
 func _ready() -> void:
 	_build_visual()
@@ -90,6 +92,12 @@ func _update_mode(player: PlayerController, delta: float) -> void:
 		_set_mode("death", "fall")
 		sprite.position = Vector2(0.0, BASE_Y + death_offset)
 	elif player.support_state == PlayerController.SupportState.TRANSFERRING:
+		var direction := signf(Balance.ROUTE_X[player.transition_to] - Balance.ROUTE_X[player.transition_from])
+		scale.x = absf(scale.x) * (-1.0 if direction < 0.0 else 1.0)
+		if not _was_transferring:
+			takeoff_particles.restart()
+			takeoff_particles.emitting = true
+		_was_transferring = true
 		_set_mode("jump", "jump")
 	elif app_state == GameManager.AppState.GAME_COMPLETE or celebrate_remaining > 0.0:
 		_set_mode("celebrate", "cheer")
@@ -104,6 +112,9 @@ func _update_mode(player: PlayerController, delta: float) -> void:
 		_set_frame(FRAME_NAMES[frame_index])
 		# A full alternating hand cycle yields a clearly readable 3.5 px body lift.
 		sprite.position = Vector2(0.0, BASE_Y - 3.5 * absf(sin(climb_time * PI * 0.5)))
+	if player.support_state != PlayerController.SupportState.TRANSFERRING:
+		scale.x = absf(scale.x)
+		_was_transferring = false
 
 func _set_mode(new_mode: String, requested_frame: String) -> void:
 	if mode != new_mode:
@@ -271,6 +282,25 @@ func visual_snapshot() -> Dictionary:
 	return {"mode": mode, "frame": frame_name, "skin": skin_id}
 
 func _build_visual() -> void:
+	takeoff_particles = CPUParticles2D.new()
+	takeoff_particles.name = "TransferTakeoffTrail"
+	takeoff_particles.amount = 7
+	takeoff_particles.lifetime = 0.28
+	takeoff_particles.one_shot = true
+	takeoff_particles.explosiveness = 0.92
+	takeoff_particles.local_coords = false
+	takeoff_particles.direction = Vector2(-1.0, -0.15)
+	takeoff_particles.spread = 24.0
+	takeoff_particles.gravity = Vector2(0.0, 30.0)
+	takeoff_particles.initial_velocity_min = 45.0
+	takeoff_particles.initial_velocity_max = 68.0
+	takeoff_particles.scale_amount_min = 0.7
+	takeoff_particles.scale_amount_max = 1.4
+	takeoff_particles.color = Color(0.64, 0.84, 0.38, 0.58)
+	takeoff_particles.position = Vector2(0.0, 25.0)
+	takeoff_particles.z_index = -3
+	takeoff_particles.emitting = false
+	add_child(takeoff_particles)
 	fire_wings = Sprite2D.new()
 	fire_wings.name = "FireWings"
 	var fire_texture := AtlasTexture.new()
