@@ -150,7 +150,7 @@ func _layout() -> void:
 	var preview_width := clampf(width * 0.27, 190.0, 260.0)
 	preview_host.position = Vector2(8, 92)
 	preview_host.size = Vector2(preview_width, maxf(footer_y - 98.0, 120.0))
-	preview.position = Vector2(preview_width * 0.262, preview_host.size.y * 0.48)
+	preview.position = Vector2(preview_width * (0.5 if active_tab == "OUTFIT" else 0.262), preview_host.size.y * 0.48)
 	var map_mode := mode == "MAP"
 	preview_host.visible = not map_mode
 	scroll.position = Vector2(8, 56) if map_mode else Vector2(preview_width + 16, 92)
@@ -368,7 +368,8 @@ func _cosmetic_card(item: Dictionary) -> Control:
 	var slot := str(item.get("slot", ""))
 	var is_pet := slot == "PET"
 	var is_outfit := slot == "OUTFIT"
-	var subtitle := "%s\nLV %d · %d GOLD" % [str(item.get("effect_name", "")), int(item.level), int(item.price)] if is_pet or is_outfit else (source if not source.is_empty() else "%s · LV %d" % [item.rarity, int(item.level)])
+	var price_text := source if is_outfit and not source.is_empty() else "%d GOLD" % int(item.price)
+	var subtitle := "%s\nLV %d · %s" % [str(item.get("effect_name", "")), int(item.level), price_text] if is_pet or is_outfit else (source if not source.is_empty() else "%s · LV %d" % [item.rarity, int(item.level)])
 	var card := _base_card(str(item.name), subtitle)
 	var body := _card_body(card)
 	var icon := TextureRect.new()

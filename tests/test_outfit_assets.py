@@ -16,6 +16,8 @@ EXPECTED = {
     "outfit_sun": ("SUNBURST", "SUN RAYS", 1100, 7),
     "outfit_night": ("NIGHT DIAMOND", "STAR DUST", 1400, 8),
 }
+BACK_FRAMES = ("climb_left", "climb_right", "climb_reach", "hang", "jump", "hurt", "fall", "cheer")
+CHARACTERS = ("m1", "m2", "m3", "f1", "f2", "f3")
 
 
 def test_outfit_catalog_and_art() -> None:
@@ -32,7 +34,7 @@ def test_outfit_catalog_and_art() -> None:
         for folder in ("icons", "back"):
             with Image.open(ROOT / f"assets/art/outfits/{folder}/{outfit_id}.png") as image:
                 assert image.size == (256, 256)
-        for character in ("m1", "m2", "m3", "f1", "f2", "f3"):
+        for character in CHARACTERS:
             with Image.open(ROOT / f"assets/art/outfits/front/{character}/{outfit_id}.png") as image:
                 assert image.size == (512, 512)
                 base = Image.open(ROOT / f"assets/art/character_frames/{character}/front.png").convert("RGBA")
@@ -43,7 +45,25 @@ def test_outfit_catalog_and_art() -> None:
 
     assert outfits["outfit_sky"]["source"] == "DAY 7 BONUS"
 
+    for character in CHARACTERS:
+        anchors = json.loads((ROOT / f"assets/art/character_frames/{character}/anchors.json").read_text(encoding="utf-8"))["frames"]
+        for frame_name in BACK_FRAMES:
+            frame = anchors[frame_name]
+            x, shoulder_y, shoulder_width = frame["outfit_back"]
+            assert abs(x - frame["head_center"][0]) <= 1
+            assert frame["head_center"][1] < shoulder_y <= frame["head_center"][1] + frame["head_width"] * 0.55
+            assert shoulder_width >= frame["head_width"] * 1.4
+
+    effect_source = (ROOT / "scripts/outfit_effect.gd").read_text(encoding="utf-8")
+    visual_source = (ROOT / "scripts/player_visual.gd").read_text(encoding="utf-8")
+    shop_source = (ROOT / "scripts/meta_shop_ui.gd").read_text(encoding="utf-8")
+    assert "half_width := body_size.x * 0.65" in effect_source
+    assert "_draw_leaf(point, 4.2" in effect_source and "_draw_leaf(point, 4.0" in effect_source
+    assert 'outfit_aura.z_index = -1' in visual_source and 'outfit_effect.z_index = 2' in visual_source
+    assert '0.5 if active_tab == "OUTFIT"' in shop_source
+    assert 'source if is_outfit and not source.is_empty()' in shop_source
+
 
 if __name__ == "__main__":
     test_outfit_catalog_and_art()
-    print("PASS: 9 outfit catalog entries and 72 outfit assets")
+    print("PASS: outfit art, shoulder anchors, effect layers, preview centering, and bonus label")
