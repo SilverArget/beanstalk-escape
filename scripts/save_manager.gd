@@ -3,8 +3,16 @@ extends RefCounted
 
 signal profile_loaded(profile: Dictionary)
 
-const SAVE_VERSION := 1
+const SAVE_VERSION := 2
 const DEFAULT_PATH := "user://profile_v1.json"
+const CHALLENGE_NAMES := [
+	"NO BEAN HIT",
+	"NO ROCK HIT",
+	"NO DAMAGE",
+	"UNDER 12 MINUTES",
+	"NO SKILLS",
+	"ZERO SPIDER RED ZONE",
+]
 
 var save_path: String
 var profile: Dictionary = {}
@@ -30,16 +38,44 @@ func load_profile() -> Dictionary:
 	var parsed: Variant = JSON.parse_string(file.get_as_text())
 	if parsed is not Dictionary:
 		return profile.duplicate(true)
-	profile = (parsed as Dictionary).duplicate(true)
-	profile["version"] = SAVE_VERSION
-	var meta_value: Variant = profile.get("meta", {})
-	var meta: Dictionary = meta_value if meta_value is Dictionary else {}
-	meta["gold"] = maxi(int(meta.get("gold", 0)), 0)
-	meta["xp"] = maxi(int(meta.get("xp", 0)), 0)
-	meta["level"] = maxi(int(meta.get("level", 1)), 1)
-	profile["meta"] = meta
-	profile["shop"] = _sanitize_shop(profile.get("shop", {}))
+	profile = _sanitize_profile(parsed as Dictionary)
 	return profile.duplicate(true)
+
+func replay_snapshot() -> Dictionary:
+	if profile.is_empty():
+		load_profile()
+	return profile.get("replay", _default_replay()).duplicate(true)
+
+func unlock_nightmare() -> bool:
+	if profile.is_empty():
+		load_profile()
+	var replay: Dictionary = _sanitize_replay(profile.get("replay", {}))
+	replay["nightmare_unlocked"] = true
+	profile["replay"] = replay
+	return _write_profile()
+
+func record_completion(mode: String, active_time: float, earned: Dictionary) -> bool:
+	if profile.is_empty():
+		load_profile()
+	var normalized_mode := "NIGHTMARE" if mode.to_upper() == "NIGHTMARE" else "NORMAL"
+	var replay: Dictionary = _sanitize_replay(profile.get("replay", {}))
+	var records: Dictionary = replay.records.duplicate(true)
+	var record: Dictionary = records[normalized_mode].duplicate(true)
+	record["completions"] = int(record.completions) + 1
+	var previous_best := float(record.best_time)
+	if active_time > 0.0 and (previous_best <= 0.0 or active_time < previous_best):
+		record["best_time"] = active_time
+	records[normalized_mode] = record
+	replay["records"] = records
+	if normalized_mode == "NORMAL":
+		replay["nightmare_unlocked"] = true
+		var badges: Dictionary = replay.challenges.duplicate(true)
+		for challenge in CHALLENGE_NAMES:
+			if bool(earned.get(challenge, false)):
+				badges[challenge] = true
+		replay["challenges"] = badges
+	profile["replay"] = replay
+	return _write_profile()
 
 func write_meta(meta: Dictionary) -> bool:
 	if profile.is_empty():
@@ -113,6 +149,20 @@ func _default_profile() -> Dictionary:
 		"progression": {"skipped_stages": []},
 		"purchases": {"remove_ads": false},
 		"shop": _default_shop(),
+		"replay": _default_replay(),
+	}
+
+func _default_replay() -> Dictionary:
+	var challenges := {}
+	for challenge in CHALLENGE_NAMES:
+		challenges[challenge] = false
+	return {
+		"nightmare_unlocked": false,
+		"challenges": challenges,
+		"records": {
+			"NORMAL": {"best_time": 0.0, "completions": 0},
+			"NIGHTMARE": {"best_time": 0.0, "completions": 0},
+		},
 	}
 
 func _default_shop() -> Dictionary:
@@ -163,6 +213,28 @@ func _sanitize_profile(value: Dictionary) -> Dictionary:
 	if value.get("purchases", {}) is Dictionary:
 		result.purchases = value.purchases.duplicate(true)
 	result.shop = _sanitize_shop(value.get("shop", {}))
+	result.replay = _sanitize_replay(value.get("replay", {}))
+	return result
+
+func _sanitize_replay(value: Variant) -> Dictionary:
+	var result := _default_replay()
+	if value is not Dictionary:
+		return result
+	var source := value as Dictionary
+	result.nightmare_unlocked = bool(source.get("nightmare_unlocked", false))
+	var source_challenges: Variant = source.get("challenges", {})
+	if source_challenges is Dictionary:
+		for challenge in CHALLENGE_NAMES:
+			result.challenges[challenge] = bool(source_challenges.get(challenge, false))
+	var source_records: Variant = source.get("records", {})
+	if source_records is Dictionary:
+		for mode in ["NORMAL", "NIGHTMARE"]:
+			var source_record: Variant = source_records.get(mode, {})
+			if source_record is Dictionary:
+				result.records[mode] = {
+					"best_time": maxf(float(source_record.get("best_time", 0.0)), 0.0),
+					"completions": maxi(int(source_record.get("completions", 0)), 0),
+				}
 	return result
 
 func _is_qa_process() -> bool:

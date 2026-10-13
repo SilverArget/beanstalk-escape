@@ -8,6 +8,17 @@ const RELEASE_ALLOWLIST := []
 const STAGE_LENGTH := 2800
 const WARNING_LEAD := 360
 const OCCUPANCY_HEIGHT := 220
+const REPLAY_NIGHTMARE_CONFIG_PATH := "res://config/replay_nightmare.json"
+
+static func replay_nightmare_config() -> Dictionary:
+	var parsed: Variant = JSON.parse_string(FileAccess.get_file_as_string(REPLAY_NIGHTMARE_CONFIG_PATH))
+	if parsed is Dictionary:
+		return (parsed as Dictionary).duplicate(true)
+	push_error("Replay/Nightmare config could not be loaded")
+	return {"challenges": [], "nightmare": {}}
+
+static func nightmare_modifiers() -> Dictionary:
+	return replay_nightmare_config().get("nightmare", {}).duplicate(true)
 
 const STAGE_DEFINITIONS := [
 	{

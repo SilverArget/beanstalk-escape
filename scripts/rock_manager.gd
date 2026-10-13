@@ -13,6 +13,7 @@ var previous_player_position := Vector2.ZERO
 var campaign_slots_by_stage: Dictionary = {}
 var loaded_stages: Dictionary = {}
 var active_center_stage := -1
+var nightmare_modifiers := StageDatabase.nightmare_modifiers()
 
 func setup(target: PlayerController, stage_manager: StageManager) -> void:
 	player = target
@@ -116,12 +117,14 @@ func _physics_process(delta: float) -> void:
 			warning_ids[hazard.hazard_id] = true
 			var audio := get_parent().get_node_or_null("Audio") as BeanstalkAudio
 			if audio != null: audio.play_sfx("bean_warning_creak")
-		hazard.advance_threat_clock(delta, player.time_wings_active, player.global_position.y)
+		var clock_scale := float(nightmare_modifiers.get("rock_clock_scale", 1.0)) if game.is_nightmare_mode() else 1.0
+		hazard.advance_threat_clock(delta * clock_scale, player.time_wings_active, player.global_position.y)
 		if _swept_contact(hazard) and invulnerability_remaining <= 0.0 and not hit_ids.has(hazard.hazard_id):
 			hit_ids[hazard.hazard_id] = true
 			invulnerability_remaining = Balance.ROCK_INVULNERABILITY_SECONDS
 			hit_count += 1
 			player.apply_rock_hit(hazard.hazard_id)
+			game.on_rock_hit()
 	previous_player_position = player.global_position
 
 func _swept_contact(hazard: RockHazard) -> bool:

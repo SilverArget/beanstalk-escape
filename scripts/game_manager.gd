@@ -2,6 +2,9 @@ class_name GameManager
 extends Node2D
 
 const TIME_WINGS_ORB := preload("res://assets/art/gpt/items/wing_orb.png")
+const MODE_NORMAL := "NORMAL"
+const MODE_NIGHTMARE := "NIGHTMARE"
+const SPIDER_RED_ZONE_PX := 96.0
 
 enum State { PLAYING, PLAYER_DEAD, PROTOTYPE_COMPLETE }
 enum AppState { MENU, INTRO, PLAYING, PAUSED, PLAYER_DEAD, FINAL_CINEMATIC, GAME_COMPLETE, SHOP, CHARACTER_SELECT }
@@ -55,6 +58,12 @@ var continue_checkpoint := {}
 var completed_since_interstitial := 0
 var platform_pause_active := false
 var paused_by_platform := false
+var mode := MODE_NORMAL
+var challenge_eligible := true
+var damage_events := 0
+var spider_red_zone_seen := false
+var completed_stages := {}
+var completion_committed := false
 const INTRO_BEAT_SECONDS := [2.3, 3.0, 2.3]
 const CAMERA_PLAY_POSITION := Vector2(0.0, -120.0)
 const INTRO_LOOK_UP_POSITION := Vector2(0.0, -210.0)
@@ -139,6 +148,8 @@ func _physics_process(delta: float) -> void:
 	if tutorial_remaining > 0.0:
 		tutorial_remaining = maxf(tutorial_remaining - delta, 0.0)
 	gauge.update_from_positions(player.global_position.y, spider.global_position.y)
+	if gauge.distance_px < SPIDER_RED_ZONE_PX:
+		spider_red_zone_seen = true
 	stages.update_progress(player.global_position.y)
 	_remember_continue_checkpoint()
 	best_spider_distance = maxf(best_spider_distance, gauge.distance_px)
@@ -242,7 +253,7 @@ func restart() -> void:
 	rocks.reset_run()
 	storm.reset_run()
 	player.reset_run(Vector2(0, 0))
-	spider.reset_run(Vector2(0, Balance.START_DISTANCE))
+	spider.reset_run(Vector2(0, _spider_start_gap(1)))
 	player.set_physics_process(true)
 	spider.set_physics_process(true)
 	beans.set_physics_process(true)
@@ -276,6 +287,11 @@ func restart() -> void:
 	continue_used_this_run = false
 	continue_checkpoint = {}
 	completed_since_interstitial = 0
+	challenge_eligible = mode == MODE_NORMAL and debug_start_stage == 1 and debug_sandbox.is_empty()
+	damage_events = 0
+	spider_red_zone_seen = false
+	completed_stages.clear()
+	completion_committed = false
 	player.time_wings_active = false
 	player.fire_wings_active = false
 	player.remove_from_group("time_wings_active")
@@ -370,7 +386,7 @@ func _finish_intro() -> void:
 	intro_t = 0.0
 	# Rebuild the exact normal run start so watching and skipping are identical.
 	player.reset_run(Vector2.ZERO)
-	spider.reset_run(Vector2(0.0, Balance.START_DISTANCE))
+	spider.reset_run(Vector2(0.0, _spider_start_gap(1)))
 	beans.reset_run()
 	rocks.reset_run()
 	storm.reset_run()
@@ -414,6 +430,7 @@ func restart_stage() -> void:
 	audio.play_sfx("ui_click")
 	_clear_direction_inputs()
 	var stage_number := stages.current_stage
+	challenge_eligible = false
 	var start_y := stages.stage_bottom_y(stage_number)
 	for child in get_tree().get_nodes_in_group("run_transient"): child.free()
 	beans.reset_run()
@@ -424,7 +441,7 @@ func restart_stage() -> void:
 	danger_pulse_remaining = 0.0
 	_apply_impact_fx(0.0)
 	player.reset_run(Vector2(0, start_y))
-	spider.reset_run(Vector2(0, start_y + SpiderController.retry_gap_for_stage(stage_number)))
+	spider.reset_run(Vector2(0, start_y + _spider_start_gap(stage_number)))
 	stage_restart_count += 1
 	stage_restart_start_distance = spider.global_position.y - player.global_position.y
 	player.set_physics_process(true)
@@ -452,7 +469,30 @@ func restart_stage() -> void:
 
 func _on_prototype_completed() -> void:
 	state = State.PROTOTYPE_COMPLETE
+	completed_stages[Balance.STAGE_COUNT] = true
+	_commit_run_completion()
 	_start_final_cinematic()
+
+func _commit_run_completion() -> void:
+	if completion_committed:
+		return
+	completion_committed = true
+	var full_run := completed_stages.size() == Balance.STAGE_COUNT
+	for stage_number in range(1, Balance.STAGE_COUNT + 1):
+		full_run = full_run and completed_stages.has(stage_number)
+	if not full_run:
+		return
+	var earned := {}
+	if mode == MODE_NORMAL and challenge_eligible:
+		earned = {
+			"NO BEAN HIT": beans.hit_count == 0,
+			"NO ROCK HIT": rocks.hit_count == 0,
+			"NO DAMAGE": damage_events == 0,
+			"UNDER 12 MINUTES": total_time < 720.0,
+			"NO SKILLS": skills_used == 0,
+			"ZERO SPIDER RED ZONE": not spider_red_zone_seen,
+		}
+	save_manager.record_completion(mode, total_time, earned)
 
 func _start_final_cinematic() -> void:
 	final_t = 0.0
@@ -511,13 +551,20 @@ func _focus_complete_action() -> void:
 
 func _complete_new_run() -> void:
 	if app_state == AppState.GAME_COMPLETE:
-		_show_character_select()
+		start_game()
+
+func _start_nightmare_run() -> void:
+	if not bool(save_manager.replay_snapshot().nightmare_unlocked):
+		return
+	mode = MODE_NIGHTMARE
+	start_game()
 
 func _complete_menu() -> void:
 	if app_state == AppState.GAME_COMPLETE:
 		_show_menu()
 
 func _on_stage_completed(stage_number: int) -> void:
+	completed_stages[stage_number] = true
 	var player_body := player.get_node_or_null("Body")
 	if player_body != null and player_body.has_method("play_celebration"):
 		player_body.play_celebration()
@@ -578,6 +625,7 @@ func _die(cause: DeathCause = DeathCause.CAUGHT) -> void:
 	state = State.PLAYER_DEAD
 	app_state = AppState.PLAYER_DEAD
 	death_cause = cause
+	challenge_eligible = false
 	_remember_continue_checkpoint()
 	var dead_stage := stages.stage_for_y(player.global_position.y)
 	death_count_by_stage[dead_stage] = int(death_count_by_stage.get(dead_stage, 0)) + 1
@@ -666,6 +714,7 @@ func _close_meta_ui() -> void:
 	_show_menu()
 
 func _start_selected_run() -> void:
+	mode = MODE_NORMAL
 	start_game()
 
 func _continue_with_ad() -> void:
@@ -680,7 +729,7 @@ func _continue_after_reward() -> void:
 	var safe_position: Vector2 = continue_checkpoint.get("position", player.global_position)
 	player.reset_run(safe_position)
 	var safe_stage := stages.stage_for_y(safe_position.y)
-	spider.reset_run(safe_position + Vector2(0, SpiderController.retry_gap_for_stage(safe_stage)))
+	spider.reset_run(safe_position + Vector2(0, _spider_start_gap(safe_stage)))
 	_resume_after_death()
 
 func _remember_continue_checkpoint() -> void:
@@ -736,7 +785,7 @@ func _skip_stage_after_reward(stage_number: int) -> void:
 	stages.current_stage = stage_number + 1
 	var next_y := stages.stage_bottom_y(stage_number + 1)
 	player.reset_run(Vector2(0, next_y))
-	spider.reset_run(Vector2(0, next_y + SpiderController.retry_gap_for_stage(stage_number + 1)))
+	spider.reset_run(Vector2(0, next_y + _spider_start_gap(stage_number + 1)))
 	golds.reset_run()
 	_resume_after_death()
 
@@ -763,18 +812,39 @@ func _on_remove_ads_ownership_changed(value: bool) -> void:
 	_update_hud()
 
 func _show_tutorial_for_stage(stage_number: int) -> void:
+	if is_nightmare_mode():
+		tutorial_text = ""
+		tutorial_remaining = 0.0
+		return
 	var messages := {1: "MOVE LEFT / RIGHT", 2: "AVOID", 3: "CHANGE BRANCH", 5: "PRESS F", 6: "ROCKS BLOCK THE VINE", 8: "WATCH THE ROLL", 10: "PRESS H", 15: "NO MORE HELP"}
 	tutorial_text = messages.get(stage_number, "")
 	tutorial_remaining = Balance.TUTORIAL_SECONDS if tutorial_text != "" else 0.0
 
 func show_bean_tutorial() -> void:
+	if is_nightmare_mode():
+		return
 	if tutorial_text != "DODGE THE BEANS":
 		tutorial_text = "DODGE THE BEANS"
 		tutorial_remaining = Balance.TUTORIAL_SECONDS
 
 func on_bean_hit() -> void:
+	damage_events += 1
 	if not reduced_motion:
 		shake_remaining = 0.20
+
+func on_rock_hit() -> void:
+	damage_events += 1
+	if not reduced_motion:
+		shake_remaining = 0.20
+
+func is_nightmare_mode() -> bool:
+	return mode == MODE_NIGHTMARE
+
+func _spider_start_gap(stage_number: int) -> float:
+	var gap := SpiderController.stage_start_gap(stage_number)
+	if is_nightmare_mode():
+		gap *= float(StageDatabase.nightmare_modifiers().get("spider_start_gap_scale", 1.0))
+	return gap
 
 func _apply_impact_fx(_delta: float) -> void:
 	var camera := player.get_node_or_null("Camera2D") as Camera2D
@@ -812,6 +882,7 @@ func _setup_hud() -> void:
 	_add_menu_logo()
 	_add_label("Menu", Vector2(320, 300), "CHOOSE AN OPTION", 22)
 	_add_action_button("NewRun", "NEW RUN", _show_character_select)
+	_add_action_button("Nightmare", "NIGHTMARE", _start_nightmare_run)
 	_add_action_button("Shop", "SHOP", _show_shop)
 	var intro_label := $HUD/IntroText as Label
 	intro_label.theme = ui_theme
@@ -863,7 +934,8 @@ func _setup_hud() -> void:
 	$HUD.add_child(wings_orb)
 	_add_label("Stats", Vector2(300, 190), "", 18)
 	_add_label("Replay", Vector2(300, 375), "", 18)
-	_add_action_button("CompleteNewRun", "NEW RUN", _complete_new_run)
+	_add_action_button("CompleteNewRun", "PLAY AGAIN", _complete_new_run)
+	_add_action_button("CompleteNightmare", "NIGHTMARE", _start_nightmare_run)
 	_add_action_button("CompleteMenu", "MENU", _complete_menu)
 	final_character = Sprite2D.new()
 	final_character.name = "FinalCharacter"
@@ -961,8 +1033,10 @@ func layout_hud_for_viewport(viewport_size: Vector2) -> void:
 	$HUD/RemoveAds.position = Vector2(width - 288.0, menu_action_y)
 	$HUD/RemoveAds.size = Vector2(270.0, 52.0)
 	var menu_width := minf(250.0, width * 0.34)
-	$HUD/NewRun.position = Vector2((width - menu_width) * 0.5, height - 126.0)
+	$HUD/NewRun.position = Vector2((width - menu_width) * 0.5, height - 180.0)
 	$HUD/NewRun.size = Vector2(menu_width, 48.0)
+	$HUD/Nightmare.position = Vector2((width - menu_width) * 0.5, height - 126.0)
+	$HUD/Nightmare.size = Vector2(menu_width, 48.0)
 	$HUD/Shop.position = Vector2((width - menu_width) * 0.5, height - 72.0)
 	$HUD/Shop.size = Vector2(menu_width, 48.0)
 	_layout_centered_label($HUD/RewardToast, width, 154.0, 30.0, 190.0)
@@ -982,12 +1056,15 @@ func layout_hud_for_viewport(viewport_size: Vector2) -> void:
 	_layout_centered_label($HUD/Dead, width, height * 0.36, 80.0, 36.0)
 	_layout_centered_label($HUD/Complete, width, height * 0.25, 48.0, 36.0)
 	_layout_intro_text(Vector2(width, height))
-	_layout_centered_label($HUD/Stats, width, height * 0.38, 140.0, 44.0)
-	_layout_centered_label($HUD/Replay, width, height * 0.76, 44.0, 36.0)
-	var complete_width := minf(210.0, (width - 48.0) * 0.5)
-	$HUD/CompleteNewRun.position = Vector2(width * 0.5 - complete_width - 6.0, height - 76.0)
+	_layout_centered_label($HUD/Stats, width, height * 0.34, 180.0, 44.0)
+	_layout_centered_label($HUD/Replay, width, height * 0.66, 128.0, 36.0)
+	var complete_width := minf(190.0, (width - 48.0) / 3.0)
+	var complete_start := (width - complete_width * 3.0 - 12.0) * 0.5
+	$HUD/CompleteNewRun.position = Vector2(complete_start, height - 76.0)
 	$HUD/CompleteNewRun.size = Vector2(complete_width, 52.0)
-	$HUD/CompleteMenu.position = Vector2(width * 0.5 + 6.0, height - 76.0)
+	$HUD/CompleteNightmare.position = Vector2(complete_start + complete_width + 6.0, height - 76.0)
+	$HUD/CompleteNightmare.size = Vector2(complete_width, 52.0)
+	$HUD/CompleteMenu.position = Vector2(complete_start + (complete_width + 6.0) * 2.0, height - 76.0)
 	$HUD/CompleteMenu.size = Vector2(complete_width, 52.0)
 	var touch_y := height - 148.0
 	$HUD/TouchLeft.position = Vector2(18.0, touch_y)
@@ -1132,9 +1209,11 @@ func _update_hud() -> void:
 	$HUD/Stats.visible = app_state == AppState.GAME_COMPLETE
 	$HUD/Replay.visible = app_state == AppState.GAME_COMPLETE
 	$HUD/CompleteNewRun.visible = app_state == AppState.GAME_COMPLETE
+	$HUD/CompleteNightmare.visible = app_state == AppState.GAME_COMPLETE and bool(save_manager.replay_snapshot().nightmare_unlocked)
 	$HUD/CompleteMenu.visible = app_state == AppState.GAME_COMPLETE
 	$HUD/MenuLogo.visible = app_state == AppState.MENU
 	$HUD/NewRun.visible = app_state == AppState.MENU
+	$HUD/Nightmare.visible = app_state == AppState.MENU and bool(save_manager.replay_snapshot().nightmare_unlocked)
 	$HUD/Shop.visible = app_state == AppState.MENU
 	$HUD/IntroText.visible = app_state in [AppState.INTRO, AppState.FINAL_CINEMATIC]
 	$HUD/ReduceMotion.visible = app_state == AppState.PAUSED
@@ -1182,8 +1261,8 @@ func _update_hud() -> void:
 	_update_time_wings_orb()
 	if app_state == AppState.GAME_COMPLETE:
 		$HUD/Stats.text = _stats_text()
-		$HUD/Complete.text = "YOU MADE IT - STAGE %d" % Balance.STAGE_COUNT
-		$HUD/Replay.text = "CHOOSE NEW RUN OR MENU"
+		$HUD/Complete.text = "%s COMPLETE" % mode
+		$HUD/Replay.text = _replay_badges_text()
 	else:
 		$HUD/Stats.text = ""
 		$HUD/Replay.text = ""
@@ -1243,7 +1322,17 @@ func _stats_text() -> String:
 	var best_m := best_spider_distance / Balance.PIXELS_PER_METER
 	var deaths := 0
 	for count in death_count_by_stage.values(): deaths += int(count)
-	return "TIME %02d:%02d\nDEATHS / RETRIES %d / %d\nBEAN / ROCK HITS %d / %d\nCLOSE CALLS %d\nSKILLS USED %d\nGOLD COLLECTED %d\nBEST SPIDER DISTANCE %.1fm" % [mm, ss, deaths, stage_restart_count, beans.hit_count, rocks.hit_count, close_calls, skills_used, golds.collected_ids.size(), best_m]
+	var record: Dictionary = save_manager.replay_snapshot().records.get(mode, {})
+	var personal_best := float(record.get("best_time", 0.0))
+	var best_text := "--:--" if personal_best <= 0.0 else "%02d:%02d" % [int(personal_best) / 60, int(personal_best) % 60]
+	return "TIME %02d:%02d\nDEATHS / RETRIES %d / %d\nBEAN / ROCK HITS %d / %d\nCLOSE CALLS %d\nSKILLS USED %d\nBEST SPIDER DISTANCE %.1fm\nPERSONAL BEST %s" % [mm, ss, deaths, stage_restart_count, beans.hit_count, rocks.hit_count, close_calls, skills_used, best_m, best_text]
+
+func _replay_badges_text() -> String:
+	var lines: PackedStringArray = []
+	for challenge in SaveManager.CHALLENGE_NAMES:
+		var state: Dictionary = _challenge_snapshot().get(challenge, {})
+		lines.append("[x] %s" % challenge if bool(state.get("earned", false)) else "[ ] %s" % challenge)
+	return "\n".join(lines)
 
 func _publish_readonly_web_state() -> void:
 	if not OS.has_feature("web") or not _debug_state_enabled():
@@ -1258,6 +1347,18 @@ func _debug_state_enabled() -> bool:
 	if OS.has_feature("web"):
 		return "debug" in str(JavaScriptBridge.eval("window.location.hash", true)).to_lower()
 	return OS.is_debug_build()
+
+func _challenge_snapshot() -> Dictionary:
+	var saved: Dictionary = save_manager.replay_snapshot().challenges
+	var common := mode == MODE_NORMAL and challenge_eligible
+	return {
+		"NO BEAN HIT": {"eligible": common and beans.hit_count == 0, "earned": bool(saved.get("NO BEAN HIT", false))},
+		"NO ROCK HIT": {"eligible": common and rocks.hit_count == 0, "earned": bool(saved.get("NO ROCK HIT", false))},
+		"NO DAMAGE": {"eligible": common and damage_events == 0, "earned": bool(saved.get("NO DAMAGE", false))},
+		"UNDER 12 MINUTES": {"eligible": common and total_time < 720.0, "earned": bool(saved.get("UNDER 12 MINUTES", false))},
+		"NO SKILLS": {"eligible": common and skills_used == 0, "earned": bool(saved.get("NO SKILLS", false))},
+		"ZERO SPIDER RED ZONE": {"eligible": common and not spider_red_zone_seen, "earned": bool(saved.get("ZERO SPIDER RED ZONE", false))},
+	}
 
 func _readonly_state_snapshot() -> Dictionary:
 	var stage_number := stages.stage_for_y(player.global_position.y)
@@ -1282,6 +1383,9 @@ func _readonly_state_snapshot() -> Dictionary:
 			})
 	return {
 		"app_state": AppState.keys()[app_state],
+		"mode": mode,
+		"nightmare_unlocked": bool(save_manager.replay_snapshot().nightmare_unlocked),
+		"challenges": _challenge_snapshot(),
 		"intro": {"active": intro_active, "beat": intro_beat, "t": intro_t, "visual_mode": INTRO_VISUAL_MODES[intro_beat] if intro_active else "none"},
 		"final": {"active": app_state == AppState.FINAL_CINEMATIC, "t": final_t, "duration": FINAL_CINEMATIC_SECONDS},
 		"death_cause": DeathCause.keys()[death_cause],
@@ -1323,6 +1427,9 @@ func _apply_debug_meta_overrides() -> void:
 		var parts := pair.split("=", true, 1)
 		if parts.size() != 2:
 			continue
+		if parts[0] == "unlock" and parts[1].to_lower() == "nightmare":
+			save_manager.unlock_nightmare()
+			continue
 		if parts[0] == "sandbox":
 			var requested_sandbox := parts[1].to_lower()
 			debug_sandbox = requested_sandbox if requested_sandbox in ["rocks", "storm"] else ""
@@ -1340,7 +1447,7 @@ func _start_debug_stage(stage_number: int) -> void:
 		return
 	var start_y := stages.stage_bottom_y(stage_number)
 	player.reset_run(Vector2(0.0, start_y))
-	spider.reset_run(Vector2(0.0, start_y + SpiderController.stage_start_gap(stage_number)))
+	spider.reset_run(Vector2(0.0, start_y + _spider_start_gap(stage_number)))
 	rocks.sync_after_player_teleport()
 	golds.refresh_active_window(true)
 	stages.update_progress(start_y)
