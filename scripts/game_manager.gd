@@ -7,6 +7,58 @@ const MODE_NORMAL := "NORMAL"
 const MODE_NIGHTMARE := "NIGHTMARE"
 const SPIDER_RED_ZONE_PX := 96.0
 
+class HeartIcon extends Control:
+	var filled := true
+	var loss_tween: Tween
+
+	func _ready() -> void:
+		mouse_filter = Control.MOUSE_FILTER_IGNORE
+		custom_minimum_size = Vector2(26.0, 26.0)
+		pivot_offset = Vector2(13.0, 13.0)
+
+	func _exit_tree() -> void:
+		if loss_tween != null and loss_tween.is_valid():
+			loss_tween.kill()
+
+	func set_filled(value: bool) -> void:
+		if filled == value:
+			return
+		filled = value
+		queue_redraw()
+
+	func animate_loss() -> void:
+		if loss_tween != null and loss_tween.is_valid():
+			loss_tween.kill()
+		scale = Vector2.ONE
+		modulate = Color.WHITE
+		loss_tween = create_tween().set_parallel(true)
+		loss_tween.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_IN)
+		loss_tween.tween_property(self, "scale", Vector2(0.35, 0.35), 0.3)
+		loss_tween.tween_property(self, "modulate", Color(1.0, 1.0, 1.0, 0.0), 0.3)
+		loss_tween.chain().tween_callback(_reset_after_loss)
+
+	func _reset_after_loss() -> void:
+		scale = Vector2.ONE
+		modulate = Color.WHITE
+
+	func _draw() -> void:
+		var outline := Color("142b39")
+		var fill := Color("e8394a") if filled else Color(0.12, 0.16, 0.19, 0.48)
+		_draw_heart(outline, 0.0)
+		_draw_heart(fill, 1.8)
+
+	func _draw_heart(color: Color, inset: float) -> void:
+		var radius := 6.5 - inset * 0.45
+		var left_center := Vector2(7.6 + inset * 0.35, 8.0 + inset * 0.35)
+		var right_center := Vector2(18.4 - inset * 0.35, 8.0 + inset * 0.35)
+		draw_circle(left_center, radius, color, true, -1.0, true)
+		draw_circle(right_center, radius, color, true, -1.0, true)
+		draw_colored_polygon(PackedVector2Array([
+			Vector2(1.2 + inset, 8.2 + inset * 0.35),
+			Vector2(24.8 - inset, 8.2 + inset * 0.35),
+			Vector2(13.0, 24.0 - inset),
+		]), color)
+
 enum State { PLAYING, PLAYER_DEAD, PROTOTYPE_COMPLETE }
 enum AppState { MENU, INTRO, PLAYING, PAUSED, PLAYER_DEAD, FINAL_CINEMATIC, GAME_COMPLETE, SHOP, CHARACTER_SELECT, MAP, SETTINGS, CREDITS }
 enum DeathCause { NONE, FALL, CAUGHT, OBSTACLE }
@@ -62,6 +114,7 @@ var continue_checkpoint := {}
 var max_lives := 3
 var current_lives := 3
 var hit_invulnerability_remaining := 0.0
+var displayed_lives := -1
 var ad_revives_by_stage := {}
 var completed_since_interstitial := 0
 var platform_pause_active := false
@@ -685,8 +738,6 @@ func try_time_wings() -> bool:
 func _show_time_wings_notice(text: String, seconds: float) -> void:
 	time_wings_notice = text
 	time_wings_notice_remaining = seconds
-	tutorial_text = text
-	tutorial_remaining = seconds
 	_update_hud()
 
 func try_fire_wings() -> bool:
@@ -1194,7 +1245,7 @@ func _show_tutorial_for_stage(stage_number: int) -> void:
 		return
 	if stage_number == Balance.TIME_WINGS_STAGE and not time_wings_stage_intro_shown:
 		time_wings_stage_intro_shown = true
-		_show_time_wings_notice("TIME WINGS — PRESS F", 2.0)
+		_show_time_wings_notice("TIME WINGS · PRESS F", 2.5)
 		return
 	var messages := {1: "MOVE LEFT / RIGHT", 2: "AVOID", 3: "CHANGE BRANCH", 6: "ROCKS BLOCK THE VINE", 8: "WATCH THE ROLL", 10: "PRESS H", 15: "NO MORE HELP"}
 	tutorial_text = messages.get(stage_number, "")
@@ -1316,12 +1367,33 @@ func _setup_hud() -> void:
 	_add_label("Pause", Vector2(315, 235), "PAUSED - ESC TO RESUME", 22)
 	_add_label("StageBanner", Vector2(360, 90), "", 20)
 	_add_label("StageCounter", Vector2(16, 62), "STAGE 1 / 30", 14)
-	var lives_label := _add_label("Lives", Vector2(14, 8), "", 30)
-	lives_label.add_theme_color_override("font_color", Color("ff5b6e"))
-	lives_label.add_theme_color_override("font_outline_color", Color("142b39"))
-	lives_label.add_theme_constant_override("outline_size", 4)
+	var lives := Control.new()
+	lives.name = "Lives"
+	lives.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	$HUD.add_child(lives)
+	for index in max_lives:
+		var heart := HeartIcon.new()
+		heart.name = "Heart%d" % (index + 1)
+		heart.position = Vector2(index * 29.0, 0.0)
+		heart.size = Vector2(26.0, 26.0)
+		lives.add_child(heart)
 	_add_label("Tutorial", Vector2(360, 130), "", 22)
 	_add_label("TimeWings", Vector2(690, 22), "", 16)
+	var wings_notice := _add_label("TimeWingsNotice", Vector2.ZERO, "", 18)
+	wings_notice.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	wings_notice.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	wings_notice.z_index = 20
+	wings_notice.add_theme_color_override("font_color", Color("fff8ff"))
+	wings_notice.add_theme_color_override("font_outline_color", Color("32154f"))
+	wings_notice.add_theme_constant_override("outline_size", 3)
+	var wings_notice_style := StyleBoxFlat.new()
+	wings_notice_style.bg_color = Color("7a3fa3e8")
+	wings_notice_style.border_color = Color("f3d9ff")
+	wings_notice_style.set_border_width_all(2)
+	wings_notice_style.set_corner_radius_all(10)
+	wings_notice_style.content_margin_left = 10.0
+	wings_notice_style.content_margin_right = 10.0
+	wings_notice.add_theme_stylebox_override("normal", wings_notice_style)
 	_add_label("FireWings", Vector2(690, 44), "", 16)
 	_add_label("GoldStatus", Vector2(690, 62), "GOLD 0", 18)
 	_add_label("XPStatus", Vector2(690, 87), "LV 1 · XP 0/100", 14)
@@ -1493,8 +1565,8 @@ func layout_hud_for_viewport(viewport_size: Vector2) -> void:
 	prompt.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	$HUD/Mute.position = Vector2(width - 124.0, 10.0)
 	$HUD/Mute.size = Vector2(112.0, 46.0)
-	$HUD/Lives.position = Vector2(14.0, 8.0)
-	$HUD/Lives.size = Vector2(180.0, 42.0)
+	$HUD/Lives.position = Vector2(14.0, 12.0)
+	$HUD/Lives.size = Vector2(max_lives * 29.0, 26.0)
 	var skill := $HUD/TimeWings as Label
 	var skill_orb := $HUD/TimeWingsOrb as TextureRect
 	var skill_y := maxf(height - (226.0 if DisplayServer.is_touchscreen_available() else 84.0), 126.0)
@@ -1506,6 +1578,10 @@ func layout_hud_for_viewport(viewport_size: Vector2) -> void:
 	var skill_bar := $HUD/TimeWingsBar as ProgressBar
 	skill_bar.position = Vector2(skill.position.x, skill_y + 34.0)
 	skill_bar.size = Vector2(skill.size.x, 10.0)
+	var skill_notice := $HUD/TimeWingsNotice as Label
+	var skill_notice_width := minf(300.0, width - 20.0)
+	skill_notice.position = Vector2(width - skill_notice_width - 10.0, maxf(skill_y - 46.0, 10.0))
+	skill_notice.size = Vector2(skill_notice_width, 38.0)
 	var fire_skill := $HUD/FireWings as Label
 	fire_skill.position = Vector2(maxf(width - 270.0, 70.0), 18.0)
 	fire_skill.size = Vector2(minf(250.0, width - fire_skill.position.x - 10.0), 28.0)
@@ -1755,6 +1831,16 @@ func _clear_direction_inputs() -> void:
 	Input.action_release("move_right")
 	touch_actions.clear()
 
+func _update_lives_hud() -> void:
+	var lives := $HUD/Lives as Control
+	for index in lives.get_child_count():
+		var heart := lives.get_child(index) as HeartIcon
+		var is_filled := index < current_lives
+		heart.set_filled(is_filled)
+		if displayed_lives >= 0 and current_lives < displayed_lives and index >= current_lives and index < displayed_lives:
+			heart.animate_loss()
+	displayed_lives = current_lives
+
 func _update_hud() -> void:
 	var playing := app_state == AppState.PLAYING
 	var normal_playing := playing and not tutorial_active
@@ -1807,6 +1893,7 @@ func _update_hud() -> void:
 	$HUD/TimeWings.visible = normal_playing
 	$HUD/TimeWingsOrb.visible = normal_playing
 	$HUD/TimeWingsBar.visible = normal_playing and time_wings_remaining > 0.0
+	$HUD/TimeWingsNotice.visible = playing and time_wings_notice_remaining > 0.0
 	$HUD/FireWings.visible = normal_playing
 	$HUD/Lives.visible = normal_playing
 	$HUD/GoldStatus.visible = meta_visible
@@ -1836,10 +1923,11 @@ func _update_hud() -> void:
 	var route_hint_visible := tutorial_text != "CHANGE BRANCH" or stages.branch_targets_visible(player.global_position.y, get_viewport_rect().size.y)
 	$HUD/Tutorial.text = tutorial_text if tutorial_remaining > 0.0 and app_state == AppState.PLAYING and route_hint_visible else ""
 	$HUD/TimeWings.text = _time_wings_status()
+	$HUD/TimeWingsNotice.text = time_wings_notice
 	$HUD/TimeWingsBar.max_value = Balance.TIME_WINGS_SECONDS
 	$HUD/TimeWingsBar.value = time_wings_remaining
 	$HUD/FireWings.text = _fire_wings_status()
-	$HUD/Lives.text = "♥".repeat(current_lives) + "♡".repeat(max_lives - current_lives)
+	_update_lives_hud()
 	var meta := economy.snapshot()
 	$HUD/GoldStatus.text = "GOLD %d" % meta.gold
 	$HUD/XPStatus.text = "LV %d · XP %d/%d" % [meta.level, meta.xp, meta.xp_threshold]

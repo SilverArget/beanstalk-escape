@@ -10,18 +10,38 @@ const TRAILS := [
 var failures := 0
 
 func _init() -> void:
+	root.size = Vector2i(960, 540)
+	var world := Node2D.new()
+	root.add_child(world)
+	var branch := Node2D.new()
+	branch.z_index = 0
+	world.add_child(branch)
+	var player := Node2D.new()
+	player.z_index = 5
+	world.add_child(player)
+	var body := Node2D.new()
+	player.add_child(body)
 	var identities: Array[String] = []
 	for item in TRAILS:
 		var effect := TrailEffectScript.new()
+		body.add_child(effect)
 		effect.configure(item)
 		identities.append(effect.shape_identity())
-		var player_position := Vector2(80.0, 320.0)
+		var player_position := Vector2(480.0, 400.0)
 		for frame in 61:
-			player_position.y -= 2.0
+			player_position.y -= 3.0
 			effect.update_trail(player_position, true, false, 1.0 / 60.0)
 		var climb_points := effect.point_positions()
 		_check(climb_points.any(func(point: Vector2): return point.y > player_position.y), "%s leaves world-space points below climber after one second" % item.id)
+		var climb_span := climb_points[-1].y - climb_points[0].y if climb_points.size() >= 2 else 0.0
+		_check(absf(climb_span) >= 120.0 and absf(climb_span) <= 200.0, "%s leaves a 120-200 px climbing trail" % item.id)
 		_check(effect.point_count() <= 40, "%s stays within the 40-point budget while climbing" % item.id)
+		var effect_z := _effective_z(effect)
+		_check(effect_z > _effective_z(branch) and effect_z < _effective_z(player), "%s effective z is above branches and below the character" % item.id)
+		var state := effect.snapshot()
+		_check(state.has("screen_first") and state.has("screen_last") and state.has("z"), "%s snapshot exposes screen endpoints and z data" % item.id)
+		if state.has("screen_first") and state.has("screen_last"):
+			_check(_inside_viewport(_snapshot_point(state.screen_first), root.size) and _inside_viewport(_snapshot_point(state.screen_last), root.size), "%s trail endpoints transform inside the viewport" % item.id)
 
 		effect.clear()
 		for frame in 25:
@@ -58,6 +78,21 @@ func _init() -> void:
 	if failures == 0:
 		print("PASS: readable world-space trail effects")
 	quit(failures)
+
+func _effective_z(item: CanvasItem) -> int:
+	var result := item.z_index
+	var parent := item.get_parent() as CanvasItem
+	while item.z_as_relative and parent != null:
+		result += parent.z_index
+		item = parent
+		parent = item.get_parent() as CanvasItem
+	return result
+
+func _inside_viewport(point: Vector2, viewport_size: Vector2i) -> bool:
+	return point.x >= 0.0 and point.y >= 0.0 and point.x <= viewport_size.x and point.y <= viewport_size.y
+
+func _snapshot_point(value: Dictionary) -> Vector2:
+	return Vector2(float(value.get("x", -1.0)), float(value.get("y", -1.0)))
 
 func _check(condition: bool, label: String) -> void:
 	if condition:

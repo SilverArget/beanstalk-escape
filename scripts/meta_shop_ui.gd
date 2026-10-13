@@ -105,6 +105,7 @@ func _build() -> void:
 	panel.add_child(preview_host)
 	preview = PlayerVisual.new()
 	preview.name = "LivePreview"
+	preview.z_index = 5
 	preview.scale = Vector2.ONE * 1.45
 	preview_host.add_child(preview)
 	scroll = ScrollContainer.new()

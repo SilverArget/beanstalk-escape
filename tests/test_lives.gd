@@ -16,13 +16,17 @@ func _run() -> void:
 	game.tutorial_active = false
 	game.stages.current_stage = 3
 	game.restart_stage()
+	var heart_nodes := game.get_node("HUD/Lives").get_children()
+	var filled_hearts := heart_nodes.filter(func(heart: Node): return bool(heart.get("filled")))
+	_check(heart_nodes.size() == 3 and filled_hearts.size() == game.current_lives, "heart HUD has three drawn icons matching current lives")
 	var stage_start_y := game.stages.stage_bottom_y(3)
 	var safe_y := stage_start_y - 240.0
 	game.player.reset_run(Vector2(game.stages.branch_x_at(1, safe_y), safe_y))
 	game._remember_continue_checkpoint()
 
 	game.on_bean_hit()
-	_check(game.current_lives == 2, "first hit spends one life")
+	filled_hearts = heart_nodes.filter(func(heart: Node): return bool(heart.get("filled")))
+	_check(game.current_lives == 2 and filled_hearts.size() == game.current_lives, "first hit spends one life and empties one drawn heart")
 	game.hit_invulnerability_remaining = 0.0
 	game.on_rock_hit()
 	_check(game.current_lives == 1, "second hit spends one life")

@@ -134,10 +134,19 @@ func test_time_wings_command_and_clock() -> void:
 	f_key.physical_keycode = KEY_F
 	f_key.pressed = true
 	game._input(f_key)
-	var locked_notice: bool = game.time_wings_notice == "Unlocks at Stage 5"
+	var notice_label := game.get_node_or_null("HUD/TimeWingsNotice") as Label
+	var locked_notice: bool = game.time_wings_notice == "Unlocks at Stage 5" and notice_label != null and notice_label.visible and notice_label.text == game.time_wings_notice
 	game.player.global_position = Vector2(0, -4.0 * Balance.STAGE_HEIGHT - 10.0)
+	var wings_stage := game.stages.stage_for_y(game.player.global_position.y)
 	game._show_tutorial_for_stage(Balance.TIME_WINGS_STAGE)
-	var entry_notice: bool = game.time_wings_notice == "TIME WINGS — PRESS F" and is_equal_approx(game.time_wings_notice_remaining, 2.0)
+	game.layout_hud_for_viewport(Vector2(960.0, 540.0))
+	var entry_notice: bool = game.time_wings_notice == "TIME WINGS · PRESS F" and is_equal_approx(game.time_wings_notice_remaining, 2.5) and notice_label != null and notice_label.visible and notice_label.text == game.time_wings_notice
+	var notice_clear_of_center_hud := false
+	if notice_label != null:
+		var notice_rect := notice_label.get_global_rect()
+		var reward_rect := (game.get_node("HUD/RewardToast") as Label).get_global_rect()
+		var stage_rect := (game.get_node("HUD/StageBanner") as Label).get_global_rect()
+		notice_clear_of_center_hud = not notice_rect.intersects(reward_rect) and not notice_rect.intersects(stage_rect)
 	game._input(f_key)
 	game.audio._process(0.0)
 	var keyboard_ok: bool = game.player.time_wings_active and game.last_time_command_source == "keyboard"
@@ -162,10 +171,10 @@ func test_time_wings_command_and_clock() -> void:
 		game._physics_process(1.0 / 120.0)
 	var exact_clock: bool = game.time_wings_remaining <= 0.0001 and not game.player.time_wings_active
 	var player_unchanged: bool = is_equal_approx(game.player.global_position.y, player_y)
-	var second_use_rejected: bool = not game.dispatch_command("time_wings", "keyboard") and game.time_wings_notice == "Used this stage"
+	var second_use_rejected: bool = not game.dispatch_command("time_wings", "keyboard") and game.time_wings_notice == "Used this stage" and notice_label.visible and notice_label.text == game.time_wings_notice
 	var snapshot := game._readonly_state_snapshot()
 	var debug_ok: bool = snapshot.time_wings.notice == "Used this stage" and is_equal_approx(float(snapshot.time_wings.slow_scale), Balance.TIME_WINGS_SLOW_SCALE)
-	game.time_wings_used_stage.erase(5)
+	game.time_wings_used_stage.erase(wings_stage)
 	var mobile_ok: bool = game.dispatch_command("time_wings", "mobile") and game.last_time_command_source == "mobile"
 	var slow_bean := (load("res://scenes/bean_projectile.tscn") as PackedScene).instantiate() as BeanProjectile
 	game.add_child(slow_bean)
@@ -176,7 +185,7 @@ func test_time_wings_command_and_clock() -> void:
 	var spider_normal := SpiderController.speed_for_state(260.0, 5, 0.0, false, false)
 	var spider_slow := SpiderController.speed_for_state(260.0, 5, 0.0, false, true)
 	var threats_only: bool = absf(slow_bean.position.y - bean_start_y - Balance.BEAN_FALL_SPEED * Balance.TIME_WINGS_SLOW_SCALE) < 0.01 and is_equal_approx(spider_slow, spider_normal * Balance.TIME_WINGS_SLOW_SCALE) and is_equal_approx(game.storm.threat_scale(true), Balance.TIME_WINGS_SLOW_SCALE)
-	check(locked_notice and entry_notice and keyboard_ok and sound_ok and wings_visible and hud_ok and touch_ok and mobile_ok and absf(halfway - Balance.TIME_WINGS_SECONDS * 0.5) < 0.001 and pause_frozen and exact_clock and player_unchanged and second_use_rejected and debug_ok and threats_only and Engine.time_scale == 1.0, "T10/T12", "locked=%s entry=%s keyboard=%s sound=%s wings=%s(%s/%.2f/%.1fpx) hud=%s touch=%s mobile=%s halfway=%.3f pause=%s exact=%s player_same=%s used=%s debug=%s threats=%s global_scale=%.1f" % [str(locked_notice), str(entry_notice), str(keyboard_ok), str(sound_ok), str(wings_visible), str(visual.time_wings.visible), visual.time_wings.modulate.a, visual.time_wings.texture.get_width() * visual.time_wings.scale.x, str(hud_ok), str(touch_ok), str(mobile_ok), halfway, str(pause_frozen), str(exact_clock), str(player_unchanged), str(second_use_rejected), str(debug_ok), str(threats_only), Engine.time_scale])
+	check(locked_notice and entry_notice and notice_clear_of_center_hud and keyboard_ok and sound_ok and wings_visible and hud_ok and touch_ok and mobile_ok and absf(halfway - Balance.TIME_WINGS_SECONDS * 0.5) < 0.001 and pause_frozen and exact_clock and player_unchanged and second_use_rejected and debug_ok and threats_only and Engine.time_scale == 1.0, "T10/T12", "locked=%s entry=%s clear=%s keyboard=%s sound=%s wings=%s(%s/%.2f/%.1fpx) hud=%s touch=%s mobile=%s halfway=%.3f pause=%s exact=%s player_same=%s used=%s debug=%s threats=%s global_scale=%.1f" % [str(locked_notice), str(entry_notice), str(notice_clear_of_center_hud), str(keyboard_ok), str(sound_ok), str(wings_visible), str(visual.time_wings.visible), visual.time_wings.modulate.a, visual.time_wings.texture.get_width() * visual.time_wings.scale.x, str(hud_ok), str(touch_ok), str(mobile_ok), halfway, str(pause_frozen), str(exact_clock), str(player_unchanged), str(second_use_rejected), str(debug_ok), str(threats_only), Engine.time_scale])
 	slow_bean.queue_free()
 	game.queue_free()
 	await physics_frame
