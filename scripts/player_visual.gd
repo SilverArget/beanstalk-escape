@@ -3,6 +3,7 @@ extends Node2D
 
 const FRAME_ROOT := "res://assets/art/character_frames"
 const WING_TEXTURE := preload("res://assets/art/character_rig/wing/time_wings.png")
+const TRANSFER_LEAF_TEXTURE := preload("res://assets/art/foliage/leaf_035.png")
 const ROCK_FIRE_ATLAS := preload("res://assets/art/hazards/rock_fire_atlas.png")
 const FAIRY_EFFECT := preload("res://scripts/fairy_effect.gd")
 const FRAME_NAMES := ["climb_left", "climb_right", "climb_reach", "hang"]
@@ -26,6 +27,7 @@ var sprite: Sprite2D
 var time_wings: Sprite2D
 var fire_wings: Sprite2D
 var takeoff_particles: CPUParticles2D
+var transfer_trails: Array[Line2D] = []
 var fire_trails: Array[Polygon2D] = []
 var flash_material: ShaderMaterial
 var cosmetic_sprites: Dictionary = {}
@@ -39,6 +41,8 @@ var fairy_effect: FairyEffect
 var pet_preview_time := 0.0
 var pet_preview_scale := Vector2.ONE
 var _was_transferring := false
+var _transfer_trail_alpha := 0.0
+var _last_transfer_direction := 1.0
 
 func _ready() -> void:
 	_build_visual()
@@ -94,6 +98,7 @@ func _update_mode(player: PlayerController, delta: float) -> void:
 	elif player.support_state == PlayerController.SupportState.TRANSFERRING:
 		var direction := signf(Balance.ROUTE_X[player.transition_to] - Balance.ROUTE_X[player.transition_from])
 		scale.x = absf(scale.x) * (-1.0 if direction < 0.0 else 1.0)
+		_last_transfer_direction = direction
 		if not _was_transferring:
 			takeoff_particles.restart()
 			takeoff_particles.emitting = true
@@ -115,6 +120,19 @@ func _update_mode(player: PlayerController, delta: float) -> void:
 	if player.support_state != PlayerController.SupportState.TRANSFERRING:
 		scale.x = absf(scale.x)
 		_was_transferring = false
+	_update_transfer_trails(player.support_state == PlayerController.SupportState.TRANSFERRING, delta)
+
+func _update_transfer_trails(transferring: bool, delta: float) -> void:
+	if transferring:
+		_transfer_trail_alpha = 1.0
+	else:
+		_transfer_trail_alpha = maxf(_transfer_trail_alpha - delta / 0.28, 0.0)
+	for trail in transfer_trails:
+		# The whole body is mirrored in flight. Preserve that world-space side
+		# while the residual trail fades after the body returns to +X scale.
+		trail.scale.x = 1.0 if transferring else _last_transfer_direction
+		trail.modulate.a = _transfer_trail_alpha
+		trail.visible = _transfer_trail_alpha > 0.0
 
 func _set_mode(new_mode: String, requested_frame: String) -> void:
 	if mode != new_mode:
@@ -285,22 +303,28 @@ func _build_visual() -> void:
 	takeoff_particles = CPUParticles2D.new()
 	takeoff_particles.name = "TransferTakeoffTrail"
 	takeoff_particles.amount = 7
-	takeoff_particles.lifetime = 0.28
+	takeoff_particles.lifetime = maxf(Balance.BRANCH_TRANSITION_SECONDS, 0.30)
 	takeoff_particles.one_shot = true
 	takeoff_particles.explosiveness = 0.92
 	takeoff_particles.local_coords = false
+	takeoff_particles.texture = TRANSFER_LEAF_TEXTURE
 	takeoff_particles.direction = Vector2(-1.0, -0.15)
-	takeoff_particles.spread = 24.0
-	takeoff_particles.gravity = Vector2(0.0, 30.0)
-	takeoff_particles.initial_velocity_min = 45.0
-	takeoff_particles.initial_velocity_max = 68.0
-	takeoff_particles.scale_amount_min = 0.7
-	takeoff_particles.scale_amount_max = 1.4
-	takeoff_particles.color = Color(0.64, 0.84, 0.38, 0.58)
-	takeoff_particles.position = Vector2(0.0, 25.0)
+	takeoff_particles.spread = 20.0
+	takeoff_particles.gravity = Vector2(0.0, 24.0)
+	takeoff_particles.initial_velocity_min = 58.0
+	takeoff_particles.initial_velocity_max = 82.0
+	takeoff_particles.scale_amount_min = 0.04
+	takeoff_particles.scale_amount_max = 0.055
+	takeoff_particles.angle_min = -28.0
+	takeoff_particles.angle_max = 28.0
+	takeoff_particles.angular_velocity_min = -160.0
+	takeoff_particles.angular_velocity_max = 160.0
+	takeoff_particles.color = Color(0.56, 0.82, 0.31, 0.92)
+	takeoff_particles.position = Vector2(-5.0, 23.0)
 	takeoff_particles.z_index = -3
 	takeoff_particles.emitting = false
 	add_child(takeoff_particles)
+	_build_transfer_motion_trails()
 	fire_wings = Sprite2D.new()
 	fire_wings.name = "FireWings"
 	var fire_texture := AtlasTexture.new()
@@ -412,3 +436,25 @@ void fragment() {
 	fairy_effect.z_index = 1
 	fairy_effect.visible = false
 	add_child(fairy_effect)
+
+func _build_transfer_motion_trails() -> void:
+	var paths := [
+		PackedVector2Array([Vector2(-7, 5), Vector2(-22, 1), Vector2(-39, 8), Vector2(-57, 3)]),
+		PackedVector2Array([Vector2(-8, 15), Vector2(-23, 11), Vector2(-37, 17), Vector2(-52, 13)]),
+		PackedVector2Array([Vector2(-6, 25), Vector2(-18, 21), Vector2(-31, 26), Vector2(-46, 22)]),
+	]
+	var colors := [Color(0.94, 1.0, 0.88, 0.94), Color(0.78, 0.94, 0.61, 0.92), Color(0.90, 1.0, 0.80, 0.88)]
+	for index in paths.size():
+		var trail := Line2D.new()
+		trail.name = "TransferMotionTrail%d" % (index + 1)
+		trail.points = paths[index]
+		trail.width = 4.0 - float(index) * 0.4
+		trail.default_color = colors[index]
+		trail.begin_cap_mode = Line2D.LINE_CAP_ROUND
+		trail.end_cap_mode = Line2D.LINE_CAP_ROUND
+		trail.joint_mode = Line2D.LINE_JOINT_ROUND
+		trail.antialiased = true
+		trail.z_index = -4
+		trail.visible = false
+		add_child(trail)
+		transfer_trails.append(trail)
