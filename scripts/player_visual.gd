@@ -3,7 +3,7 @@ extends Node2D
 
 const FRAME_ROOT := "res://assets/art/character_frames"
 const WING_TEXTURE := preload("res://assets/art/character_rig/wing/time_wings.png")
-const TRANSFER_LEAF_TEXTURE := preload("res://assets/art/foliage/leaf_035.png")
+const TRANSFER_LEAF_TEXTURE := preload("res://assets/art/fx/transfer_leaf.png")
 const ROCK_FIRE_ATLAS := preload("res://assets/art/hazards/rock_fire_atlas.png")
 const FAIRY_EFFECT := preload("res://scripts/fairy_effect.gd")
 const FRAME_NAMES := ["climb_left", "climb_right", "climb_reach", "hang"]
