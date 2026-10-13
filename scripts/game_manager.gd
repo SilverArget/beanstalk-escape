@@ -92,6 +92,8 @@ var tutorial_force := false
 var tutorial_step_elapsed := 0.0
 var tutorial_transition_baseline := 0
 var tutorial_catch_triggered := false
+var tutorial_bean: BeanProjectile
+var result_badges: Array[Label] = []
 var ghost_sprite: Sprite2D
 var ghost_trace: Array = []
 var ghost_playback: Array = []
@@ -152,7 +154,8 @@ func _physics_process(delta: float) -> void:
 		_update_hud()
 		_publish_readonly_web_state()
 		return
-	total_time += delta
+	if not tutorial_active:
+		total_time += delta
 	if tutorial_active:
 		_update_onboarding(delta)
 	else:
@@ -175,8 +178,9 @@ func _physics_process(delta: float) -> void:
 	gauge.update_from_positions(player.global_position.y, spider.global_position.y)
 	if gauge.distance_px < SPIDER_RED_ZONE_PX:
 		spider_red_zone_seen = true
-	stages.update_progress(player.global_position.y)
-	_remember_continue_checkpoint()
+	if not tutorial_active:
+		stages.update_progress(player.global_position.y)
+		_remember_continue_checkpoint()
 	best_spider_distance = maxf(best_spider_distance, gauge.distance_px)
 	if gauge.level == "DANGER" and not danger_was_active:
 		danger_was_active = true
@@ -254,12 +258,12 @@ func _handle_screen_touch(event: InputEventScreenTouch) -> void:
 		return
 	if event.pressed:
 		var wings_button := get_node_or_null("HUD/TouchWings") as Button
-		if wings_button != null and Rect2(wings_button.position, wings_button.size).has_point(event.position):
+		if wings_button != null and wings_button.visible and Rect2(wings_button.position, wings_button.size).has_point(event.position):
 			touch_actions[event.index] = "time_wings"
 			dispatch_command("time_wings", "mobile")
 			return
 		var fire_button := get_node_or_null("HUD/TouchFire") as Button
-		if fire_button != null and Rect2(fire_button.position, fire_button.size).has_point(event.position):
+		if fire_button != null and fire_button.visible and Rect2(fire_button.position, fire_button.size).has_point(event.position):
 			touch_actions[event.index] = "fire_wings"
 			dispatch_command("fire_wings", "mobile")
 			return
@@ -277,6 +281,7 @@ func restart() -> void:
 	_clear_direction_inputs()
 	for child in get_tree().get_nodes_in_group("run_transient"): child.free()
 	beans.reset_run()
+	beans.sandbox_mode = false
 	rocks.reset_run()
 	storm.reset_run()
 	player.reset_run(Vector2(0, 0))
@@ -285,6 +290,12 @@ func restart() -> void:
 	spider.set_physics_process(true)
 	beans.set_physics_process(true)
 	rocks.set_physics_process(true)
+	storm.set_physics_process(true)
+	player.visible = true
+	spider.visible = true
+	var spider_body := spider.get_node_or_null("Body") as CanvasItem
+	if spider_body != null:
+		spider_body.visible = true
 	stages.reset_run()
 	golds.reset_run()
 	golds.visible = true
@@ -910,32 +921,78 @@ func _on_remove_ads_ownership_changed(value: bool) -> void:
 func _start_onboarding() -> void:
 	if mode == MODE_NIGHTMARE:
 		return
+	app_state = AppState.PLAYING
 	tutorial_active = true
 	tutorial_step = 1
 	tutorial_step_elapsed = 0.0
-	tutorial_transition_baseline = player.branch_transition_count
 	tutorial_catch_triggered = false
+	tutorial_bean = null
+	_enter_tutorial_arena()
 	ghost_sprite.visible = false
 	_show_onboarding_step()
 
+func _enter_tutorial_arena() -> void:
+	for child in get_tree().get_nodes_in_group("run_transient"):
+		child.free()
+	beans.reset_run()
+	beans.sandbox_mode = true
+	stages.reset_run()
+	var stage_number := 3
+	var practice_progress := 0.18
+	for sample_index in range(18, 72):
+		var candidate := float(sample_index) / 100.0
+		if stages.has_route_support_at(stage_number, 0, candidate) and stages.has_route_support_at(stage_number, 1, candidate) and stages.has_route_support_at(stage_number, 2, candidate) and stages.transfer_window_open(stage_number, candidate):
+			practice_progress = candidate
+			break
+	var practice_y := -(stages.stage_start_height(stage_number) + stages.stage_length(stage_number) * practice_progress)
+	player.reset_run(Vector2(stages.branch_x_at(1, practice_y), practice_y))
+	spider.reset_run(player.global_position + Vector2(0.0, 900.0))
+	player.set_physics_process(true)
+	spider.set_physics_process(false)
+	beans.set_physics_process(true)
+	rocks.set_physics_process(false)
+	storm.set_physics_process(false)
+	var spider_body := spider.get_node_or_null("Body") as CanvasItem
+	if spider_body != null:
+		spider_body.visible = false
+	golds.visible = false
+	gauge.update_from_positions(player.global_position.y, spider.global_position.y)
+	tutorial_transition_baseline = player.branch_transition_count
+
 func _update_onboarding(delta: float) -> void:
 	tutorial_step_elapsed += delta
+	if tutorial_step == 2 and tutorial_bean == null and tutorial_step_elapsed >= 0.35:
+		_spawn_tutorial_bean()
+		_show_onboarding_step()
 	if tutorial_step == 1 and player.branch_transition_count > tutorial_transition_baseline:
 		tutorial_step = 2
 		tutorial_step_elapsed = 0.0
 		tutorial_transition_baseline = player.branch_transition_count
-		beans.spawn_bean(player.active_branch, player.global_position.y + 180.0, "tutorial-dodge")
+		_spawn_tutorial_bean()
 		_show_onboarding_step()
 	elif tutorial_step == 2 and player.branch_transition_count > tutorial_transition_baseline:
+		if tutorial_bean != null and is_instance_valid(tutorial_bean):
+			tutorial_bean.consume()
+		tutorial_bean = null
 		tutorial_step = 3
 		tutorial_step_elapsed = 0.0
 		_show_onboarding_step()
 	elif tutorial_step == 3 and tutorial_step_elapsed >= 0.8 and not tutorial_catch_triggered:
 		tutorial_catch_triggered = true
+		var spider_body := spider.get_node_or_null("Body") as CanvasItem
+		if spider_body != null:
+			spider_body.visible = true
 		spider.global_position = player.global_position + Vector2(0.0, Balance.CATCH_DISTANCE * 0.5)
 		_die(DeathCause.CAUGHT)
-		$HUD/TutorialPanel.text = "3 / 3  CAUGHT\nThe death screen lets you retry the stage, restart the run, or return to menu."
-		$HUD/TutorialSkip.text = "START STAGE 1"
+		$HUD/TutorialPanel.text = "3 / 3  CAUGHT\nThe death screen offers retry, restart, and menu. This practice catch does not affect your run."
+		$HUD/TutorialSkip.text = "CONTINUE TO STAGE 1"
+
+func _spawn_tutorial_bean() -> void:
+	if not tutorial_active or tutorial_step != 2:
+		return
+	var route := player.transition_to if player.transition_state_name() == "TRANSITION" else player.active_branch
+	tutorial_bean = beans.spawn_bean(route, player.global_position.y, "tutorial-dodge-%d" % Time.get_ticks_msec())
+	tutorial_bean.request_release()
 
 func _show_onboarding_step() -> void:
 	var messages := {
@@ -953,6 +1010,7 @@ func _finish_onboarding() -> void:
 	tutorial_active = false
 	tutorial_force = false
 	tutorial_step = 0
+	tutorial_bean = null
 	save_manager.mark_tutorial_completed()
 	restart()
 
@@ -1008,6 +1066,12 @@ func show_bean_tutorial() -> void:
 		tutorial_remaining = Balance.TUTORIAL_SECONDS
 
 func on_bean_hit() -> void:
+	if tutorial_active and tutorial_step == 2:
+		tutorial_step_elapsed = 0.0
+		tutorial_transition_baseline = player.branch_transition_count
+		tutorial_bean = null
+		$HUD/TutorialPanel.text = "2 / 3  TRY AGAIN\nThe bean hit this branch. Wait for the warning, then change branch once."
+		return
 	damage_events += 1
 	if not reduced_motion:
 		shake_remaining = 0.20
@@ -1137,8 +1201,23 @@ func _setup_hud() -> void:
 	wings_orb.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 	wings_orb.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	$HUD.add_child(wings_orb)
+	var result_panel := Panel.new()
+	result_panel.name = "ResultPanel"
+	result_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	result_panel.z_index = -1
+	var result_style := StyleBoxFlat.new()
+	result_style.bg_color = Color(0.025, 0.055, 0.075, 0.94)
+	result_style.border_color = Color("7ad8d0")
+	result_style.set_border_width_all(3)
+	result_style.set_corner_radius_all(18)
+	result_panel.add_theme_stylebox_override("panel", result_style)
+	$HUD.add_child(result_panel)
 	_add_label("Stats", Vector2(300, 190), "", 18)
 	_add_label("Replay", Vector2(300, 375), "", 18)
+	for index in SaveManager.CHALLENGE_NAMES.size():
+		var badge := _add_label("Challenge%d" % index, Vector2.ZERO, "", 16)
+		badge.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		result_badges.append(badge)
 	_add_action_button("CompleteNewRun", "PLAY AGAIN", _complete_new_run)
 	_add_action_button("CompleteNightmare", "NIGHTMARE", _start_nightmare_run)
 	_add_action_button("CompleteMenu", "MENU", _complete_menu)
@@ -1239,20 +1318,20 @@ func layout_hud_for_viewport(viewport_size: Vector2) -> void:
 	var width := maxf(viewport_size.x, 320.0)
 	var height := maxf(viewport_size.y, 320.0)
 	var portrait := width < height
-	var menu_action_y := height - 60.0
-	var logo_y := 84.0 if portrait else 20.0
-	var logo_max_height := maxf(height - 140.0 - logo_y - 62.0, 80.0)
-	var logo_width := minf(minf(width * 0.68, 620.0), logo_max_height * 1.5)
+	var compact := height < 450.0
+	var menu_action_y := height - 56.0
+	var logo_y := 8.0
+	var logo_width := minf(170.0 if compact else 280.0, width * 0.34)
 	var logo_height := logo_width / 1.5
 	var logo := $HUD/MenuLogo as TextureRect
 	logo.position = Vector2((width - logo_width) * 0.5, logo_y)
 	logo.size = Vector2(logo_width, logo_height)
 	var prompt := $HUD/Menu as Label
-	prompt.position = Vector2(0.0, logo.position.y + logo.size.y + 10.0)
-	prompt.size = Vector2(width, 44.0)
+	prompt.position = Vector2(0.0, 126.0 if compact else 202.0)
+	prompt.size = Vector2(width, 26.0 if compact else 30.0)
 	prompt.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	$HUD/Mute.position = Vector2(width - 136.0, 16.0)
-	$HUD/Mute.size = Vector2(112.0, 52.0)
+	$HUD/Mute.position = Vector2(width - 124.0, 10.0)
+	$HUD/Mute.size = Vector2(112.0, 46.0)
 	var skill := $HUD/TimeWings as Label
 	var skill_orb := $HUD/TimeWingsOrb as TextureRect
 	skill_orb.position = Vector2(18.0, 78.0) if portrait else Vector2(width - 438.0, 14.0)
@@ -1287,10 +1366,12 @@ func layout_hud_for_viewport(viewport_size: Vector2) -> void:
 	$HUD/SkipStageAd.size = Vector2(death_width, 52.0)
 	$HUD/DoubleStageReward.position = Vector2((width - 230.0) * 0.5, 188.0)
 	$HUD/DoubleStageReward.size = Vector2(230.0, 52.0)
-	$HUD/GetMoreGold.position = Vector2(18.0, menu_action_y)
-	$HUD/GetMoreGold.size = Vector2(270.0, 52.0)
-	$HUD/RemoveAds.position = Vector2(width - 288.0, menu_action_y)
-	$HUD/RemoveAds.size = Vector2(270.0, 52.0)
+	var commerce_width := minf(240.0, (width - 42.0) * 0.5)
+	var commerce_x := (width - commerce_width * 2.0 - 10.0) * 0.5
+	$HUD/GetMoreGold.position = Vector2(commerce_x, menu_action_y)
+	$HUD/GetMoreGold.size = Vector2(commerce_width, 48.0)
+	$HUD/RemoveAds.position = Vector2(commerce_x + commerce_width + 10.0, menu_action_y)
+	$HUD/RemoveAds.size = Vector2(commerce_width, 48.0)
 	var menu_width := minf(220.0, width * 0.34)
 	var menu_gap := 8.0
 	menu_width = minf(menu_width, (width - 32.0 - menu_gap * 3.0) / 4.0)
@@ -1298,18 +1379,18 @@ func layout_hud_for_viewport(viewport_size: Vector2) -> void:
 	var menu_x := (width - menu_row_width) * 0.5
 	for index in 4:
 		var menu_button: Button = [$HUD/NewRun, $HUD/Shop, $HUD/Map, $HUD/Nightmare][index]
-		menu_button.position = Vector2(menu_x + index * (menu_width + menu_gap), height - 184.0)
-		menu_button.size = Vector2(menu_width, 48.0)
+		menu_button.position = Vector2(menu_x + index * (menu_width + menu_gap), 158.0 if compact else 240.0)
+		menu_button.size = Vector2(menu_width, 44.0 if compact else 48.0)
 	var secondary_width := minf(220.0, (width - 32.0 - menu_gap * 2.0) / 3.0)
 	var secondary_total := secondary_width * 3.0 + menu_gap * 2.0
 	var secondary_x := (width - secondary_total) * 0.5
 	for index in 3:
 		var secondary_button: Button = [$HUD/Settings, $HUD/HowToPlay, $HUD/Credits][index]
-		secondary_button.position = Vector2(secondary_x + index * (secondary_width + menu_gap), height - 128.0)
-		secondary_button.size = Vector2(secondary_width, 48.0)
+		secondary_button.position = Vector2(secondary_x + index * (secondary_width + menu_gap), 210.0 if compact else 296.0)
+		secondary_button.size = Vector2(secondary_width, 44.0 if compact else 48.0)
 	if daily_card != null:
-		daily_card.position = Vector2(18.0, clampf(height * 0.31, 82.0, maxf(82.0, height - 308.0)))
-		daily_card.size = Vector2(minf(260.0, width * 0.31), 112.0)
+		daily_card.position = Vector2(12.0 if compact else 16.0, 10.0 if compact else 54.0)
+		daily_card.size = Vector2(minf(190.0 if compact else 220.0, width * 0.27), 108.0 if compact else 112.0)
 	_layout_centered_label($HUD/InfoTitle, width, 36.0, 52.0, 24.0)
 	_layout_centered_label($HUD/InfoBody, width, 92.0, maxf(height - 190.0, 130.0), 64.0)
 	var setting_width := minf(220.0, (width - 48.0) / 3.0)
@@ -1320,10 +1401,11 @@ func layout_hud_for_viewport(viewport_size: Vector2) -> void:
 		setting_button.size = Vector2(setting_width, 52.0)
 	$HUD/InfoBack.position = Vector2((width - 220.0) * 0.5, height - 76.0)
 	$HUD/InfoBack.size = Vector2(220.0, 52.0)
-	$HUD/TutorialPanel.position = Vector2(maxf((width - 620.0) * 0.5, 24.0), 24.0)
-	$HUD/TutorialPanel.size = Vector2(minf(620.0, width - 48.0), 104.0)
-	$HUD/TutorialSkip.position = Vector2(width - 174.0, 140.0)
-	$HUD/TutorialSkip.size = Vector2(150.0, 46.0)
+	var tutorial_width := minf(640.0, width - 48.0)
+	$HUD/TutorialPanel.position = Vector2((width - tutorial_width) * 0.5, height - 164.0)
+	$HUD/TutorialPanel.size = Vector2(tutorial_width, 104.0)
+	$HUD/TutorialSkip.position = Vector2((width - 190.0) * 0.5, height - 48.0)
+	$HUD/TutorialSkip.size = Vector2(190.0, 40.0)
 	_layout_centered_label($HUD/RewardToast, width, 154.0, 30.0, 190.0)
 	# Stage completion can show this together with the 188..240 double-reward
 	# button. Keep the level reward in its own readable row below that action.
@@ -1339,18 +1421,34 @@ func layout_hud_for_viewport(viewport_size: Vector2) -> void:
 	$HUD/Gauge.size = Vector2(28.0, maxf(map_height, 80.0))
 	_layout_centered_label($HUD/Pause, width, height * 0.38, 42.0, 40.0)
 	_layout_centered_label($HUD/Dead, width, height * 0.36, 80.0, 36.0)
-	_layout_centered_label($HUD/Complete, width, height * 0.25, 48.0, 36.0)
+	var result_margin := 18.0 if compact else 32.0
+	var result_top := 12.0 if compact else 20.0
+	var result_bottom := height - (70.0 if compact else 88.0)
+	$HUD/ResultPanel.position = Vector2(result_margin, result_top)
+	$HUD/ResultPanel.size = Vector2(width - result_margin * 2.0, result_bottom - result_top)
+	_layout_centered_label($HUD/Complete, width, 24.0 if compact else 34.0, 32.0 if compact else 40.0, result_margin + 12.0)
 	_layout_intro_text(Vector2(width, height))
-	_layout_centered_label($HUD/Stats, width, height * 0.34, 180.0, 44.0)
-	_layout_centered_label($HUD/Replay, width, height * 0.66, 128.0, 36.0)
+	var content_x := result_margin + 18.0
+	var content_top := 68.0 if compact else 88.0
+	var content_gap := 24.0 if compact else 28.0
+	var column_width := (width - content_x * 2.0 - content_gap) * 0.5
+	$HUD/Stats.position = Vector2(content_x, content_top)
+	$HUD/Stats.size = Vector2(column_width, result_bottom - content_top - 18.0)
+	$HUD/Replay.position = Vector2(content_x + column_width + content_gap, content_top)
+	$HUD/Replay.size = Vector2(column_width, 24.0)
+	var badge_step := 30.0 if compact else 44.0
+	for index in result_badges.size():
+		result_badges[index].position = Vector2(content_x + column_width + content_gap, content_top + 28.0 + index * badge_step)
+		result_badges[index].size = Vector2(column_width, 24.0 if compact else 32.0)
 	var complete_width := minf(190.0, (width - 48.0) / 3.0)
 	var complete_start := (width - complete_width * 3.0 - 12.0) * 0.5
-	$HUD/CompleteNewRun.position = Vector2(complete_start, height - 76.0)
-	$HUD/CompleteNewRun.size = Vector2(complete_width, 52.0)
-	$HUD/CompleteNightmare.position = Vector2(complete_start + complete_width + 6.0, height - 76.0)
-	$HUD/CompleteNightmare.size = Vector2(complete_width, 52.0)
-	$HUD/CompleteMenu.position = Vector2(complete_start + (complete_width + 6.0) * 2.0, height - 76.0)
-	$HUD/CompleteMenu.size = Vector2(complete_width, 52.0)
+	var complete_y := height - (60.0 if compact else 68.0)
+	$HUD/CompleteNewRun.position = Vector2(complete_start, complete_y)
+	$HUD/CompleteNewRun.size = Vector2(complete_width, 48.0 if compact else 52.0)
+	$HUD/CompleteNightmare.position = Vector2(complete_start + complete_width + 6.0, complete_y)
+	$HUD/CompleteNightmare.size = Vector2(complete_width, 48.0 if compact else 52.0)
+	$HUD/CompleteMenu.position = Vector2(complete_start + (complete_width + 6.0) * 2.0, complete_y)
+	$HUD/CompleteMenu.size = Vector2(complete_width, 48.0 if compact else 52.0)
 	var touch_y := height - 148.0
 	$HUD/TouchLeft.position = Vector2(18.0, touch_y)
 	$HUD/TouchLeft.size = Vector2(104.0, 128.0)
@@ -1360,8 +1458,7 @@ func layout_hud_for_viewport(viewport_size: Vector2) -> void:
 	$HUD/TouchWings.size = Vector2(132.0, 128.0)
 	$HUD/TouchFire.position = Vector2(width - 150.0, touch_y)
 	$HUD/TouchFire.size = Vector2(132.0, 128.0)
-	$HUD/MetaShop.position = Vector2.ZERO
-	$HUD/MetaShop.size = Vector2(width, height)
+	$HUD/MetaShop.set_offsets_preset(Control.PRESET_FULL_RECT)
 
 func _layout_centered_label(label: Label, width: float, y: float, height: float, side_margin: float) -> void:
 	label.position = Vector2(side_margin, y)
@@ -1485,18 +1582,24 @@ func _clear_direction_inputs() -> void:
 
 func _update_hud() -> void:
 	var playing := app_state == AppState.PLAYING
-	var meta_visible := playing or app_state == AppState.GAME_COMPLETE
+	var normal_playing := playing and not tutorial_active
+	var result_visible := app_state == AppState.GAME_COMPLETE
+	var meta_visible := normal_playing or result_visible
 	$HUD/Menu.visible = app_state == AppState.MENU
-	$HUD/Menu.visible = $HUD/Menu.visible and get_viewport_rect().size.y >= 480.0
 	$HUD/Pause.visible = app_state == AppState.PAUSED
 	$HUD/Dead.visible = app_state == AppState.PLAYER_DEAD
 	$HUD/Dead.text = _death_text()
-	$HUD/Complete.visible = app_state == AppState.GAME_COMPLETE
-	$HUD/Stats.visible = app_state == AppState.GAME_COMPLETE
-	$HUD/Replay.visible = app_state == AppState.GAME_COMPLETE
-	$HUD/CompleteNewRun.visible = app_state == AppState.GAME_COMPLETE
-	$HUD/CompleteNightmare.visible = app_state == AppState.GAME_COMPLETE and bool(save_manager.replay_snapshot().nightmare_unlocked)
-	$HUD/CompleteMenu.visible = app_state == AppState.GAME_COMPLETE
+	$HUD/ResultPanel.visible = result_visible
+	$HUD/Complete.visible = result_visible
+	$HUD/Stats.visible = result_visible
+	$HUD/Replay.visible = result_visible
+	for badge in result_badges:
+		badge.visible = result_visible
+	$HUD/CompleteNewRun.visible = result_visible
+	$HUD/CompleteNightmare.visible = result_visible and bool(save_manager.replay_snapshot().nightmare_unlocked)
+	$HUD/CompleteMenu.visible = result_visible
+	player.visible = not result_visible
+	spider.visible = not result_visible
 	$HUD/MenuLogo.visible = app_state == AppState.MENU
 	$HUD/NewRun.visible = app_state == AppState.MENU
 	$HUD/Nightmare.visible = app_state == AppState.MENU and bool(save_manager.replay_snapshot().nightmare_unlocked)
@@ -1521,20 +1624,20 @@ func _update_hud() -> void:
 	$HUD/Mute.visible = app_state == AppState.MENU
 	$HUD/IntroText.visible = app_state in [AppState.INTRO, AppState.FINAL_CINEMATIC]
 	$HUD/ReduceMotion.visible = app_state == AppState.PAUSED
-	$HUD/Gauge.visible = playing
-	$HUD/MiniMap.visible = playing
-	$HUD/StageBanner.visible = playing
-	$HUD/StageCounter.visible = playing
-	$HUD/Tutorial.visible = playing
-	$HUD/TimeWings.visible = playing
-	$HUD/TimeWingsOrb.visible = playing
-	$HUD/FireWings.visible = playing
+	$HUD/Gauge.visible = normal_playing
+	$HUD/MiniMap.visible = normal_playing
+	$HUD/StageBanner.visible = normal_playing
+	$HUD/StageCounter.visible = normal_playing
+	$HUD/Tutorial.visible = normal_playing
+	$HUD/TimeWings.visible = normal_playing
+	$HUD/TimeWingsOrb.visible = normal_playing
+	$HUD/FireWings.visible = normal_playing
 	$HUD/GoldStatus.visible = meta_visible
 	$HUD/XPStatus.visible = meta_visible
 	$HUD/XPBar.visible = meta_visible
 	$HUD/RewardToast.visible = meta_visible and reward_toast_remaining > 0.0
 	$HUD/LevelUpCard.visible = meta_visible and level_up_remaining > 0.0
-	var death_visible := app_state == AppState.PLAYER_DEAD
+	var death_visible := app_state == AppState.PLAYER_DEAD and not tutorial_active
 	$HUD/ContinueAd.visible = death_visible and not continue_used_this_run and platform_services.is_rewarded_supported()
 	$HUD/RetryStage.visible = death_visible
 	$HUD/RestartRun.visible = death_visible
@@ -1546,10 +1649,10 @@ func _update_hud() -> void:
 	$HUD/GetMoreGold.visible = app_state == AppState.MENU and platform_services.is_rewarded_supported()
 	$HUD/GetMoreGold.text = "GET %d GOLD (AD)" % economy.value("get_more_gold_reward")
 	$HUD/RemoveAds.visible = app_state == AppState.MENU and platform_services.is_payments_supported() and not platform_services.remove_ads_owned
-	$HUD/TouchLeft.visible = playing and DisplayServer.is_touchscreen_available()
-	$HUD/TouchRight.visible = playing and DisplayServer.is_touchscreen_available()
-	$HUD/TouchWings.visible = playing and DisplayServer.is_touchscreen_available()
-	$HUD/TouchFire.visible = playing and DisplayServer.is_touchscreen_available()
+	$HUD/TouchLeft.visible = normal_playing and DisplayServer.is_touchscreen_available()
+	$HUD/TouchRight.visible = normal_playing and DisplayServer.is_touchscreen_available()
+	$HUD/TouchWings.visible = normal_playing and DisplayServer.is_touchscreen_available()
+	$HUD/TouchFire.visible = normal_playing and DisplayServer.is_touchscreen_available()
 	$HUD/Mute.text = "SOUND ON" if bool(meta_settings.sound) else "SOUND OFF"
 	$HUD/StageBanner.text = stages.stage_banner if stages.stage_banner_remaining > 0.0 and app_state == AppState.PLAYING else ""
 	$HUD/StageCounter.text = "STAGE %d / 30" % stages.stage_for_y(player.global_position.y)
@@ -1563,10 +1666,17 @@ func _update_hud() -> void:
 	$HUD/XPBar.max_value = meta.xp_threshold
 	$HUD/XPBar.value = meta.xp
 	_update_time_wings_orb()
-	if app_state == AppState.GAME_COMPLETE:
+	if result_visible:
 		$HUD/Stats.text = _stats_text()
 		$HUD/Complete.text = "%s COMPLETE" % mode
-		$HUD/Replay.text = _replay_badges_text()
+		$HUD/Replay.text = "CHALLENGES"
+		var challenge_state := _challenge_snapshot()
+		for index in result_badges.size():
+			var challenge_name: String = SaveManager.CHALLENGE_NAMES[index]
+			var badge_state: Dictionary = challenge_state.get(challenge_name, {})
+			var earned := bool(badge_state.get("earned", false))
+			result_badges[index].text = "EARNED  ·  %s" % challenge_name if earned else "NOT EARNED  ·  %s" % challenge_name
+			result_badges[index].add_theme_color_override("font_color", Color("7ee787") if earned else Color("9aa7b2"))
 	else:
 		$HUD/Stats.text = ""
 		$HUD/Replay.text = ""
