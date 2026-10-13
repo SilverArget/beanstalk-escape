@@ -46,6 +46,12 @@
     {"id": "trail_star", "slot": "TRAIL", "name": "STAR WAKE", "rarity": "EPIC", "image": "star_trail.png", "source": "MAP TREASURE"},
     {"id": "outfit_moss", "slot": "OUTFIT", "name": "MOSS WEAVE", "rarity": "COMMON", "image": "moss_weave.png", "tint": "d6a83f"},
     {"id": "outfit_sky", "slot": "OUTFIT", "name": "SKY WEAVE", "rarity": "RARE", "image": "sky_weave.png", "tint": "416b9c", "source": "DAY 7 BONUS"},
-    {"id": "outfit_ember", "slot": "OUTFIT", "name": "EMBER WEAVE", "rarity": "EPIC", "image": "ember_weave.png", "tint": "b85b35"}
+    {"id": "outfit_ember", "slot": "OUTFIT", "name": "EMBER WEAVE", "rarity": "EPIC", "image": "ember_weave.png", "tint": "b85b35"},
+    {"id": "pet_squirrel", "slot": "PET", "name": "SQUIRREL", "rarity": "COMMON", "image": "squirrel.png"},
+    {"id": "pet_ladybug", "slot": "PET", "name": "LADYBUG", "rarity": "COMMON", "image": "ladybug.png"},
+    {"id": "pet_frog", "slot": "PET", "name": "FROG", "rarity": "RARE", "image": "frog.png"},
+    {"id": "pet_bird", "slot": "PET", "name": "BIRD", "rarity": "RARE", "image": "bird.png"},
+    {"id": "pet_snail", "slot": "PET", "name": "SNAIL", "rarity": "EPIC", "image": "snail.png"},
+    {"id": "pet_rabbit", "slot": "PET", "name": "RABBIT", "rarity": "EPIC", "image": "rabbit.png"}
   ]
 }

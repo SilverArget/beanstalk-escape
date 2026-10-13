@@ -3,7 +3,7 @@ extends RefCounted
 
 signal profile_loaded(profile: Dictionary)
 
-const SAVE_VERSION := 3
+const SAVE_VERSION := 4
 const DEFAULT_PATH := "user://profile_v1.json"
 const CHALLENGE_NAMES := [
 	"NO BEAN HIT",
@@ -254,7 +254,7 @@ func _default_replay() -> Dictionary:
 func _default_shop() -> Dictionary:
 	return {
 		"owned": ["M1", "F1"],
-		"equipped": {"HAIR": "", "FACE": "", "TRAIL": "", "OUTFIT": ""},
+		"equipped": {"HAIR": "", "FACE": "", "TRAIL": "", "OUTFIT": "", "PET": ""},
 		"selected_character": "M1",
 	}
 
@@ -273,7 +273,7 @@ func _sanitize_shop(value: Variant) -> Dictionary:
 	if equipped_value is Dictionary:
 		# HAT was retired in M3. Old ownership remains harmless in `owned`, while
 		# an equipped HAT is deliberately ignored during profile migration.
-		for slot in ["HAIR", "FACE", "TRAIL", "OUTFIT"]:
+		for slot in ["HAIR", "FACE", "TRAIL", "OUTFIT", "PET"]:
 			result.equipped[slot] = str(equipped_value.get(slot, ""))
 	var selected := str(source.get("selected_character", "M1")).to_upper()
 	result.selected_character = selected if result.owned.has(selected) else "M1"

@@ -2,6 +2,7 @@ class_name GameManager
 extends Node2D
 
 const TIME_WINGS_ORB := preload("res://assets/art/gpt/items/wing_orb.png")
+const PET_FOLLOWER := preload("res://scripts/pet_follower.gd")
 const MODE_NORMAL := "NORMAL"
 const MODE_NIGHTMARE := "NIGHTMARE"
 const SPIDER_RED_ZONE_PX := 96.0
@@ -102,6 +103,7 @@ var ghost_stage := 1
 var ghost_stage_elapsed := 0.0
 var ghost_sample_elapsed := 0.0
 var ghost_best_time := 0.0
+var pet_follower: Node2D
 
 func _ready() -> void:
 	process_physics_priority = 10
@@ -126,6 +128,12 @@ func _ready() -> void:
 	stages.stage_completed.connect(_on_stage_completed)
 	_ensure_actions()
 	_setup_hud()
+	pet_follower = PET_FOLLOWER.new()
+	pet_follower.name = "PetFollower"
+	add_child(pet_follower)
+	pet_follower.setup(player, final_character)
+	_sync_pet()
+	economy.changed.connect(_sync_pet)
 	layout_hud_for_viewport(get_viewport_rect().size)
 	get_viewport().size_changed.connect(func(): layout_hud_for_viewport(get_viewport_rect().size))
 	_show_menu()
@@ -1807,6 +1815,9 @@ func _readonly_state_snapshot() -> Dictionary:
 	var player_body := player.get_node_or_null("Body")
 	if player_body != null and player_body.has_method("visual_snapshot"):
 		player_visual = player_body.visual_snapshot()
+	var pet_state := {"id": "", "visible": false, "x": player.global_position.x, "y": player.global_position.y}
+	if pet_follower != null:
+		pet_state = pet_follower.snapshot()
 	var state_beans := []
 	for bean in get_tree().get_nodes_in_group("beans"):
 		if bean.active:
@@ -1829,6 +1840,7 @@ func _readonly_state_snapshot() -> Dictionary:
 		"stage": stages.stage_for_y(player.global_position.y),
 		"player": {"x": player.global_position.x, "y": player.global_position.y, "vy": player.velocity.y},
 		"player_visual": player_visual,
+		"pet": pet_state,
 		"spider": {"y": spider.global_position.y, "distance": gauge.distance_px, "ratio": spider.speed_ratio, "boost": spider.boost_remaining > 0.0, "boost_remaining": spider.boost_remaining, "catchup_active": spider.catchup_active, "catchup_blend": spider.catchup_blend, "on_screen": spider_visibility.on_screen, "visible_px": spider_visibility.visible_px},
 		"gauge_level": gauge.level,
 		"time_wings": {"unlocked": stages.stage_for_y(player.global_position.y) >= Balance.TIME_WINGS_STAGE, "active": time_wings_remaining > 0.0, "remaining": time_wings_remaining, "started_remaining": time_wings_started_remaining, "used": time_wings_used_stage.has(stages.stage_for_y(player.global_position.y))},
@@ -1882,11 +1894,29 @@ func _apply_debug_meta_overrides() -> void:
 		if parts[0] == "tutorial" and parts[1] == "1":
 			tutorial_force = true
 			continue
+		if parts[0] == "pet":
+			var requested_pet := parts[1]
+			for item in economy.cosmetic_catalog("PET"):
+				if str(item.get("id", "")) == requested_pet:
+					economy.shop.equipped["PET"] = requested_pet
+					break
+			continue
 		if not parts[1].is_valid_int():
 			continue
 		if parts[0] == "gold": economy.gold = maxi(int(parts[1]), 0)
 		if parts[0] == "level": economy.level = maxi(int(parts[1]), 1)
 		if parts[0] == "stage": debug_start_stage = clampi(int(parts[1]), 1, Balance.STAGE_COUNT)
+
+func _sync_pet(_snapshot := {}) -> void:
+	if pet_follower == null:
+		return
+	var equipped_id := str(economy.shop_snapshot().equipped.get("PET", ""))
+	var equipped_pet := {}
+	for item in economy.cosmetic_catalog("PET"):
+		if str(item.get("id", "")) == equipped_id:
+			equipped_pet = item
+			break
+	pet_follower.set_pet(equipped_pet)
 
 func _start_debug_stage(stage_number: int) -> void:
 	if stage_number <= 1 or stage_number > Balance.STAGE_COUNT:
