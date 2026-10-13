@@ -222,14 +222,7 @@ func _update_cosmetic_anchors() -> void:
 		var local_head_width := head_width * ART_SCALE
 		face_knot.position = source_to_local.call(head_center + Vector2(head_width * 0.44, head_width * 0.18))
 		var knot_size := maxf(3.2, local_head_width * 0.14)
-		face_knot.polygon = PackedVector2Array([
-			Vector2(-knot_size * 1.25, -knot_size * 0.55),
-			Vector2(0.0, 0.0),
-			Vector2(-knot_size * 1.05, knot_size * 0.75),
-			Vector2(knot_size * 0.95, knot_size * 1.55),
-			Vector2(knot_size * 0.55, knot_size * 0.15),
-			Vector2(knot_size * 1.35, -knot_size * 0.75),
-		])
+		face_knot.scale = Vector2.ONE * knot_size
 
 func play_celebration() -> void:
 	celebrate_remaining = 0.75
@@ -323,10 +316,11 @@ void fragment() {
 	float luminance = dot(pixel.rgb, vec3(0.299, 0.587, 0.114));
 	vec3 dyed = outfit_color.rgb * mix(0.42, 1.34, luminance);
 	vec3 outfitted_rgb = mix(pixel.rgb, dyed, cloth_mask * 0.72);
-	// Preserve the source hair luminance so painted highlights and shadows stay intact.
+	// Replace the source hue completely, while retaining its painted light/dark pattern.
 	float hair_mask = texture(hair_mask_texture, UV).a * hair_enabled * pixel.a;
-	vec3 dyed_hair = hair_color.rgb * mix(0.38, 1.42, luminance);
-	vec3 recolored_rgb = mix(outfitted_rgb, dyed_hair, hair_mask * 0.88);
+	float hair_value = mix(0.55, 1.55, smoothstep(0.05, 0.75, luminance));
+	vec3 dyed_hair = hair_color.rgb * hair_value;
+	vec3 recolored_rgb = mix(outfitted_rgb, dyed_hair, hair_mask);
 	vec3 flashed_rgb = mix(recolored_rgb, vec3(1.0), flash_amount);
 	COLOR = vec4(mix(backdrop_color, flashed_rgb, pixel.a), max(pixel.a, backdrop_alpha));
 }
@@ -348,6 +342,14 @@ void fragment() {
 	face_knot = Polygon2D.new()
 	face_knot.name = "FaceBackBandanaKnot"
 	face_knot.color = Color("284a38")
+	face_knot.polygon = PackedVector2Array([
+		Vector2(-1.25, -0.55),
+		Vector2.ZERO,
+		Vector2(-1.05, 0.75),
+		Vector2(0.95, 1.55),
+		Vector2(0.55, 0.15),
+		Vector2(1.35, -0.75),
+	])
 	face_knot.z_index = 2
 	face_knot.visible = false
 	add_child(face_knot)
