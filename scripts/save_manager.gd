@@ -32,6 +32,8 @@ var profile: Dictionary = {}
 var platform_service: Node
 var bridge_loaded := false
 var pending_bridge_write := false
+var bridge_write_in_flight := false
+var bridge_write_dirty := false
 var hair_refund_migrated := false
 
 func _init(path := DEFAULT_PATH) -> void:
@@ -39,7 +41,7 @@ func _init(path := DEFAULT_PATH) -> void:
 
 func configure_platform(service: Node) -> void:
 	platform_service = service
-	if platform_service != null and OS.has_feature("web"):
+	if platform_service != null:
 		platform_service.storage_get(_on_bridge_profile_loaded)
 
 func load_profile() -> Dictionary:
@@ -138,12 +140,15 @@ func write_meta(meta: Dictionary) -> bool:
 	if profile.is_empty():
 		load_profile()
 	profile["version"] = SAVE_VERSION
-	profile["meta"] = {
-		"gold": maxi(int(meta.get("gold", 0)), 0),
-		"xp": maxi(int(meta.get("xp", 0)), 0),
-		"level": maxi(int(meta.get("level", 1)), 1),
-		"hair_refund_done": bool(profile.get("meta", {}).get("hair_refund_done", true)),
-	}
+	profile["meta"] = _meta_for_write(meta)
+	return _write_profile()
+
+func write_meta_and_shop(meta: Dictionary, shop: Dictionary) -> bool:
+	if profile.is_empty():
+		load_profile()
+	profile["version"] = SAVE_VERSION
+	profile["meta"] = _meta_for_write(meta)
+	profile["shop"] = _sanitize_shop(shop)
 	return _write_profile()
 
 func add_gold(amount: int) -> bool:
@@ -222,13 +227,39 @@ func shop_snapshot() -> Dictionary:
 	return profile.get("shop", _default_shop()).duplicate(true)
 
 func _write_profile() -> bool:
+	var meta: Dictionary = profile.get("meta", {}).duplicate(true)
+	meta["save_seq"] = maxi(int(meta.get("save_seq", 0)), 0) + 1
+	profile["meta"] = meta
 	var local_write_ok := _write_local_profile()
-	if OS.has_feature("web") and platform_service != null:
+	if platform_service != null:
 		if bridge_loaded:
-			platform_service.storage_set(profile.duplicate(true))
+			_queue_bridge_write()
 		else:
 			pending_bridge_write = true
 	return local_write_ok
+
+func _queue_bridge_write() -> void:
+	if bridge_write_in_flight:
+		bridge_write_dirty = true
+		return
+	bridge_write_in_flight = true
+	platform_service.storage_set(profile.duplicate(true), _on_bridge_write_completed)
+
+func _on_bridge_write_completed(_success: bool) -> void:
+	bridge_write_in_flight = false
+	if bridge_write_dirty:
+		bridge_write_dirty = false
+		_queue_bridge_write()
+
+func _meta_for_write(value: Dictionary) -> Dictionary:
+	var current_meta: Dictionary = profile.get("meta", {})
+	return {
+		"gold": maxi(int(value.get("gold", 0)), 0),
+		"xp": maxi(int(value.get("xp", 0)), 0),
+		"level": maxi(int(value.get("level", 1)), 1),
+		"hair_refund_done": bool(current_meta.get("hair_refund_done", true)),
+		"save_seq": maxi(int(current_meta.get("save_seq", 0)), 0),
+	}
 
 func _write_local_profile() -> bool:
 	var directory := save_path.get_base_dir()
@@ -245,7 +276,7 @@ func _write_local_profile() -> bool:
 func _default_profile() -> Dictionary:
 	return {
 		"version": SAVE_VERSION,
-		"meta": {"gold": 0, "xp": 0, "level": 1, "hair_refund_done": true},
+		"meta": {"gold": 0, "xp": 0, "level": 1, "hair_refund_done": true, "save_seq": 0},
 		"progression": {"completed_stages": [], "skipped_stages": [], "treasures_claimed": []},
 		"daily": {"day_index": 0, "last_claim_date": ""},
 		"purchases": {"remove_ads": false},
@@ -327,16 +358,26 @@ func _sanitize_daily(value: Variant) -> Dictionary:
 
 func _on_bridge_profile_loaded(success: bool, value: Variant) -> void:
 	bridge_loaded = true
-	if success and value is Dictionary and not pending_bridge_write:
+	if profile.is_empty():
+		load_profile()
+	if success and value is Dictionary:
 		hair_refund_migrated = false
-		profile = _sanitize_profile(value)
-		_write_local_profile()
-		if hair_refund_migrated:
-			platform_service.storage_set(profile.duplicate(true))
-		profile_loaded.emit(profile.duplicate(true))
+		var bridge_profile := _sanitize_profile(value)
+		var local_seq := int(profile.get("meta", {}).get("save_seq", 0))
+		var bridge_seq := int(bridge_profile.get("meta", {}).get("save_seq", 0))
+		if bridge_seq >= local_seq:
+			pending_bridge_write = false
+			profile = bridge_profile
+			if hair_refund_migrated:
+				_write_profile()
+			else:
+				_write_local_profile()
+			profile_loaded.emit(profile.duplicate(true))
+		else:
+			pending_bridge_write = true
 	if pending_bridge_write:
 		pending_bridge_write = false
-		platform_service.storage_set(profile.duplicate(true))
+		_queue_bridge_write()
 
 func _sanitize_profile(value: Dictionary) -> Dictionary:
 	var result := _default_profile()
@@ -355,6 +396,7 @@ func _sanitize_profile(value: Dictionary) -> Dictionary:
 	result.meta.xp = maxi(int(meta.get("xp", 0)), 0)
 	result.meta.level = maxi(int(meta.get("level", 1)), 1)
 	result.meta.hair_refund_done = true
+	result.meta.save_seq = maxi(int(meta.get("save_seq", 0)), 0)
 	if value.get("progression", {}) is Dictionary:
 		result.progression = _sanitize_progression(value.progression)
 	result.daily = _sanitize_daily(value.get("daily", {}))

@@ -222,8 +222,7 @@ func _catalog_item(item_id: String) -> Dictionary:
 
 func _persist_shop() -> void:
 	if save_manager != null:
-		save_manager.write_meta(snapshot())
-		save_manager.write_shop(shop)
+		save_manager.write_meta_and_shop(snapshot(), shop)
 	changed.emit(snapshot())
 
 func _unlock_item(item_id: String) -> void:
