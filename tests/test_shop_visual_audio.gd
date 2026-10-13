@@ -4,6 +4,40 @@ const TEST_PATH := "user://qa/test_shop_visual_audio.json"
 const SKINS := ["m1", "m2", "m3", "f1", "f2", "f3"]
 const BACK_FRAMES := ["climb_left", "climb_right", "climb_reach", "hang", "jump", "fall"]
 const FRONT_FRAMES := ["front", "hurt", "cheer"]
+# Hand-measured [shoulder top, dark-brown belt top, tunic left, tunic right].
+# The lower outfit-mask edge is the hem and must never be used as the belt.
+const BACK_EMBLEM_LANDMARKS := {
+	"m1": {
+		"climb_left": [89, 136, 152, 202], "climb_right": [91, 136, 155, 207],
+		"climb_reach": [96, 140, 150, 202], "hang": [87, 132, 143, 215],
+		"jump": [93, 130, 151, 213], "fall": [110, 148, 142, 218],
+	},
+	"m2": {
+		"climb_left": [86, 135, 153, 203], "climb_right": [87, 133, 155, 205],
+		"climb_reach": [91, 140, 153, 203], "hang": [84, 128, 143, 217],
+		"jump": [91, 130, 161, 225], "fall": [101, 148, 136, 222],
+	},
+	"m3": {
+		"climb_left": [88, 137, 153, 203], "climb_right": [88, 135, 156, 206],
+		"climb_reach": [96, 145, 153, 203], "hang": [86, 130, 144, 218],
+		"jump": [94, 136, 149, 211], "fall": [105, 148, 142, 218],
+	},
+	"f1": {
+		"climb_left": [89, 136, 149, 199], "climb_right": [90, 135, 162, 208],
+		"climb_reach": [96, 142, 152, 198], "hang": [90, 132, 142, 210],
+		"jump": [93, 130, 151, 211], "fall": [126, 157, 142, 214],
+	},
+	"f2": {
+		"climb_left": [91, 136, 148, 198], "climb_right": [91, 132, 159, 209],
+		"climb_reach": [94, 143, 150, 200], "hang": [91, 128, 142, 216],
+		"jump": [99, 131, 159, 221], "fall": [126, 157, 143, 217],
+	},
+	"f3": {
+		"climb_left": [89, 129, 149, 199], "climb_right": [90, 129, 158, 208],
+		"climb_reach": [95, 137, 145, 195], "hang": [87, 127, 143, 217],
+		"jump": [98, 130, 152, 214], "fall": [121, 156, 142, 216],
+	},
+}
 const HAIR_STRAND_POINTS := {
 	"m1": Vector2i(243, 59),
 	"m2": Vector2i(267, 100),
@@ -239,26 +273,19 @@ func _back_emblem_geometry_pass(skin: String, frame: String) -> bool:
 	if center.size() != 2:
 		return false
 	var emblem_width := float(frame_data.get("emblem_width", 999.0))
-	var source := Image.load_from_file(ProjectSettings.globalize_path("res://assets/art/character_frames/%s/%s.png" % [skin, frame]))
-	var outfit := Image.load_from_file(ProjectSettings.globalize_path("res://assets/art/character_frames/%s/%s_outfit_mask.png" % [skin, frame]))
-	if source == null or source.is_empty() or outfit == null or outfit.is_empty():
+	var landmarks: Array = BACK_EMBLEM_LANDMARKS.get(skin, {}).get(frame, [])
+	if landmarks.size() != 4:
 		return false
-	var outfit_rect := outfit.get_used_rect()
-	var body_x := roundi(float(center[0]))
-	var emblem_y := roundi(float(center[1]))
-	if not outfit_rect.has_point(Vector2i(body_x, emblem_y)):
-		return false
-	if source.get_pixel(body_x, emblem_y).a <= 0.5:
-		return false
-	var tunic_left := body_x
-	var tunic_right := body_x
-	while tunic_left > 0 and source.get_pixel(tunic_left - 1, emblem_y).a > 0.5:
-		tunic_left -= 1
-	while tunic_right + 1 < source.get_width() and source.get_pixel(tunic_right + 1, emblem_y).a > 0.5:
-		tunic_right += 1
-	var tunic_width := float(tunic_right - tunic_left + 1)
-	var ratio := emblem_width / tunic_width
-	return ratio >= 0.35 and ratio <= 0.42
+	var shoulder_row := int(landmarks[0])
+	var belt_top_row := int(landmarks[1])
+	var tunic_left := int(landmarks[2])
+	var tunic_right := int(landmarks[3])
+	var expected_y := roundi(float(shoulder_row) + 0.45 * float(belt_top_row - shoulder_row))
+	var expected_x := roundi(float(tunic_left + tunic_right) * 0.5)
+	var expected_width := roundi(float(tunic_right - tunic_left + 1) * 0.40)
+	return roundi(float(center[0])) == expected_x \
+		and roundi(float(center[1])) == expected_y \
+		and roundi(emblem_width) == expected_width
 
 func _pet_overlaps_body(skin: String, visual: PlayerVisual, pet_layer: Sprite2D) -> bool:
 	if pet_layer == null or pet_layer.texture == null:

@@ -33,6 +33,14 @@ const ART_SCALE := 0.49
 const BASE_Y := -7.2
 const PET_PREVIEW_HEIGHT := 60.0
 const PET_PREVIEW_BOUNDS := {}
+const EMBLEM_VISIBLE_BOUNDS := {
+	"emblem_bolt.png": Rect2(58, 2, 176, 234),
+	"emblem_crown.png": Rect2(20, 11, 212, 213),
+	"emblem_leaf.png": Rect2(13, 19, 243, 221),
+	"emblem_spider.png": Rect2(22, 0, 218, 231),
+	"emblem_star.png": Rect2(0, 11, 243, 245),
+	"emblem_sun.png": Rect2(1, 9, 247, 238),
+}
 
 var skin_id := "M1"
 var mode := "hang"
@@ -251,8 +259,7 @@ func set_cosmetics(equipped: Dictionary, catalog: Array) -> void:
 			var art_path := "res://assets/art/%s/%s" % [art_folder, image_name]
 			layer.texture = load(art_path)
 			if slot == "EMBLEM" and layer.texture != null:
-				var emblem_image := Image.load_from_file(ProjectSettings.globalize_path(art_path))
-				emblem_visible_bounds = _alpha_used_rect(emblem_image)
+				emblem_visible_bounds = EMBLEM_VISIBLE_BOUNDS.get(image_name, Rect2(Vector2.ZERO, layer.texture.get_size()))
 			if slot == "PET" and layer.texture != null:
 				var preview_bounds: Rect2 = PET_PREVIEW_BOUNDS.get(image_name, Rect2(Vector2.ZERO, layer.texture.get_size()))
 				var pet_scale := PET_PREVIEW_HEIGHT / maxf(preview_bounds.size.y, 1.0)
@@ -371,23 +378,6 @@ func show_back_preview() -> void:
 	_set_frame("hang")
 	sprite.position = Vector2(0.0, BASE_Y)
 	_update_cosmetic_anchors()
-
-func _alpha_used_rect(image: Image) -> Rect2:
-	if image == null or image.is_empty():
-		return Rect2()
-	var minimum := Vector2i(image.get_width(), image.get_height())
-	var maximum := Vector2i(-1, -1)
-	for y in image.get_height():
-		for x in image.get_width():
-			if image.get_pixel(x, y).a <= 0.0:
-				continue
-			minimum.x = mini(minimum.x, x)
-			minimum.y = mini(minimum.y, y)
-			maximum.x = maxi(maximum.x, x)
-			maximum.y = maxi(maximum.y, y)
-	if maximum.x < minimum.x:
-		return Rect2()
-	return Rect2(minimum, maximum - minimum + Vector2i.ONE)
 
 func _load_outfit_art() -> void:
 	outfit_front_texture = null

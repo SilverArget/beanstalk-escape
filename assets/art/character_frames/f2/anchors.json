@@ -9,10 +9,10 @@
       "head_width": 72,
       "face_view": "back",
       "emblem_center": [
-        182,
-        148
+        173,
+        111
       ],
-      "emblem_width": 24
+      "emblem_width": 20
     },
     "climb_right": {
 	  "outfit_back": [184, 118, 104],
@@ -23,10 +23,10 @@
       "head_width": 72,
       "face_view": "back",
       "emblem_center": [
-        166,
-        147
+        184,
+        109
       ],
-      "emblem_width": 34
+      "emblem_width": 20
     },
     "climb_reach": {
 	  "outfit_back": [175, 125, 104],
@@ -37,8 +37,8 @@
       "head_width": 72,
       "face_view": "back",
       "emblem_center": [
-        186,
-        155
+        175,
+        116
       ],
       "emblem_width": 20
     },
@@ -51,10 +51,10 @@
       "head_width": 72,
       "face_view": "back",
       "emblem_center": [
-        168,
-        161
+        190,
+        113
       ],
-      "emblem_width": 30
+      "emblem_width": 25
     },
     "hurt": {
 	  "outfit_back": [190, 130, 104],
@@ -79,10 +79,10 @@
       "head_width": 72,
       "face_view": "back",
       "emblem_center": [
-        186,
-        175
+        180,
+        140
       ],
-      "emblem_width": 38
+      "emblem_width": 30
     },
     "cheer": {
 	  "outfit_back": [176, 130, 104],
@@ -107,10 +107,10 @@
       "head_width": 72,
       "face_view": "back",
       "emblem_center": [
-        172,
-        152
+        179,
+        108
       ],
-      "emblem_width": 26
+      "emblem_width": 30
     },
     "front": {
       "head_center": [
