@@ -2,6 +2,7 @@ extends SceneTree
 
 const TrailEffectScript := preload("res://scripts/trail_effect.gd")
 const OutfitEffectScript := preload("res://scripts/outfit_effect.gd")
+const FairyEffectScript := preload("res://scripts/fairy_effect.gd")
 const MetaShopUIScript := preload("res://scripts/meta_shop_ui.gd")
 const TRAILS := [
 	{"id": "trail_leaf", "effect_name": "LEAF FALL", "price": 200},
@@ -43,6 +44,7 @@ func _init() -> void:
 		var state := effect.snapshot()
 		var game_profile: Dictionary = effect.render_profile()
 		_check(game_profile.point_limit == 24 and game_profile.max_draw_calls <= 30, "%s game rendering stays inside the 24-point and 30-call budgets" % item.id)
+		_check(game_profile.polygon_draw_calls == 0 and game_profile.redraw_interval_frames == 2 and game_profile.redraw_phase == 0, "%s game trail avoids polygon triangulation and redraws on even frames" % item.id)
 		_check(state.has("screen_first") and state.has("screen_last") and state.has("z"), "%s snapshot exposes screen endpoints and z data" % item.id)
 		_check(state.z.index == 4 and state.z.effective == 4 and not state.z.relative and state.z.top_level, "%s reports its absolute world draw order" % item.id)
 		if state.has("screen_first") and state.has("screen_last"):
@@ -78,6 +80,7 @@ func _init() -> void:
 		var preview_profile: Dictionary = effect.render_profile()
 		_check(preview_points.size() >= 8 and preview_span >= 60.0, "%s fills a continuous downward preview trail within 0.6 seconds" % item.id)
 		_check(preview_profile.point_limit == 48 and preview_profile.particle_limit == 48, "%s preview preserves the legacy 48-point density" % item.id)
+		_check(preview_profile.redraw_interval_frames == 1, "%s preview redraws every frame" % item.id)
 		_check(preview_max_x - preview_min_x >= 7.0, "%s preview trail has a readable S-curve" % item.id)
 		_check(preview_state.preview and not preview_state.z.top_level and preview_state.z.relative and preview_state.z.index == -1, "%s preview stays local, scaled and behind the character" % item.id)
 		effect.free()
@@ -108,10 +111,20 @@ func _init() -> void:
 	outfit_effect.configure({"effect_name": "SPARK ARCS"})
 	var outfit_game_profile: Dictionary = outfit_effect.render_profile()
 	_check(outfit_game_profile.particle_count == 7 and outfit_game_profile.max_draw_calls <= 40, "game outfit effects stay inside the seven-particle and 40-call budgets")
+	_check(outfit_game_profile.polygon_draw_calls == 0 and outfit_game_profile.redraw_interval_frames == 2 and outfit_game_profile.redraw_phase == 1, "game outfit textures avoid polygon triangulation and redraw on odd frames")
 	outfit_effect.set_preview_mode(true)
 	var outfit_preview_profile: Dictionary = outfit_effect.render_profile()
 	_check(outfit_preview_profile.particle_count == 10 and outfit_preview_profile.layers_per_particle == 4, "outfit preview preserves the legacy ten-particle four-layer density")
+	_check(outfit_preview_profile.redraw_interval_frames == 1, "outfit preview redraws every frame")
 	outfit_effect.free()
+
+	var fairy_effect := FairyEffectScript.new()
+	fairy_effect.configure({"effect_name": "STAR BURST"})
+	var fairy_game_profile: Dictionary = fairy_effect.render_profile()
+	_check(fairy_game_profile.polygon_draw_calls == 0 and fairy_game_profile.redraw_interval_frames == 2 and fairy_game_profile.redraw_phase == 0, "game fairy textures avoid polygon triangulation and redraw with the trail")
+	fairy_effect.set_preview_mode(true)
+	_check(fairy_effect.render_profile().redraw_interval_frames == 1, "fairy preview redraws every frame")
+	fairy_effect.free()
 
 	var shop := MetaShopUIScript.new()
 	shop.size = Vector2(960.0, 540.0)

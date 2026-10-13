@@ -373,6 +373,8 @@ func preview_tick(delta: float) -> void:
 		outfit_aura.set_preview_mode(true)
 	if outfit_effect != null:
 		outfit_effect.set_preview_mode(true)
+	if fairy_effect != null:
+		fairy_effect.set_preview_mode(true)
 	pet_preview_time += delta
 	var preview_bob := sin(pet_preview_time * 3.2) * 5.0
 	sprite.position = Vector2(0.0, BASE_Y + preview_bob)

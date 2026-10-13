@@ -1,24 +1,53 @@
 class_name FairyEffect
 extends Node2D
 
+const GAME_REDRAW_INTERVAL_FRAMES := 2
+const GAME_REDRAW_PHASE := 0
+const DIAMOND_TEXTURE_SIZE := 32
+const DIAMOND_TEXTURE_RADIUS := 12.0
+
+static var _shared_diamond_texture: ImageTexture
+
 var effect_name := ""
 var elapsed := 0.0
+var _preview_mode := false
+var _redraw_frame := 0
+var _diamond_texture: ImageTexture
 
 func _init() -> void:
 	var light_material := CanvasItemMaterial.new()
 	light_material.blend_mode = CanvasItemMaterial.BLEND_MODE_ADD
 	material = light_material
+	if _shared_diamond_texture == null:
+		_shared_diamond_texture = _svg_texture('<polygon points="16,2 30,16 16,30 2,16" fill="#ffffff"/>')
+	_diamond_texture = _shared_diamond_texture
 
 func configure(item: Dictionary) -> void:
 	effect_name = str(item.get("effect_name", ""))
 	visible = not effect_name.is_empty()
 	queue_redraw()
 
+func set_preview_mode(enabled: bool) -> void:
+	if _preview_mode == enabled:
+		return
+	_preview_mode = enabled
+	queue_redraw()
+
+func render_profile() -> Dictionary:
+	return {
+		"polygon_draw_calls": 12 if _preview_mode else 0,
+		"redraw_interval_frames": 1 if _preview_mode else GAME_REDRAW_INTERVAL_FRAMES,
+		"redraw_phase": 0 if _preview_mode else GAME_REDRAW_PHASE,
+		"preview": _preview_mode,
+	}
+
 func _process(delta: float) -> void:
 	if not visible:
 		return
 	elapsed += delta
-	queue_redraw()
+	_redraw_frame += 1
+	if _preview_mode or _redraw_frame % GAME_REDRAW_INTERVAL_FRAMES == GAME_REDRAW_PHASE:
+		queue_redraw()
 
 func _draw() -> void:
 	match effect_name:
@@ -71,7 +100,19 @@ func _draw() -> void:
 					draw_circle(finish, 0.8, Color(1.0, 0.98, 0.72, strength))
 
 func _draw_diamond(point: Vector2, radius: float, color: Color) -> void:
+	if not _preview_mode and _diamond_texture != null:
+		draw_set_transform(point, 0.0, Vector2.ONE * radius / DIAMOND_TEXTURE_RADIUS)
+		draw_texture(_diamond_texture, Vector2.ONE * -DIAMOND_TEXTURE_SIZE * 0.5, color)
+		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+		return
 	draw_colored_polygon(PackedVector2Array([
 		point + Vector2(0.0, -radius), point + Vector2(radius, 0.0),
 		point + Vector2(0.0, radius), point + Vector2(-radius, 0.0),
 	]), color)
+
+func _svg_texture(body: String) -> ImageTexture:
+	var image := Image.new()
+	var svg := '<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32">%s</svg>' % body
+	if image.load_svg_from_string(svg) != OK:
+		return null
+	return ImageTexture.create_from_image(image)

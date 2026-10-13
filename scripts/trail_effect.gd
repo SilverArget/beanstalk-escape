@@ -5,6 +5,10 @@ const MAX_POINTS := 48
 const GAME_MAX_POINTS := 24
 const GAME_LEAF_PARTICLES := 9
 const GAME_STAR_PARTICLES := 6
+const GAME_REDRAW_INTERVAL_FRAMES := 2
+const GAME_REDRAW_PHASE := 0
+const TEXTURE_SIZE := 32
+const TEXTURE_RADIUS := 12.0
 const LIFETIME := 1.1
 const SAMPLE_INTERVAL := 0.035
 const MIN_DISTANCE := 5.0
@@ -20,12 +24,16 @@ const CLOUD_BUBBLE_SPACING := 12.0
 const CLOUD_MAX_GAME_BUBBLES := 8
 const CLOUD_RIBBON_WIDTH := 13.0
 
+static var _shared_game_textures: Dictionary = {}
+
 var trail_id := ""
 var effect_name := ""
 var points: Array[Dictionary] = []
 var _sample_elapsed := SAMPLE_INTERVAL
 var _sequence := 0
 var _preview_mode := false
+var _redraw_frame := 0
+var _game_textures: Dictionary = {}
 
 func _init() -> void:
 	top_level = true
@@ -33,6 +41,9 @@ func _init() -> void:
 	z_index = WORLD_Z_INDEX
 	position = Vector2.ZERO
 	visible = false
+	if _shared_game_textures.is_empty():
+		_shared_game_textures = _create_game_textures()
+	_game_textures = _shared_game_textures
 
 func configure(item: Dictionary) -> void:
 	var next_id := str(item.get("id", ""))
@@ -46,7 +57,7 @@ func configure(item: Dictionary) -> void:
 func update_trail(world_position: Vector2, moving: bool, transferring: bool, delta: float) -> void:
 	_age_points(delta)
 	if not visible or not moving:
-		queue_redraw()
+		_request_game_redraw()
 		return
 	_sample_elapsed += delta
 	var local_position := to_local(world_position)
@@ -57,7 +68,7 @@ func update_trail(world_position: Vector2, moving: bool, transferring: bool, del
 		_sample_elapsed = 0.0
 		while points.size() > _point_limit():
 			points.pop_front()
-	queue_redraw()
+	_request_game_redraw()
 
 func set_preview_mode(enabled: bool) -> void:
 	if _preview_mode == enabled:
@@ -133,17 +144,20 @@ func render_profile() -> Dictionary:
 	match trail_id:
 		"trail_leaf":
 			particle_limit = MAX_POINTS if _preview_mode else GAME_LEAF_PARTICLES
-			max_draw_calls = (MAX_POINTS - 1) * 2 + MAX_POINTS * 3 if _preview_mode else 2 + GAME_LEAF_PARTICLES * 3
+			max_draw_calls = (MAX_POINTS - 1) * 2 + MAX_POINTS * 3 if _preview_mode else 2 + GAME_LEAF_PARTICLES
 		"trail_cloud":
 			particle_limit = MAX_POINTS if _preview_mode else CLOUD_MAX_GAME_BUBBLES
-			max_draw_calls = MAX_POINTS * 6 if _preview_mode else 3 + CLOUD_MAX_GAME_BUBBLES * 3
+			max_draw_calls = MAX_POINTS * 6 if _preview_mode else 3 + CLOUD_MAX_GAME_BUBBLES
 		"trail_star":
 			particle_limit = MAX_POINTS if _preview_mode else GAME_STAR_PARTICLES
-			max_draw_calls = (MAX_POINTS - 1) * 3 + MAX_POINTS * 4 if _preview_mode else 3 + GAME_STAR_PARTICLES * 4
+			max_draw_calls = (MAX_POINTS - 1) * 3 + MAX_POINTS * 4 if _preview_mode else 3 + GAME_STAR_PARTICLES
 	return {
 		"point_limit": _point_limit(),
 		"particle_limit": particle_limit,
 		"max_draw_calls": max_draw_calls,
+		"polygon_draw_calls": 0 if not _preview_mode else particle_limit * 2,
+		"redraw_interval_frames": 1 if _preview_mode else GAME_REDRAW_INTERVAL_FRAMES,
+		"redraw_phase": 0 if _preview_mode else GAME_REDRAW_PHASE,
 		"preview": _preview_mode,
 	}
 
@@ -179,12 +193,15 @@ func _draw_leaf_wake() -> void:
 		var seed := float(int(point.seed))
 		var center := Vector2(point.position) + Vector2(sin(seed * 1.7 + float(point.age) * 8.0) * 5.0, float(point.age) * 18.0)
 		var angle := seed * 2.1 + float(point.age) * 7.0
-		var axis := Vector2(cos(angle), sin(angle))
-		var side := axis.orthogonal()
-		var leaf := PackedVector2Array([center + axis * 8.0, center + side * 5.0, center - axis * 8.0, center - side * 5.0])
-		_draw_closed_outline(leaf, fade)
-		draw_colored_polygon(leaf, Color(0.34, 0.94, 0.32, 0.94 * fade))
-		draw_line(center - axis * 6.0, center + axis * 6.0, Color(0.84, 1.0, 0.55, 0.82 * fade), 1.5)
+		if _preview_mode:
+			var axis := Vector2(cos(angle), sin(angle))
+			var side := axis.orthogonal()
+			var leaf := PackedVector2Array([center + axis * 8.0, center + side * 5.0, center - axis * 8.0, center - side * 5.0])
+			_draw_closed_outline(leaf, fade)
+			draw_colored_polygon(leaf, Color(0.34, 0.94, 0.32, 0.94 * fade))
+			draw_line(center - axis * 6.0, center + axis * 6.0, Color(0.84, 1.0, 0.55, 0.82 * fade), 1.5)
+		else:
+			_draw_game_texture("leaf", center, 8.0, angle, fade)
 
 func _draw_cloud_wake() -> void:
 	if _preview_mode:
@@ -205,9 +222,7 @@ func _draw_cloud_wake() -> void:
 		var grow := lerpf(0.72, 1.35, float(point.age) / LIFETIME)
 		var radius := (6.0 + float(int(point.seed) % 3) * 0.6) * grow
 		var center := bubble_centers[index]
-		draw_circle(center, radius + 1.5, Color(OUTLINE_COLOR, OUTLINE_COLOR.a * fade))
-		draw_circle(center, radius, Color(0.68, 0.88, 1.0, 0.72 * fade))
-		draw_circle(center, radius * 0.66, Color(0.94, 0.98, 1.0, 0.88 * fade))
+		_draw_game_texture("cloud", center, radius + 1.5, 0.0, fade)
 
 func _draw_cloud_preview_bubbles() -> void:
 	for index in range(points.size() - 1, -1, -1):
@@ -250,26 +265,16 @@ static func cloud_wake_geometry(source_points: PackedVector2Array) -> Dictionary
 func _draw_cloud_ribbon(path: PackedVector2Array, fades: PackedFloat32Array) -> void:
 	if path.size() < 2:
 		return
-	_draw_tapered_strip(path, fades, CLOUD_RIBBON_WIDTH + 3.0, OUTLINE_COLOR)
-	_draw_tapered_strip(path, fades, CLOUD_RIBBON_WIDTH, Color(0.68, 0.88, 1.0, 0.78))
-	_draw_tapered_strip(path, fades, 5.5, Color(0.94, 0.98, 1.0, 0.90))
+	_draw_faded_polyline(path, fades, CLOUD_RIBBON_WIDTH + 3.0, OUTLINE_COLOR)
+	_draw_faded_polyline(path, fades, CLOUD_RIBBON_WIDTH, Color(0.68, 0.88, 1.0, 0.78))
+	_draw_faded_polyline(path, fades, 5.5, Color(0.94, 0.98, 1.0, 0.90))
 
-func _draw_tapered_strip(path: PackedVector2Array, fades: PackedFloat32Array, width: float, color: Color) -> void:
-	var vertices := PackedVector2Array()
+func _draw_faded_polyline(path: PackedVector2Array, fades: PackedFloat32Array, width: float, color: Color) -> void:
 	var colors := PackedColorArray()
 	for index in path.size():
-		var tangent := path[1] - path[0] if index == 0 else (path[-1] - path[-2] if index == path.size() - 1 else path[index + 1] - path[index - 1])
-		var normal := tangent.normalized().orthogonal()
 		var fade := fades[index]
-		vertices.append(path[index] + normal * width * 0.5 * maxf(fade, 0.08))
 		colors.append(Color(color, color.a * fade))
-	for index in range(path.size() - 1, -1, -1):
-		var tangent := path[1] - path[0] if index == 0 else (path[-1] - path[-2] if index == path.size() - 1 else path[index + 1] - path[index - 1])
-		var normal := tangent.normalized().orthogonal()
-		var fade := fades[index]
-		vertices.append(path[index] - normal * width * 0.5 * maxf(fade, 0.08))
-		colors.append(Color(color, color.a * fade))
-	draw_polygon(vertices, colors)
+	draw_polyline_colors(path, colors, width, false)
 
 func _draw_star_wake() -> void:
 	_draw_star_ribbon()
@@ -278,12 +283,15 @@ func _draw_star_wake() -> void:
 		var fade := _fade(point)
 		var center := Vector2(point.position)
 		var radius := STAR_MIN_RADIUS + float(int(point.seed) % 3)
-		var star := _star_points(center, radius, radius * 0.42)
-		var outline_star := _star_points(center, radius + 1.5, (radius + 1.5) * 0.42)
-		draw_colored_polygon(outline_star, Color(OUTLINE_COLOR, OUTLINE_COLOR.a * fade))
-		draw_colored_polygon(star, Color(1.0, 0.78, 0.16, 0.96 * fade))
-		draw_line(center + Vector2(-radius * 1.7, 0.0), center + Vector2(radius * 1.7, 0.0), Color(1.0, 0.95, 0.58, 0.78 * fade), 1.5)
-		draw_line(center + Vector2(0.0, -radius * 1.7), center + Vector2(0.0, radius * 1.7), Color(1.0, 0.95, 0.58, 0.78 * fade), 1.5)
+		if _preview_mode:
+			var star := _star_points(center, radius, radius * 0.42)
+			var outline_star := _star_points(center, radius + 1.5, (radius + 1.5) * 0.42)
+			draw_colored_polygon(outline_star, Color(OUTLINE_COLOR, OUTLINE_COLOR.a * fade))
+			draw_colored_polygon(star, Color(1.0, 0.78, 0.16, 0.96 * fade))
+			draw_line(center + Vector2(-radius * 1.7, 0.0), center + Vector2(radius * 1.7, 0.0), Color(1.0, 0.95, 0.58, 0.78 * fade), 1.5)
+			draw_line(center + Vector2(0.0, -radius * 1.7), center + Vector2(0.0, radius * 1.7), Color(1.0, 0.95, 0.58, 0.78 * fade), 1.5)
+		else:
+			_draw_game_texture("star", center, radius + 1.5, 0.0, fade)
 
 func _draw_star_ribbon() -> void:
 	if points.size() < 2:
@@ -350,3 +358,30 @@ func _star_points(center: Vector2, outer_radius: float, inner_radius: float) -> 
 
 func _fade(point: Dictionary) -> float:
 	return clampf(1.0 - float(point.age) / LIFETIME, 0.0, 1.0)
+
+func _request_game_redraw() -> void:
+	_redraw_frame += 1
+	if _redraw_frame % GAME_REDRAW_INTERVAL_FRAMES == GAME_REDRAW_PHASE:
+		queue_redraw()
+
+func _draw_game_texture(texture_name: String, point: Vector2, radius: float, angle: float, opacity: float) -> void:
+	var texture := _game_textures.get(texture_name) as Texture2D
+	if texture == null:
+		return
+	draw_set_transform(point, angle, Vector2.ONE * radius / TEXTURE_RADIUS)
+	draw_texture(texture, Vector2.ONE * -TEXTURE_SIZE * 0.5, Color(1.0, 1.0, 1.0, opacity))
+	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+
+func _create_game_textures() -> Dictionary:
+	return {
+		"leaf": _svg_texture('<polygon points="16,3 27,16 16,29 5,16" fill="#57f052" stroke="#061712" stroke-opacity=".62" stroke-width="3"/><path d="M8 22 24 10" stroke="#d6ff8c" stroke-width="2"/>'),
+		"cloud": _svg_texture('<circle cx="16" cy="16" r="12" fill="#061712" fill-opacity=".62"/><circle cx="16" cy="16" r="10" fill="#addfff" fill-opacity=".78"/><circle cx="16" cy="16" r="6.5" fill="#f0faff" fill-opacity=".9"/>'),
+		"star": _svg_texture('<polygon points="16,1 20,11 31,11 22,18 26,29 16,22 6,29 10,18 1,11 12,11" fill="#ffc72b" stroke="#061712" stroke-opacity=".62" stroke-width="3"/><path d="M2 16H30M16 2V30" stroke="#fff294" stroke-width="2"/>'),
+	}
+
+func _svg_texture(body: String) -> ImageTexture:
+	var image := Image.new()
+	var svg := '<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32">%s</svg>' % body
+	if image.load_svg_from_string(svg) != OK:
+		return null
+	return ImageTexture.create_from_image(image)
