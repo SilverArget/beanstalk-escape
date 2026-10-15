@@ -197,7 +197,7 @@ func _ready() -> void:
 	economy.changed.connect(_sync_pet)
 	layout_hud_for_viewport(get_viewport_rect().size)
 	get_viewport().size_changed.connect(func(): layout_hud_for_viewport(get_viewport_rect().size))
-	_show_menu()
+	_start_selected_run()
 
 func _physics_process(delta: float) -> void:
 	_update_hit_invulnerability(delta)
@@ -1091,7 +1091,7 @@ func _restart_from_death() -> void:
 		restart_stage()
 
 func _menu_from_death() -> void:
-	if app_state == AppState.PLAYER_DEAD:
+	if app_state in [AppState.PLAYER_DEAD, AppState.PAUSED]:
 		_show_menu()
 
 func _focus_default_death_action() -> void:
@@ -1967,7 +1967,7 @@ func _update_hud() -> void:
 	$HUD/ContinueAd.visible = death_visible and _can_offer_ad_revive() and platform_services.is_rewarded_supported()
 	$HUD/RetryStage.visible = death_visible
 	$HUD/RestartRun.visible = false
-	$HUD/DeathMenu.visible = death_visible
+	$HUD/DeathMenu.visible = death_visible or app_state == AppState.PAUSED
 	var dead_stage := stages.stage_for_y(player.global_position.y)
 	$HUD/SkipStageAd.visible = death_visible and dead_stage < Balance.STAGE_COUNT and int(death_count_by_stage.get(dead_stage, 0)) >= economy.value("skip_stage_death_count") and platform_services.is_rewarded_supported()
 	$HUD/DoubleStageReward.visible = meta_visible and double_reward_remaining > 0.0 and platform_services.is_rewarded_supported()
