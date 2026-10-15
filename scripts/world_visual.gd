@@ -10,11 +10,12 @@ const MAX_TEXTURE_ELEMENT := 54.0
 const GRIP_DETAIL_SIZE := 12.0
 const MAX_LEAF_SIZE := 140.0
 const VISUAL_OUTLINE_WIDTH := 1.0
-# Three rounded shoots, lit from the upper left like the logo. The two
-# winding shoots disappear around the sides of the solid supporting shoot.
+# Two complete cylinders exchange depth; neither is a full-width backing plate.
 const SHOOT_PITCH := 610.0
-const SHOOT_PROFILE := [0.0, 0.02, 0.13, 0.35, 0.58, 0.84, 0.98, 1.0]
-const SHOOT_COLORS := [Color("245332"), Color("367635"), Color("6ba72e"), Color("b4d844"), Color("79b82f"), Color("3c8c35"), Color("28633a"), Color("245332")]
+const SHOOT_PROFILE := [0.0, 0.035, 0.09, 0.18, 0.30, 0.43, 0.56, 0.69, 0.81, 0.91, 0.965, 1.0]
+const SHOOT_COLORS := [Color("21482b"), Color("2e6130"), Color("4b8732"), Color("78ad35"), Color("afd447"), Color("a3cc40"), Color("85b637"), Color("639b30"), Color("407b30"), Color("2e602e"), Color("244e2b"), Color("21482b")]
+const SHOOT_EDGE_FEATHER := 1.5
+const SHOOT_FIBER_TILE := Vector2(64.0, 256.0)
 const FOLIAGE_CELL := Vector2(512.0, 512.0)
 const BRANCH_DETAIL_GRID := Vector2(4.0, 2.0)
 const BRANCH_NODE_SPACING := [173.0, 211.0, 187.0]
@@ -39,6 +40,7 @@ var qa_sky_only := false
 var cached_camera_top := INF
 var sky_visual: Node2D
 var draw_mesh_cache: Array[ArrayMesh] = []
+var shoot_fiber_texture: ImageTexture
 var detail_vertices := PackedVector2Array()
 var detail_uvs := PackedVector2Array()
 var detail_indices := PackedInt32Array()
@@ -435,48 +437,145 @@ func _draw_textured_ribbon(points: PackedVector2Array, widths: PackedFloat32Arra
 				indices.append_array(PackedInt32Array([base, base + 1, base + 3, base, base + 3, base + 2]))
 		draw_mesh(_build_ribbon_mesh(vertices, PackedVector2Array(), indices), null, Transform2D.IDENTITY, Color.WHITE)
 		return
-	# One mesh per shoot, retained by the existing surface cache. The broad
-	# central shoot fills the entire authored support envelope at every row.
-	# Winding shoots use the front half of a cylindrical projection: their
-	# width tends to zero at the silhouette as they pass behind the core.
-	for shoot in 3:
+	if shoot_fiber_texture == null:
+		shoot_fiber_texture = _make_shoot_fiber_texture()
+	# Two meshes total, one per depth layer, including fibers, contact shadows
+	# and feathered edges. Physical shoots swap layers only at their side-by-side
+	# contact, where their projected interiors no longer overlap.
+	# Keep world-anchored rows: clipping/cache movement must not move a crossing.
+	var rows := PackedVector2Array()
+	var row_widths := PackedFloat32Array()
+	for index in range(points.size() - 1):
+		rows.append(points[index])
+		row_widths.append(widths[index])
+		var upper_y := points[index + 1].y
+		var lower_y := points[index].y
+		var cursor_y := floorf(lower_y / 6.0) * 6.0
+		while cursor_y > upper_y:
+			if cursor_y < lower_y:
+				var t := inverse_lerp(lower_y, upper_y, cursor_y)
+				rows.append(points[index].lerp(points[index + 1], t))
+				row_widths.append(lerpf(widths[index], widths[index + 1], t))
+			cursor_y -= 6.0
+	rows.append(points[points.size() - 1])
+	row_widths.append(widths[widths.size() - 1])
+	# Subdivide exactly at depth swaps rather than letting draw order change
+	# halfway through a quad. Bisection uses the same world phase on both sides.
+	for index in range(rows.size() - 2, -1, -1):
+		var a := rows[index].y
+		var b := rows[index + 1].y
+		if cos(_shoot_phase(a)) * cos(_shoot_phase(b)) < 0.0:
+			var lower := a
+			var upper := b
+			for iteration in 16:
+				var middle := (lower + upper) * 0.5
+				if cos(_shoot_phase(lower)) * cos(_shoot_phase(middle)) > 0.0:
+					lower = middle
+				else:
+					upper = middle
+			var t := inverse_lerp(a, b, (lower + upper) * 0.5)
+			rows.insert(index + 1, rows[index].lerp(rows[index + 1], t))
+			row_widths.insert(index + 1, lerpf(row_widths[index], row_widths[index + 1], t))
+	strip = _ribbon_geometry(rows, row_widths, 0.0)
+	for layer in 2:
 		var vertices := PackedVector2Array()
 		var colors := PackedColorArray()
+		var uvs := PackedVector2Array()
 		var indices := PackedInt32Array()
-		var columns := SHOOT_PROFILE.size()
-		for index in points.size():
-			var left: Vector2 = strip.left[index]
-			var right: Vector2 = strip.right[index]
-			var across := right - left
-			var center := (left + right) * 0.5
-			var painted_width := 1.0
-			if shoot > 0:
-				var phase := _shoot_phase(points[index].y) + float(shoot - 1) * PI
-				var front := maxf(cos(phase), 0.0)
-				painted_width = 0.62 * smoothstep(0.0, 0.85, front)
-				painted_width *= 0.96 + 0.04 * sin(points[index].y * TAU / 283.0)
-				center += across * sin(phase) * (0.5 - painted_width * 0.5)
-			var light := 0.94 + 0.06 * sin(points[index].y * TAU / 347.0 + float(shoot))
-			if shoot == 0:
-				light *= 0.88
-			for column in columns:
-				var u: float = SHOOT_PROFILE[column]
-				vertices.append(center + across * ((u - 0.5) * painted_width))
-				var color: Color = SHOOT_COLORS[column]
-				colors.append(Color(color.r * light, color.g * light, color.b * light, 1.0))
-			if index > 0:
-				for column in range(columns - 1):
-					var base := (index - 1) * columns + column
-					indices.append_array(PackedInt32Array([base, base + 1, base + columns + 1, base, base + columns + 1, base + columns]))
+		var columns := SHOOT_PROFILE.size() + 10
+		for index in range(rows.size() - 1):
+			var middle_y := (rows[index].y + rows[index + 1].y) * 0.5
+			var front_shoot := 0 if cos(_shoot_phase(middle_y)) >= 0.0 else 1
+			var shoot := front_shoot if layer == 1 else 1 - front_shoot
+			var base := vertices.size()
+			for row in [index, index + 1]:
+				_append_shoot_row(vertices, colors, uvs, strip.left[row], strip.right[row], rows[row].y, shoot, front_shoot)
+			for column in range(columns - 1):
+				var offset := base + column
+				indices.append_array(PackedInt32Array([offset, offset + 1, offset + columns + 1, offset, offset + columns + 1, offset + columns]))
 		var arrays := []
 		arrays.resize(Mesh.ARRAY_MAX)
 		arrays[Mesh.ARRAY_VERTEX] = vertices
 		arrays[Mesh.ARRAY_COLOR] = colors
+		arrays[Mesh.ARRAY_TEX_UV] = uvs
 		arrays[Mesh.ARRAY_INDEX] = indices
 		var mesh := ArrayMesh.new()
 		mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
 		draw_mesh_cache.append(mesh)
-		draw_mesh(mesh, null)
+		draw_mesh(mesh, shoot_fiber_texture)
+
+func _append_shoot_row(vertices: PackedVector2Array, colors: PackedColorArray, uvs: PackedVector2Array, left: Vector2, right: Vector2, world_y: float, shoot: int, front_shoot: int) -> void:
+	var across := right - left
+	var width := across.length()
+	var normal := across.normalized()
+	var phase := _shoot_phase(world_y)
+	var winding := sin(phase)
+	# Equal-radius, touching cylinders fill the support envelope without any
+	# backing strip. Only the broad trunk gets a small scalloped silhouette;
+	# all branch widths and the narrow end of the transition stay unchanged.
+	var scallop := 1.0 + 0.024 * smoothstep(56.0, 130.0, width) * cos(phase * 2.0)
+	var radius := width * 0.5 * scallop / (1.0 + absf(winding))
+	var side := 1.0 if shoot == 0 else -1.0
+	var center_offset := side * winding * radius
+	var center := (left + right) * 0.5 + normal * center_offset
+	var front_offset := (1.0 if front_shoot == 0 else -1.0) * winding * radius
+	var diameter := maxf(radius * 2.0, 0.001)
+	var profile: Array = SHOOT_PROFILE.duplicate()
+	# Extra samples put the contact shadow's falloff at the occluder's actual
+	# edge, including on a wide trunk, rather than smearing it across a face.
+	for edge in [-1.0, 1.0]:
+		for distance in [0.0, 2.5, 6.0]:
+			profile.append(clampf((front_offset + edge * (radius + distance) - center_offset + radius) / diameter, 0.0, 1.0))
+	# One dark edge with a 1.5 px alpha fringe, in the same mesh as the body.
+	profile.append(minf(1.0 / diameter, 0.035))
+	profile.append(maxf(1.0 - 1.0 / diameter, 0.965))
+	profile.append(-SHOOT_EDGE_FEATHER / diameter)
+	profile.append(1.0 + SHOOT_EDGE_FEATHER / diameter)
+	profile.sort()
+	var depth := cos(phase + float(shoot) * PI)
+	var light := lerpf(0.67, 1.05, (depth + 1.0) * 0.5)
+	light *= 0.97 + 0.03 * sin(world_y * TAU / 347.0 + float(shoot))
+	for value: float in profile:
+		var u := clampf(value, 0.0, 1.0)
+		var color := _shoot_surface_color(u)
+		var shadow := 1.0
+		if shoot != front_shoot:
+			var x := center_offset + (u - 0.5) * diameter
+			var distance := maxf(absf(x - front_offset) - radius, 0.0)
+			shadow -= 0.32 * (1.0 - smoothstep(0.0, 6.0, distance))
+		var alpha := 1.0
+		if value < 0.0 or value > 1.0:
+			alpha = 0.0
+		vertices.append(center + normal * ((value - 0.5) * diameter))
+		colors.append(Color(color.r * light * shadow, color.g * light * shadow, color.b * light * shadow, alpha))
+		# Local cross-section and world height make fibers follow the winding
+		# shoot, with fixed pixel density and no reset at stage/cache boundaries.
+		uvs.append(Vector2(value * diameter / SHOOT_FIBER_TILE.x + float(shoot) * 0.37, -world_y / SHOOT_FIBER_TILE.y))
+
+func _shoot_surface_color(u: float) -> Color:
+	for index in range(SHOOT_PROFILE.size() - 1):
+		if u <= SHOOT_PROFILE[index + 1]:
+			var t := inverse_lerp(SHOOT_PROFILE[index], SHOOT_PROFILE[index + 1], u)
+			return SHOOT_COLORS[index].lerp(SHOOT_COLORS[index + 1], t)
+	return SHOOT_COLORS[SHOOT_COLORS.size() - 1]
+
+func _make_shoot_fiber_texture() -> ImageTexture:
+	# Small, neutral pigment map generated once, not on surface-cache redraws.
+	# Integer frequencies wrap seamlessly; long, gently wandering fibers and
+	# broad brush variation add texture without painting another spiral band.
+	var image := Image.create(128, 256, false, Image.FORMAT_RGBA8)
+	for y in 256:
+		var v := float(y) / 256.0 * TAU
+		for x in 128:
+			var u := float(x) / 128.0 * TAU
+			var drift := sin(v) * 0.15 + sin(v * 3.0 + u) * 0.05
+			var fiber := sin(u * 23.0 + drift * 3.0) * sin(u * 9.0 - drift)
+			var vein := pow(maxf(sin(u * 13.0 + sin(v * 2.0) * 0.4), 0.0), 10.0)
+			var brush := sin(u * 3.0 + sin(v)) * sin(v * 5.0 + u * 2.0)
+			var pigment := 0.94 + fiber * 0.025 - vein * 0.055 + brush * 0.02
+			image.set_pixel(x, y, Color(pigment, pigment, pigment, 1.0))
+	image.generate_mipmaps()
+	return ImageTexture.create_from_image(image)
 
 func _shoot_phase(world_y: float) -> float:
 	# Absolute height, shared by trunk and all branches: no phase reset at
@@ -579,9 +678,9 @@ func qa_visual_contract() -> Dictionary:
 		"grip_detail_px": GRIP_DETAIL_SIZE,
 		"max_leaf_px": MAX_LEAF_SIZE,
 		"outline_px": VISUAL_OUTLINE_WIDTH,
-		"surface_texture": "procedural_shoot_vertex_colors",
-		"branch_surface_texture": "procedural_shoot_vertex_colors",
-		"shoot_meshes_per_ribbon": 3,
+		"surface_texture": "procedural_longitudinal_shoot_fibers",
+		"branch_surface_texture": "procedural_longitudinal_shoot_fibers",
+		"shoot_meshes_per_ribbon": 2,
 		"branch_detail_atlas": "res://assets/art/world/vine_details_atlas_v2.png",
 		"branch_node_spacing_px": BRANCH_NODE_SPACING.duplicate(),
 		"stage_3_layout": "continuous_middle_with_separate_side_vines",
