@@ -18,11 +18,11 @@ func _run() -> void:
 	_check(economy.cosmetic_catalog("OUTFIT").size() == 9, "nine outfits")
 	_check(economy.cosmetic_catalog("PET").size() == 6, "six pets")
 	var migrated := save._sanitize_shop({"owned": ["M1", "face_mask"], "equipped": {"FACE": "face_mask"}})
-	_check(not migrated.owned.has("face_mask") and migrated.equipped.keys() == ["OUTFIT", "PET", "TRAIL"], "legacy FACE data removed and slots normalized")
+	_check(not migrated.owned.has("face_mask") and migrated.equipped.keys() == ["OUTFIT", "PET"], "legacy FACE data removed and slots normalized")
 	var pet_preview := PlayerVisual.new()
 	root.add_child(pet_preview)
 	await process_frame
-	pet_preview.set_cosmetics({"OUTFIT": "", "PET": "pet_squirrel", "TRAIL": ""}, economy.cosmetic_catalog())
+	pet_preview.set_cosmetics({"OUTFIT": "", "PET": "pet_squirrel"}, economy.cosmetic_catalog())
 	pet_preview.show_front_preview()
 	var pet_layer := pet_preview.cosmetic_sprites.get("PET") as Sprite2D
 	_check(pet_layer != null and pet_layer.visible and pet_layer.texture != null and absf(pet_layer.position.x) <= 92.0, "pet visible inside front preview")
@@ -56,7 +56,7 @@ func _run() -> void:
 	for skin in SKINS:
 		shop_preview.preview.set_skin(skin)
 		for item in economy.cosmetic_catalog("PET"):
-			shop_preview.preview.set_cosmetics({"OUTFIT": "", "PET": item.id, "TRAIL": ""}, economy.cosmetic_catalog())
+			shop_preview.preview.set_cosmetics({"OUTFIT": "", "PET": item.id}, economy.cosmetic_catalog())
 			shop_preview.preview.show_front_preview()
 			var rects := _preview_rects(shop_preview, skin, item)
 			var body_rect: Rect2 = rects.body
@@ -73,7 +73,7 @@ func _run() -> void:
 	_check(pets_grounded, "all six pets share the character foot line")
 	_check(pets_proportional, "all six pets are 22-28 percent of character height")
 	shop_preview.free()
-	pet_preview.set_cosmetics({"OUTFIT": "", "PET": "pet_squirrel", "TRAIL": ""}, economy.cosmetic_catalog())
+	pet_preview.set_cosmetics({"OUTFIT": "", "PET": "pet_squirrel"}, economy.cosmetic_catalog())
 	var all_pixels_ok := true
 	for skin in SKINS:
 		pet_preview.set_skin(skin)

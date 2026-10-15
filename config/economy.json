@@ -16,7 +16,7 @@
     {"stage": 5, "type": "gold", "amount": 150},
     {"stage": 10, "type": "gold", "amount": 900},
     {"stage": 15, "type": "gold", "amount": 250},
-    {"stage": 20, "type": "item", "item": "trail_star"},
+    {"stage": 20, "type": "gold", "amount": 1000},
     {"stage": 25, "type": "gold", "amount": 400},
     {"stage": 30, "type": "gold", "amount": 600}
   ],
@@ -40,9 +40,6 @@
   "cosmetic_prices": {"COMMON": 150, "RARE": 400, "EPIC": 900},
   "cosmetic_levels": {"COMMON": 1, "RARE": 3, "EPIC": 5},
   "cosmetics": [
-    {"id": "trail_leaf", "slot": "TRAIL", "name": "LEAF WAKE", "rarity": "COMMON", "image": "leaf_trail.png", "price": 200, "level": 1, "effect_name": "LEAF FALL"},
-    {"id": "trail_cloud", "slot": "TRAIL", "name": "CLOUD WAKE", "rarity": "RARE", "image": "cloud_trail.png", "price": 500, "level": 2, "effect_name": "CLOUD BLOOM"},
-    {"id": "trail_star", "slot": "TRAIL", "name": "STAR WAKE", "rarity": "EPIC", "image": "star_trail.png", "price": 1000, "level": 3, "effect_name": "STAR DUST", "source": "MAP TREASURE"},
     {"id": "outfit_moss", "slot": "OUTFIT", "name": "LEAF RANGER", "effect_name": "FALLING LEAVES", "rarity": "COMMON", "price": 150, "level": 1, "image": "outfit_moss.png"},
     {"id": "outfit_fern", "slot": "OUTFIT", "name": "BLOSSOM VEST", "effect_name": "PETAL DRIFT", "rarity": "COMMON", "price": 250, "level": 2, "image": "outfit_fern.png"},
     {"id": "outfit_sky", "slot": "OUTFIT", "name": "SKY CAPE", "effect_name": "CLOUD PUFFS", "rarity": "RARE", "price": 0, "level": 3, "image": "outfit_sky.png", "source": "DAY 7 BONUS"},

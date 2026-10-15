@@ -4,7 +4,7 @@ extends Control
 signal closed
 signal run_started
 
-const SLOTS := ["CHARACTERS", "OUTFIT", "PET", "TRAIL"]
+const SLOTS := ["CHARACTERS", "OUTFIT", "PET"]
 
 class TurnIcon:
 	extends Control
@@ -201,9 +201,8 @@ func _layout() -> void:
 	view_toggle_button.position = Vector2(8.0 + (preview_width - 110.0) * 0.5, preview_host.position.y + preview_host.size.y + 4.0)
 	view_toggle_button.size = Vector2(110, 34)
 	view_toggle_button.visible = not map_mode
-	var trail_preview := active_tab == "TRAIL"
-	preview.scale = Vector2.ONE * (0.82 if trail_preview else (2.90 if preview_back else 1.45))
-	preview.position = Vector2(preview_width * 0.5, preview_host.size.y * 0.34) if trail_preview else Vector2(preview_width * (0.5 if preview_back or active_tab == "OUTFIT" else 0.262), preview_host.size.y * 0.52)
+	preview.scale = Vector2.ONE * (2.90 if preview_back else 1.45)
+	preview.position = Vector2(preview_width * (0.5 if preview_back or active_tab == "OUTFIT" else 0.262), preview_host.size.y * 0.52)
 	preview_host.visible = not map_mode
 	scroll.position = Vector2(8, 56) if map_mode else Vector2(preview_width + 16, 92)
 	scroll.size = Vector2(width - 16 if map_mode else width - preview_width - 24, maxf(footer_y - scroll.position.y - 6.0, 120.0))
@@ -229,8 +228,6 @@ func _sync_preview_tab(next_tab: String) -> void:
 	if next_tab != _last_preview_tab:
 		preview_back = false
 		_last_preview_tab = next_tab
-	if preview != null:
-		preview.set_trail_preview_enabled(next_tab == "TRAIL")
 
 func _focus_start_button() -> void:
 	if visible and mode == "SELECT" and start_button.visible and not start_button.disabled:
@@ -427,12 +424,9 @@ func _cosmetic_card(item: Dictionary) -> Control:
 	var source := str(item.get("source", ""))
 	var slot := str(item.get("slot", ""))
 	var is_pet := slot == "PET"
-	var is_trail := slot == "TRAIL"
 	var is_outfit := slot == "OUTFIT"
 	var price_text := source if is_outfit and not source.is_empty() else "%d GOLD" % int(item.price)
-	var subtitle := "%s\nLV %d · %s" % [str(item.get("effect_name", "")), int(item.level), price_text] if is_pet or is_trail or is_outfit else (source if not source.is_empty() else "%s · LV %d" % [item.rarity, int(item.level)])
-	if is_trail and not source.is_empty():
-		subtitle += "\n%s" % source
+	var subtitle := "%s\nLV %d · %s" % [str(item.get("effect_name", "")), int(item.level), price_text] if is_pet or is_outfit else (source if not source.is_empty() else "%s · LV %d" % [item.rarity, int(item.level)])
 	var card := _base_card(str(item.name), subtitle)
 	var body := _card_body(card)
 	var icon := TextureRect.new()

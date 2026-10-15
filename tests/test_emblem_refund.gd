@@ -29,15 +29,15 @@ func _init() -> void:
 		_check(int(SaveManager.new(TEST_PATH).load_profile().meta.gold) == int(first.meta.gold), "reload keeps persisted refund without duplication")
 
 	var all_owned: Array = REFUNDS.keys()
-	all_owned.append_array(["M2", "outfit_moss", "fairy_leaf", "trail_leaf", "hair_blonde"])
+	all_owned.append_array(["M2", "outfit_moss", "fairy_leaf", "hair_blonde"])
 	var legacy := _legacy(all_owned)
 	legacy.meta.hair_refund_done = false
 	_write(legacy)
 	var save := SaveManager.new(TEST_PATH)
 	var profile := save.load_profile()
 	_check(int(profile.meta.gold) == 3400, "six emblems refund 2900 plus independent 400 hair refund")
-	_check(profile.shop.owned == ["M1", "F1", "M2", "outfit_moss", "fairy_leaf", "trail_leaf"], "unrelated ownership preserved")
-	_check(profile.shop.equipped == {"OUTFIT": "outfit_moss", "PET": "fairy_leaf", "TRAIL": "trail_leaf"}, "outfit, pet and trail equipment preserved")
+	_check(profile.shop.owned == ["M1", "F1", "M2", "outfit_moss", "fairy_leaf"], "unrelated ownership preserved")
+	_check(profile.shop.equipped == {"OUTFIT": "outfit_moss", "PET": "fairy_leaf"}, "outfit and pet equipment preserved")
 	_check(profile.shop.selected_character == "M2" and int(profile.meta.xp) == 23 and int(profile.meta.level) == 3, "character and progression unchanged")
 	_check(save.write_meta({"gold": 3400, "xp": 23, "level": 3}), "meta write succeeds")
 	_check(bool(SaveManager.new(TEST_PATH).load_profile().meta.emblem_refund_done), "meta write preserves refund flag")
@@ -86,7 +86,7 @@ func _legacy(owned: Array) -> Dictionary:
 		"meta": {"gold": 100, "xp": 23, "level": 3, "hair_refund_done": true},
 		"shop": {
 			"owned": ["M1", "F1"] + owned,
-			"equipped": {"EMBLEM": "emblem_sun", "OUTFIT": "outfit_moss", "PET": "fairy_leaf", "TRAIL": "trail_leaf"},
+			"equipped": {"EMBLEM": "emblem_sun", "OUTFIT": "outfit_moss", "PET": "fairy_leaf"},
 			"selected_character": "M2",
 		},
 	}

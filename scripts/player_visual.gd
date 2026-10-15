@@ -6,7 +6,6 @@ const WING_TEXTURE := preload("res://assets/art/character_rig/wing/time_wings.pn
 const TRANSFER_LEAF_TEXTURE := preload("res://assets/art/fx/transfer_leaf.png")
 const ROCK_FIRE_ATLAS := preload("res://assets/art/hazards/rock_fire_atlas.png")
 const FAIRY_EFFECT := preload("res://scripts/fairy_effect.gd")
-const TRAIL_EFFECT := preload("res://scripts/trail_effect.gd")
 const OUTFIT_EFFECT := preload("res://scripts/outfit_effect.gd")
 const OUTFIT_ROOT := "res://assets/art/outfits"
 const OUTFIT_BACK_BOUNDS := {
@@ -52,12 +51,11 @@ var transfer_trails: Array[Line2D] = []
 var fire_trails: Array[Polygon2D] = []
 var flash_material: ShaderMaterial
 var cosmetic_sprites: Dictionary = {}
-var equipped_cosmetics := {"OUTFIT": "", "PET": "", "TRAIL": ""}
+var equipped_cosmetics := {"OUTFIT": "", "PET": ""}
 var cosmetic_data: Dictionary = {}
 var anchor_data: Dictionary = {}
 var frame_metrics: Dictionary = {}
 var fairy_effect: FairyEffect
-var trail_effect: TrailEffect
 var outfit_aura: OutfitEffect
 var outfit_effect: OutfitEffect
 var outfit_back_sprite: Sprite2D
@@ -69,7 +67,6 @@ var _transfer_trail_alpha := 0.0
 var _last_transfer_direction := 1.0
 var _time_wings_reveal := 0.0
 var _time_wings_was_active := false
-var _trail_preview_enabled := true
 
 func _ready() -> void:
 	_build_visual()
@@ -109,11 +106,6 @@ func _process(delta: float) -> void:
 		for index in fire_trails.size():
 			fire_trails[index].modulate.a = 0.55 + 0.18 * sin(Time.get_ticks_msec() * 0.018 + float(index) * PI)
 	_update_mode(player, delta)
-	var game := player.get_parent()
-	var app_state := int(game.get("app_state")) if game != null else GameManager.AppState.MENU
-	var transferring := player.support_state == PlayerController.SupportState.TRANSFERRING
-	var trail_moving := app_state == GameManager.AppState.PLAYING and (transferring or player.velocity.length_squared() > 1.0)
-	trail_effect.update_trail(to_global(Vector2(0.0, 24.0)), trail_moving, transferring, delta)
 	flash_material.set_shader_parameter("flash_amount", 0.78 if hurt_remaining > 0.18 else 0.0)
 	_update_cosmetic_anchors()
 
@@ -258,9 +250,6 @@ func set_cosmetics(equipped: Dictionary, catalog: Array) -> void:
 	if fairy_effect != null:
 		var pet_id := str(equipped_cosmetics.get("PET", ""))
 		fairy_effect.configure(cosmetic_data.get(pet_id, {}))
-	if trail_effect != null:
-		var trail_id := str(equipped_cosmetics.get("TRAIL", ""))
-		trail_effect.configure(cosmetic_data.get(trail_id, {}))
 	_load_outfit_art()
 	var current := frame_name
 	frame_name = ""
@@ -339,9 +328,6 @@ func preview_tick(delta: float) -> void:
 	var preview_bob := sin(pet_preview_time * 3.2) * 5.0
 	sprite.position = Vector2(0.0, BASE_Y + preview_bob)
 	_update_cosmetic_anchors()
-	var trail_sway := sin(pet_preview_time * 4.2) * 10.0
-	if _trail_preview_enabled:
-		trail_effect.update_preview(Vector2(trail_sway, 24.0 + preview_bob), delta)
 	var pet := cosmetic_sprites.get("PET") as Sprite2D
 	if pet != null and pet.visible:
 		var bob := sin(pet_preview_time * 4.8) * 2.5
@@ -349,11 +335,6 @@ func preview_tick(delta: float) -> void:
 		pet.position.y += bob
 		pet.scale = pet_preview_scale * Vector2(1.0 + wing_pulse, 1.0 - wing_pulse * 0.55)
 		fairy_effect.position = pet.position
-
-func set_trail_preview_enabled(enabled: bool) -> void:
-	_trail_preview_enabled = enabled
-	if not enabled and trail_effect != null:
-		trail_effect.clear()
 
 func show_front_preview() -> void:
 	_set_frame("front")
@@ -391,13 +372,7 @@ func _load_outfit_art() -> void:
 func visual_snapshot() -> Dictionary:
 	return {"mode": mode, "frame": frame_name, "skin": skin_id}
 
-func trail_snapshot() -> Dictionary:
-	return trail_effect.snapshot() if trail_effect != null else {"id": "", "points": 0, "visible": false}
-
 func _build_visual() -> void:
-	trail_effect = TRAIL_EFFECT.new()
-	trail_effect.name = "TrailEffect"
-	add_child(trail_effect)
 	takeoff_particles = CPUParticles2D.new()
 	takeoff_particles.name = "TransferTakeoffTrail"
 	takeoff_particles.amount = 7
