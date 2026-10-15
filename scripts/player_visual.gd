@@ -31,8 +31,8 @@ const ART_SCALE := 0.49
 const BASE_Y := -7.2
 const TIME_WINGS_TARGET_SCALE := 0.72
 const TIME_WINGS_REVEAL_SECONDS := 0.18
-# Source pixels at the central gem / clasp where the two wings join.
-const TIME_WING_ROOT := Vector2(707, 584)
+# Normalized source clasp position, independent of the texture import size.
+const TIME_WING_ROOT_UV := Vector2(707.0 / 1415.0, 584.0 / 1111.0)
 const FIRE_WING_ROOT := Vector2(256, 320) # Relative to the 512 x 512 atlas region.
 # Original trail coordinates relative to the fire clasp at its base scale.
 const FIRE_TRAIL_ROOT := Vector2(0, -12) + (FIRE_WING_ROOT - Vector2(256, 256)) * 0.32
@@ -437,7 +437,7 @@ func _build_visual() -> void:
 	time_wings.name = "TimeWings"
 	time_wings.texture = WING_TEXTURE
 	time_wings.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
-	time_wings.offset = WING_TEXTURE.get_size() * 0.5 - TIME_WING_ROOT
+	time_wings.offset = WING_TEXTURE.get_size() * (Vector2(0.5, 0.5) - TIME_WING_ROOT_UV)
 	time_wings.scale = Vector2.ONE * TIME_WINGS_TARGET_SCALE * 0.70
 	time_wings.z_index = -1
 	time_wings.modulate.a = 0.0
