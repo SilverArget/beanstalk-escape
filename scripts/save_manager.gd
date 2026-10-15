@@ -452,7 +452,7 @@ func _sanitize_settings(value: Variant) -> Dictionary:
 	var source: Dictionary = value if value is Dictionary else {}
 	return {
 		"sound": bool(source.get("sound", true)) and bool(source.get("music", true)),
-		"ghost": bool(source.get("ghost", true)),
+		"ghost": true,
 	}
 
 func _sanitize_meta_systems(value: Variant) -> Dictionary:

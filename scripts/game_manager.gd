@@ -974,10 +974,6 @@ func _toggle_sound_setting() -> void:
 	audio.set_sound_enabled(bool(meta_settings.sound))
 	_save_meta_settings()
 
-func _toggle_ghost_setting() -> void:
-	meta_settings.ghost = not bool(meta_settings.ghost)
-	_save_meta_settings()
-
 func _save_meta_settings() -> void:
 	save_manager.write_settings(meta_settings)
 	_refresh_settings_text()
@@ -988,7 +984,7 @@ func _apply_loaded_profile(loaded_profile: Dictionary) -> void:
 	var settings: Dictionary = systems.get("settings", {}) if systems.get("settings", {}) is Dictionary else {}
 	meta_settings = {
 		"sound": bool(settings.get("sound", true)) and bool(settings.get("music", true)),
-		"ghost": bool(settings.get("ghost", true)),
+		"ghost": true,
 	}
 	if audio != null:
 		audio.set_sound_enabled(bool(meta_settings.sound))
@@ -997,8 +993,7 @@ func _apply_loaded_profile(loaded_profile: Dictionary) -> void:
 func _refresh_settings_text() -> void:
 	if not has_node("HUD/SettingsSound"):
 		return
-	$HUD/SettingsSound.text = "SOUND ON" if bool(meta_settings.sound) else "SOUND OFF"
-	$HUD/SettingsGhost.text = "GHOST: ON" if bool(meta_settings.ghost) else "GHOST: OFF"
+	$HUD/SettingsSound.text = "MUSIC ON" if bool(meta_settings.sound) else "MUSIC OFF"
 
 func _show_shop() -> void:
 	app_state = AppState.SHOP
@@ -1354,8 +1349,7 @@ func _setup_hud() -> void:
 	var info_body := _add_label("InfoBody", Vector2.ZERO, "", 17)
 	info_body.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	info_body.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	_add_action_button("SettingsSound", "SOUND: ON", _toggle_sound_setting)
-	_add_action_button("SettingsGhost", "GHOST: ON", _toggle_ghost_setting)
+	_add_action_button("SettingsSound", "MUSIC ON", _toggle_sound_setting)
 	_add_action_button("InfoBack", "BACK", _show_menu)
 	var tutorial_panel := _add_label("TutorialPanel", Vector2.ZERO, "", 24)
 	tutorial_panel.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -1668,10 +1662,8 @@ func layout_hud_for_viewport(viewport_size: Vector2) -> void:
 	_layout_centered_label($HUD/InfoTitle, width, 36.0, 52.0, 24.0)
 	_layout_centered_label($HUD/InfoBody, width, 92.0, maxf(height - 190.0, 130.0), 64.0)
 	var setting_width := minf(220.0, width - 48.0)
-	for index in 2:
-		var setting_button: Button = [$HUD/SettingsSound, $HUD/SettingsGhost][index]
-		setting_button.position = Vector2((width - setting_width) * 0.5, height * 0.5 - 58.0 + index * 64.0)
-		setting_button.size = Vector2(setting_width, 52.0)
+	$HUD/SettingsSound.position = Vector2((width - setting_width) * 0.5, (height - 52.0) * 0.5)
+	$HUD/SettingsSound.size = Vector2(setting_width, 52.0)
 	$HUD/InfoBack.position = Vector2((width - 220.0) * 0.5, height - 76.0)
 	$HUD/InfoBack.size = Vector2(220.0, 52.0)
 	var tutorial_width := minf(640.0, width - 48.0)
@@ -1919,7 +1911,6 @@ func _update_hud() -> void:
 	$HUD/InfoBody.visible = credits_visible
 	$HUD/InfoBody.text = "" if settings_visible else "BEANSTALK ESCAPE\nMade with Godot\n\nArt: Kenney (CC0), Codex image_gen project assets, manager-provided logo (origin review pending)\nMusic: MintoDog and TAD (CC0)\nAudio: Kenney (CC0), Sonniss GDC 2026 (commercial use; raw redistribution prohibited)\nFont: Lilita One (SIL OFL 1.1)\nFull attributions: CREDITS.md"
 	$HUD/SettingsSound.visible = settings_visible
-	$HUD/SettingsGhost.visible = settings_visible
 	$HUD/InfoBack.visible = settings_visible or credits_visible
 	$HUD/TutorialPanel.visible = tutorial_active
 	$HUD/TutorialSkip.visible = tutorial_active
@@ -1958,7 +1949,7 @@ func _update_hud() -> void:
 	$HUD/TouchRight.visible = normal_playing and DisplayServer.is_touchscreen_available()
 	$HUD/TouchWings.visible = normal_playing and DisplayServer.is_touchscreen_available()
 	$HUD/TouchFire.visible = normal_playing and DisplayServer.is_touchscreen_available()
-	$HUD/Mute.text = "SOUND ON" if bool(meta_settings.sound) else "SOUND OFF"
+	$HUD/Mute.text = "MUSIC ON" if bool(meta_settings.sound) else "MUSIC OFF"
 	$HUD/StageBanner.text = stages.stage_banner if stages.stage_banner_remaining > 0.0 and app_state == AppState.PLAYING else ""
 	$HUD/StageCounter.text = "STAGE %d / 30" % stages.stage_for_y(player.global_position.y)
 	var route_hint_visible := tutorial_text != "CHANGE BRANCH" or stages.branch_targets_visible(player.global_position.y, get_viewport_rect().size.y)
