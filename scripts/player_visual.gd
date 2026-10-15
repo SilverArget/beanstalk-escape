@@ -31,6 +31,11 @@ const ART_SCALE := 0.49
 const BASE_Y := -7.2
 const TIME_WINGS_TARGET_SCALE := 0.72
 const TIME_WINGS_REVEAL_SECONDS := 0.18
+# Source pixels at the central gem / clasp where the two wings join.
+const TIME_WING_ROOT := Vector2(707, 584)
+const FIRE_WING_ROOT := Vector2(256, 320) # Relative to the 512 x 512 atlas region.
+# Original trail coordinates relative to the fire clasp at its base scale.
+const FIRE_TRAIL_ROOT := Vector2(0, -12) + (FIRE_WING_ROOT - Vector2(256, 256)) * 0.32
 const PET_PREVIEW_HEIGHT := 60.0
 const PET_PREVIEW_BOUNDS := {}
 
@@ -275,6 +280,12 @@ func _update_cosmetic_anchors() -> void:
 	var head_width := float(frame_anchor.get("head_width", float(used.size.x) * 0.42))
 	var source_to_local := func(source_point: Vector2) -> Vector2:
 		return sprite.position + (source_point - texture_size * 0.5) * ART_SCALE
+	var wing_anchor_data: Array = frame_anchor.get("outfit_back", [head_center.x, head_center.y + head_width * 0.38])
+	var wing_anchor: Vector2 = source_to_local.call(Vector2(float(wing_anchor_data[0]), float(wing_anchor_data[1])))
+	time_wings.position = wing_anchor
+	fire_wings.position = wing_anchor
+	for trail in fire_trails:
+		trail.position = wing_anchor
 	var pet := cosmetic_sprites.get("PET") as Sprite2D
 	var pet_data: Array = frame_anchor.get("pet_anchor", [])
 	if frame_name == "front" and pet_data.size() == 2 and pet.texture != null:
@@ -405,14 +416,17 @@ func _build_visual() -> void:
 	fire_texture.region = Rect2(1024, 512, 512, 512)
 	fire_wings.texture = fire_texture
 	fire_wings.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
-	fire_wings.position = Vector2(0.0, -12.0)
+	fire_wings.offset = fire_texture.get_size() * 0.5 - FIRE_WING_ROOT
 	fire_wings.scale = Vector2.ONE * 0.32
 	fire_wings.z_index = -1
 	fire_wings.visible = false
 	add_child(fire_wings)
 	for side in [-1.0, 1.0]:
 		var trail := Polygon2D.new()
-		trail.polygon = PackedVector2Array([Vector2(side * 22.0, -19.0), Vector2(side * 58.0, -7.0), Vector2(side * 30.0, 5.0), Vector2(side * 16.0, 2.0)])
+		var points := PackedVector2Array([Vector2(side * 22.0, -19.0), Vector2(side * 58.0, -7.0), Vector2(side * 30.0, 5.0), Vector2(side * 16.0, 2.0)])
+		for index in points.size():
+			points[index] -= FIRE_TRAIL_ROOT
+		trail.polygon = points
 		trail.color = Color("ff8a24")
 		trail.modulate.a = 0.65
 		trail.z_index = -2
@@ -423,7 +437,7 @@ func _build_visual() -> void:
 	time_wings.name = "TimeWings"
 	time_wings.texture = WING_TEXTURE
 	time_wings.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
-	time_wings.position = Vector2(0.0, -13.0)
+	time_wings.offset = WING_TEXTURE.get_size() * 0.5 - TIME_WING_ROOT
 	time_wings.scale = Vector2.ONE * TIME_WINGS_TARGET_SCALE * 0.70
 	time_wings.z_index = -1
 	time_wings.modulate.a = 0.0
