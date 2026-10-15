@@ -7,6 +7,27 @@ const MODE_NORMAL := "NORMAL"
 const MODE_NIGHTMARE := "NIGHTMARE"
 const SPIDER_RED_ZONE_PX := 96.0
 
+class SpeakerButton extends Button:
+	var sound_enabled := true:
+		set(value):
+			if sound_enabled != value:
+				sound_enabled = value
+				queue_redraw()
+
+	func _draw() -> void:
+		var origin := size * 0.5 - Vector2(16, 16)
+		var ink := get_theme_color("font_color")
+		draw_colored_polygon(PackedVector2Array([
+			origin + Vector2(2, 11), origin + Vector2(9, 11),
+			origin + Vector2(17, 4), origin + Vector2(17, 28),
+			origin + Vector2(9, 21), origin + Vector2(2, 21),
+		]), ink)
+		if sound_enabled:
+			draw_arc(origin + Vector2(17, 16), 8, -PI * 0.35, PI * 0.35, 16, ink, 2, true)
+			draw_arc(origin + Vector2(17, 16), 13, -PI * 0.35, PI * 0.35, 20, ink, 2, true)
+		else:
+			draw_line(origin + Vector2(1, 1), origin + Vector2(31, 31), ink, 3, true)
+
 class HeartIcon extends Control:
 	var filled := true
 	var loss_tween: Tween
@@ -60,7 +81,7 @@ class HeartIcon extends Control:
 		]), color)
 
 enum State { PLAYING, PLAYER_DEAD, PROTOTYPE_COMPLETE }
-enum AppState { MENU, INTRO, PLAYING, PAUSED, PLAYER_DEAD, FINAL_CINEMATIC, GAME_COMPLETE, SHOP, CHARACTER_SELECT, MAP, SETTINGS, CREDITS }
+enum AppState { MENU, INTRO, PLAYING, PAUSED, PLAYER_DEAD, FINAL_CINEMATIC, GAME_COMPLETE, SHOP, CHARACTER_SELECT, MAP, CREDITS }
 enum DeathCause { NONE, FALL, CAUGHT, OBSTACLE }
 var state := State.PLAYING
 var app_state := AppState.MENU
@@ -220,7 +241,7 @@ func _physics_process(delta: float) -> void:
 		_update_hud()
 		_publish_readonly_web_state()
 		return
-	if app_state in [AppState.PAUSED, AppState.MENU, AppState.PLAYER_DEAD, AppState.GAME_COMPLETE, AppState.SHOP, AppState.CHARACTER_SELECT, AppState.MAP, AppState.SETTINGS, AppState.CREDITS]:
+	if app_state in [AppState.PAUSED, AppState.MENU, AppState.PLAYER_DEAD, AppState.GAME_COMPLETE, AppState.SHOP, AppState.CHARACTER_SELECT, AppState.MAP, AppState.CREDITS]:
 		_apply_impact_fx(0.0)
 		_update_hud()
 		_publish_readonly_web_state()
@@ -337,7 +358,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		_pause_game()
 	elif event.is_action_pressed("pause") and app_state == AppState.PAUSED:
 		_resume_game()
-	elif event.is_action_pressed("pause") and app_state in [AppState.SETTINGS, AppState.CREDITS]:
+	elif event.is_action_pressed("pause") and app_state == AppState.CREDITS:
 		_show_menu()
 	if event.is_action_pressed("fire_wings"):
 		dispatch_command("fire_wings", "keyboard")
@@ -952,12 +973,6 @@ func _focus_menu_action() -> void:
 	if app_state == AppState.MENU:
 		($HUD/NewRun as Button).grab_focus()
 
-func _show_settings() -> void:
-	app_state = AppState.SETTINGS
-	_refresh_settings_text()
-	_update_hud()
-	($HUD/SettingsSound as Button).grab_focus()
-
 func _show_credits() -> void:
 	app_state = AppState.CREDITS
 	_update_hud()
@@ -976,7 +991,7 @@ func _toggle_sound_setting() -> void:
 
 func _save_meta_settings() -> void:
 	save_manager.write_settings(meta_settings)
-	_refresh_settings_text()
+	_refresh_sound_icon()
 	_update_hud()
 
 func _apply_loaded_profile(loaded_profile: Dictionary) -> void:
@@ -988,12 +1003,12 @@ func _apply_loaded_profile(loaded_profile: Dictionary) -> void:
 	}
 	if audio != null:
 		audio.set_sound_enabled(bool(meta_settings.sound))
-	_refresh_settings_text()
+	_refresh_sound_icon()
 
-func _refresh_settings_text() -> void:
-	if not has_node("HUD/SettingsSound"):
+func _refresh_sound_icon() -> void:
+	if not has_node("HUD/Mute"):
 		return
-	$HUD/SettingsSound.text = "MUSIC ON" if bool(meta_settings.sound) else "MUSIC OFF"
+	($HUD/Mute as SpeakerButton).sound_enabled = bool(meta_settings.sound)
 
 func _show_shop() -> void:
 	app_state = AppState.SHOP
@@ -1341,7 +1356,6 @@ func _setup_hud() -> void:
 	_add_action_button("Nightmare", "NIGHTMARE", _start_nightmare_run)
 	_add_action_button("Shop", "SHOP", _show_shop)
 	_add_action_button("Map", "MAP", _show_map)
-	_add_action_button("Settings", "SETTINGS", _show_settings)
 	_add_action_button("HowToPlay", "HOW TO PLAY", _replay_tutorial)
 	_add_action_button("Credits", "CREDITS", _show_credits)
 	_build_daily_card()
@@ -1349,7 +1363,6 @@ func _setup_hud() -> void:
 	var info_body := _add_label("InfoBody", Vector2.ZERO, "", 17)
 	info_body.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	info_body.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	_add_action_button("SettingsSound", "MUSIC ON", _toggle_sound_setting)
 	_add_action_button("InfoBack", "BACK", _show_menu)
 	var tutorial_panel := _add_label("TutorialPanel", Vector2.ZERO, "", 24)
 	tutorial_panel.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -1518,7 +1531,7 @@ func _setup_hud() -> void:
 	player.z_index = 5
 	economy.changed.connect(func(_snapshot): _refresh_daily_card())
 	_refresh_daily_card()
-	_refresh_settings_text()
+	_refresh_sound_icon()
 
 func _build_daily_card() -> void:
 	daily_card = PanelContainer.new()
@@ -1580,8 +1593,8 @@ func layout_hud_for_viewport(viewport_size: Vector2) -> void:
 	prompt.position = Vector2(0.0, logo.position.y + logo.size.y + 24.0)
 	prompt.size = Vector2(width, 26.0 if compact else 30.0)
 	prompt.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	$HUD/Mute.position = Vector2(width - 124.0, 10.0)
-	$HUD/Mute.size = Vector2(112.0, 46.0)
+	$HUD/Mute.position = Vector2(width - (68.0 if portrait else 128.0), 124.0)
+	$HUD/Mute.size = Vector2(56.0, 56.0)
 	$HUD/Lives.position = Vector2(14.0, 12.0)
 	$HUD/Lives.size = Vector2(max_lives * 29.0, 26.0)
 	var skill := $HUD/TimeWings as Label
@@ -1649,11 +1662,11 @@ func layout_hud_for_viewport(viewport_size: Vector2) -> void:
 		var menu_button: Button = primary_buttons[index]
 		menu_button.position = Vector2(menu_x + index * (menu_width + menu_gap), prompt.position.y + prompt.size.y + 8.0)
 		menu_button.size = Vector2(menu_width, 44.0 if compact else 48.0)
-	var secondary_width := minf(220.0, (width - 32.0 - menu_gap * 2.0) / 3.0)
-	var secondary_total := secondary_width * 3.0 + menu_gap * 2.0
+	var secondary_width := minf(220.0, (width - 32.0 - menu_gap) / 2.0)
+	var secondary_total := secondary_width * 2.0 + menu_gap
 	var secondary_x := (width - secondary_total) * 0.5
-	for index in 3:
-		var secondary_button: Button = [$HUD/Settings, $HUD/HowToPlay, $HUD/Credits][index]
+	for index in 2:
+		var secondary_button: Button = [$HUD/HowToPlay, $HUD/Credits][index]
 		secondary_button.position = Vector2(secondary_x + index * (secondary_width + menu_gap), $HUD/NewRun.position.y + $HUD/NewRun.size.y + 8.0)
 		secondary_button.size = Vector2(secondary_width, 44.0 if compact else 48.0)
 	if daily_card != null:
@@ -1661,9 +1674,6 @@ func layout_hud_for_viewport(viewport_size: Vector2) -> void:
 		daily_card.size = Vector2(minf(190.0 if compact else 220.0, width * 0.27), 108.0 if compact else 112.0)
 	_layout_centered_label($HUD/InfoTitle, width, 36.0, 52.0, 24.0)
 	_layout_centered_label($HUD/InfoBody, width, 92.0, maxf(height - 190.0, 130.0), 64.0)
-	var setting_width := minf(220.0, width - 48.0)
-	$HUD/SettingsSound.position = Vector2((width - setting_width) * 0.5, (height - 52.0) * 0.5)
-	$HUD/SettingsSound.size = Vector2(setting_width, 52.0)
 	$HUD/InfoBack.position = Vector2((width - 220.0) * 0.5, height - 76.0)
 	$HUD/InfoBack.size = Vector2(220.0, 52.0)
 	var tutorial_width := minf(640.0, width - 48.0)
@@ -1827,11 +1837,17 @@ func _add_menu_logo() -> void:
 	$HUD.add_child(logo)
 
 func _add_mute_button() -> void:
-	var button := Button.new()
+	var button := SpeakerButton.new()
 	button.name = "Mute"
 	button.theme = ui_theme
-	button.position = Vector2(824, 18)
-	button.size = Vector2(112, 52)
+	button.custom_minimum_size = Vector2(56, 56)
+	button.mouse_filter = Control.MOUSE_FILTER_STOP
+	button.focus_mode = Control.FOCUS_NONE
+	button.gui_input.connect(func(event: InputEvent):
+		if event is InputEventScreenTouch:
+			button.accept_event()
+			if event.pressed:
+				_toggle_sound_setting())
 	button.pressed.connect(_toggle_sound_setting)
 	$HUD.add_child(button)
 
@@ -1900,21 +1916,18 @@ func _update_hud() -> void:
 	$HUD/Nightmare.visible = app_state == AppState.MENU and bool(save_manager.replay_snapshot().nightmare_unlocked)
 	$HUD/Shop.visible = app_state == AppState.MENU
 	$HUD/Map.visible = app_state == AppState.MENU
-	$HUD/Settings.visible = app_state == AppState.MENU
 	$HUD/HowToPlay.visible = app_state == AppState.MENU
 	$HUD/Credits.visible = app_state == AppState.MENU
 	daily_card.visible = app_state == AppState.MENU
-	var settings_visible := app_state == AppState.SETTINGS
 	var credits_visible := app_state == AppState.CREDITS
-	$HUD/InfoTitle.visible = settings_visible or credits_visible
-	$HUD/InfoTitle.text = "SETTINGS" if settings_visible else "CREDITS"
+	$HUD/InfoTitle.visible = credits_visible
+	$HUD/InfoTitle.text = "CREDITS"
 	$HUD/InfoBody.visible = credits_visible
-	$HUD/InfoBody.text = "" if settings_visible else "BEANSTALK ESCAPE\nMade with Godot\n\nArt: Kenney (CC0), Codex image_gen project assets, manager-provided logo (origin review pending)\nMusic: MintoDog and TAD (CC0)\nAudio: Kenney (CC0), Sonniss GDC 2026 (commercial use; raw redistribution prohibited)\nFont: Lilita One (SIL OFL 1.1)\nFull attributions: CREDITS.md"
-	$HUD/SettingsSound.visible = settings_visible
-	$HUD/InfoBack.visible = settings_visible or credits_visible
+	$HUD/InfoBody.text = "BEANSTALK ESCAPE\nMade with Godot\n\nArt: Kenney (CC0), Codex image_gen project assets, manager-provided logo (origin review pending)\nMusic: MintoDog and TAD (CC0)\nAudio: Kenney (CC0), Sonniss GDC 2026 (commercial use; raw redistribution prohibited)\nFont: Lilita One (SIL OFL 1.1)\nFull attributions: CREDITS.md"
+	$HUD/InfoBack.visible = credits_visible
 	$HUD/TutorialPanel.visible = tutorial_active
 	$HUD/TutorialSkip.visible = tutorial_active
-	$HUD/Mute.visible = app_state == AppState.MENU
+	$HUD/Mute.visible = playing
 	$HUD/IntroText.visible = app_state in [AppState.INTRO, AppState.FINAL_CINEMATIC]
 	$HUD/Gauge.visible = normal_playing
 	$HUD/MiniMap.visible = normal_playing
@@ -1949,7 +1962,7 @@ func _update_hud() -> void:
 	$HUD/TouchRight.visible = normal_playing and DisplayServer.is_touchscreen_available()
 	$HUD/TouchWings.visible = normal_playing and DisplayServer.is_touchscreen_available()
 	$HUD/TouchFire.visible = normal_playing and DisplayServer.is_touchscreen_available()
-	$HUD/Mute.text = "MUSIC ON" if bool(meta_settings.sound) else "MUSIC OFF"
+	_refresh_sound_icon()
 	$HUD/StageBanner.text = stages.stage_banner if stages.stage_banner_remaining > 0.0 and app_state == AppState.PLAYING else ""
 	$HUD/StageCounter.text = "STAGE %d / 30" % stages.stage_for_y(player.global_position.y)
 	var route_hint_visible := tutorial_text != "CHANGE BRANCH" or stages.branch_targets_visible(player.global_position.y, get_viewport_rect().size.y)

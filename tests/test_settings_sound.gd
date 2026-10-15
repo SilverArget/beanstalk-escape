@@ -15,75 +15,82 @@ func _check(condition: bool, label: String) -> void:
 		failed += 1
 		print("FAIL " + label)
 
-func _click(control: Control) -> void:
+func _click(control: Control, touch := false) -> void:
 	for pressed in [true, false]:
-		var event := InputEventMouseButton.new()
-		event.position = control.get_global_rect().get_center()
-		event.global_position = event.position
-		event.button_index = MOUSE_BUTTON_LEFT
-		event.pressed = pressed
+		var event: InputEvent
+		if touch:
+			var finger := InputEventScreenTouch.new()
+			finger.position = control.get_global_rect().get_center()
+			finger.pressed = pressed
+			event = finger
+		else:
+			var mouse := InputEventMouseButton.new()
+			mouse.position = control.get_global_rect().get_center()
+			mouse.global_position = mouse.position
+			mouse.button_index = MOUSE_BUTTON_LEFT
+			mouse.pressed = pressed
+			event = mouse
 		root.push_input(event)
 		await process_frame
 
 func _run() -> void:
 	root.content_scale_size = Vector2i.ZERO
 	var saves := SaveManager.new(TEST_PATH)
-	for sound in [false, true]:
-		for music in [false, true]:
-			var legacy := saves._default_profile()
-			legacy.meta.gold = 321
-			legacy.meta_systems.settings = {"sound": sound, "music": music, "ghost": false}
-			var migrated := saves._sanitize_profile(legacy)
-			_check(migrated.meta_systems.settings == {"sound": sound and music, "ghost": true} and migrated.meta.gold == 321, "legacy sound=%s music=%s migration with ghost enabled" % [sound, music])
 	var game := (load("res://scenes/main.tscn") as PackedScene).instantiate() as GameManager
 	root.add_child(game)
 	await process_frame
 	game.save_manager = saves
 	game._apply_loaded_profile(saves._default_profile())
-	var legacy_profile := saves._default_profile()
-	legacy_profile.meta_systems.settings.ghost = false
-	game._apply_loaded_profile(legacy_profile)
-	_check(game.meta_settings.ghost, "loaded legacy ghost=false uses enabled default")
+	_check(not game.has_node("HUD/Settings") and not game.has_node("HUD/SettingsSound") and not game.has_method("_show_settings"), "settings screen and menu action removed")
+	var button := game.get_node("HUD/Mute") as Button
 	var master := AudioServer.get_bus_index("Master")
 	for viewport_size in [Vector2i(960, 540), Vector2i(1586, 669), Vector2i(540, 960)]:
 		root.size = viewport_size
 		await process_frame
-		game._show_settings()
+		for nightmare in [false, true]:
+			saves.profile = saves._default_profile()
+			saves.profile.replay.nightmare_unlocked = nightmare
+			game._show_menu()
+			game.layout_hud_for_viewport(Vector2(viewport_size))
+			await process_frame
+			var first := game.get_node("HUD/HowToPlay") as Button
+			var last := game.get_node("HUD/Credits") as Button
+			var new_run := game.get_node("HUD/NewRun") as Button
+			var map := game.get_node("HUD/Nightmare" if nightmare else "HUD/Map") as Button
+			_check(not button.visible and is_equal_approx((first.position.x + last.get_rect().end.x) * 0.5, viewport_size.x * 0.5) and is_equal_approx(last.position.x - first.get_rect().end.x, 8.0) and is_equal_approx((new_run.position.x + map.get_rect().end.x) * 0.5, viewport_size.x * 0.5), "%s centered menu nightmare=%s without sound button" % [viewport_size, nightmare])
+		game.restart()
+		game.tutorial_active = false
+		game._update_hud()
+		game.layout_hud_for_viewport(Vector2(viewport_size))
+		# Freeze simulation only; GUI input still traverses the real viewport.
+		game.set_physics_process(false)
+		game.player.set_physics_process(false)
+		game.spider.set_physics_process(false)
+		game.beans.set_physics_process(false)
+		var rect := button.get_global_rect()
+		var clear := button.visible and button.text.is_empty() and button.mouse_filter == Control.MOUSE_FILTER_STOP and Rect2(Vector2.ZERO, Vector2(viewport_size)).encloses(rect) and rect.size == Vector2(56, 56)
+		for name in ["Lives", "StageCounter", "GoldStatus", "XPStatus", "XPBar", "TimeWings", "TimeWingsOrb", "TimeWingsBar", "TimeWingsNotice", "FireWings", "Gauge", "StageBanner", "Tutorial", "TutorialPanel", "TutorialSkip", "TouchLeft", "TouchRight", "TouchWings", "TouchFire"]:
+			clear = clear and not rect.intersects((game.get_node("HUD/" + name) as Control).get_global_rect(), true)
+		_check(clear, "%s icon clear of HUD and mobile controls at %s" % [viewport_size, rect])
+		var branch := game.player.active_branch
+		await _click(button)
+		_check(not game.meta_settings.sound and not button.sound_enabled and AudioServer.is_bus_mute(master) and game.player.active_branch == branch and game.touch_actions.is_empty(), "%s mouse toggles all audio without movement" % viewport_size)
+		var key := InputEventKey.new()
+		key.physical_keycode = KEY_M
+		key.pressed = true
+		root.push_input(key)
 		await process_frame
-		var rects: Array[Rect2] = []
-		var clear := true
-		for name in ["InfoTitle", "SettingsSound", "InfoBack"]:
-			var control := game.get_node("HUD/" + name) as Control
-			var rect := control.get_global_rect()
-			clear = clear and control.visible and Rect2(Vector2.ZERO, Vector2(viewport_size)).encloses(rect) and is_equal_approx(rect.get_center().x, viewport_size.x * 0.5)
-			for other in rects:
-				clear = clear and not rect.intersects(other, true)
-			rects.append(rect)
-		_check(clear and not game.get_node("HUD/InfoBody").visible and game.get_node("HUD/InfoBody").text.is_empty() and not game.has_node("HUD/SettingsMusic") and not game.has_node("HUD/SettingsGhost"), "%s centered settings with only title, music and back" % viewport_size)
-		await _click(game.get_node("HUD/SettingsSound"))
-		_check(not game.meta_settings.sound and not game.audio.sound_enabled and AudioServer.is_bus_mute(master) and game.audio.music.volume_db <= -60.0 and game.get_node("HUD/Mute").text == "MUSIC OFF" and game.get_node("HUD/SettingsSound").text == "MUSIC OFF", "%s MUSIC mutes all audio and syncs menu" % viewport_size)
-		var mute := InputEventKey.new()
-		mute.physical_keycode = KEY_M
-		mute.pressed = true
-		root.push_input(mute)
+		key = InputEventKey.new()
+		key.physical_keycode = KEY_M
+		root.push_input(key)
 		await process_frame
-		mute = InputEventKey.new()
-		mute.physical_keycode = KEY_M
-		root.push_input(mute)
-		await process_frame
-		_check(game.meta_settings.sound and game.audio.sound_enabled and not AudioServer.is_bus_mute(master) and game.audio.music.volume_db > -60.0 and game.get_node("HUD/SettingsSound").text == "MUSIC ON" and game.get_node("HUD/Mute").text == "MUSIC ON", "%s M restores unified audio setting" % viewport_size)
-		game.ghost_playback = [{"t": 1.0, "x": 0.0, "y": 0.0}]
-		game._update_ghost(0.0)
-		_check(game.meta_settings.ghost and game.ghost_sprite.visible, "%s ghost playback remains enabled without settings button" % viewport_size)
-		await _click(game.get_node("HUD/InfoBack"))
-		_check(game.app_state == GameManager.AppState.MENU, "%s BACK opens menu" % viewport_size)
-		await _click(game.get_node("HUD/Mute"))
+		_check(game.meta_settings.sound and button.sound_enabled and not AudioServer.is_bus_mute(master), "%s M synchronizes speaker" % viewport_size)
+		await _click(button, true)
 		var reloaded := SaveManager.new(TEST_PATH)
-		_check(reloaded.meta_systems_snapshot().settings == {"sound": false, "ghost": true} and AudioServer.is_bus_mute(master), "%s menu MUSIC persists one audio setting" % viewport_size)
+		_check(not game.meta_settings.sound and not button.sound_enabled and reloaded.meta_systems_snapshot().settings.sound == false and game.touch_actions.is_empty() and game.player.active_branch == branch and not Input.is_action_pressed("move_right") and not Input.is_action_pressed("move_left"), "%s touch persists sound without movement" % viewport_size)
 		game._apply_loaded_profile(saves._default_profile())
 	game.audio.set_platform_audio_enabled(false)
-	game.audio.set_sound_enabled(true)
-	_check(AudioServer.is_bus_mute(master), "platform audio lock retained")
+	_check(AudioServer.is_bus_mute(master), "platform audio lock preserved")
 	game.queue_free()
 	await process_frame
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(TEST_PATH))

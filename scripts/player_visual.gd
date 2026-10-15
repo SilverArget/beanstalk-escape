@@ -122,7 +122,7 @@ func _update_mode(player: PlayerController, delta: float) -> void:
 	var app_state := int(game.get("app_state")) if game != null else GameManager.AppState.MENU
 	if app_state == GameManager.AppState.PAUSED:
 		return
-	if app_state in [GameManager.AppState.MENU, GameManager.AppState.INTRO, GameManager.AppState.SHOP, GameManager.AppState.CHARACTER_SELECT, GameManager.AppState.MAP, GameManager.AppState.SETTINGS, GameManager.AppState.CREDITS]:
+	if app_state in [GameManager.AppState.MENU, GameManager.AppState.INTRO, GameManager.AppState.SHOP, GameManager.AppState.CHARACTER_SELECT, GameManager.AppState.MAP, GameManager.AppState.CREDITS]:
 		_set_mode("menu", "hang")
 	elif app_state == GameManager.AppState.PLAYER_DEAD:
 		if mode != "death":
