@@ -96,61 +96,6 @@ def front_head_anchor(rgba: np.ndarray, outfit: np.ndarray) -> tuple[int, int, i
     return center_x, outfit_y0 - int(round(head_width * 0.55)), max(96, min(132, head_width))
 
 
-def front_emblem_anchor(outfit: np.ndarray) -> tuple[int, int, int]:
-    """Choose an upper-torso interior point, biased away from straps and edges."""
-    alpha = (outfit[:, :, 3] > 127).astype(np.uint8)
-    x0, y0, x1, y1 = opaque_bounds(outfit[:, :, 3])
-    target_x = (x0 + x1 - 1) * 0.5
-    target_y = y0 + (y1 - y0) * 0.25
-    distance = cv2.distanceTransform(alpha, cv2.DIST_L2, 5)
-    yy, xx = np.indices(alpha.shape)
-    search = (
-        (alpha > 0)
-        & (np.abs(xx - target_x) < 28)
-        & (np.abs(yy - target_y) < 24)
-    )
-    score = distance - np.abs(xx - target_x) * 0.45 - np.abs(yy - target_y) * 0.45
-    score[~search] = -1.0
-    y, x = np.unravel_index(int(np.argmax(score)), score.shape)
-    emblem_width = max(42, min(62, int(round(distance[y, x] * 2.4))))
-    return int(x), int(y), emblem_width
-
-
-def back_emblem_anchor(
-    rgba: np.ndarray,
-    anchor: tuple[int, int, int],
-    frame: str,
-) -> tuple[int, int, int]:
-    """Place a compact emblem midway from the shoulder line to the belt."""
-    center_x, shoulder_row, head_width = anchor
-    hint = BELT_ROW_HINTS[frame]
-    red = rgba[:, :, 0].astype(np.float32)
-    green = rgba[:, :, 1].astype(np.float32)
-    blue = rgba[:, :, 2].astype(np.float32)
-    alpha = rgba[:, :, 3]
-    yy, xx = np.indices(alpha.shape)
-    belt_brown = (
-        (alpha > 127)
-        & (red >= 45.0)
-        & (red <= 190.0)
-        & (green >= 18.0)
-        & (green <= 125.0)
-        & (blue <= 100.0)
-        & (red > green * 1.18)
-        & (green > blue * 0.78)
-        & (np.abs(xx - center_x) <= head_width * 0.48)
-    )
-    rows = np.arange(max(0, hint - 10), min(alpha.shape[0], hint + 11))
-    counts = belt_brown[rows].sum(axis=1).astype(np.float32)
-    scores = counts - np.abs(rows - hint) * 0.8
-    belt_row = int(rows[int(np.argmax(scores))])
-    emblem_y = int(round(shoulder_row + (belt_row - shoulder_row) * 0.45))
-    # Back gameplay frames are only 360 px wide.  A 14 px source-space
-    # canvas keeps even the widest emblem below 40% of the narrowest tunic.
-    emblem_width = max(12, min(14, int(round(head_width * 0.20))))
-    return center_x, emblem_y, emblem_width
-
-
 def garment_mask(rgba: np.ndarray, anchor: tuple[int, int, int]) -> Image.Image:
     center_x, head_y, head_width = anchor
     height, width = rgba.shape[:2]
@@ -196,16 +141,10 @@ def main() -> None:
             outfit_image = Image.open(outfit_path).convert("RGBA")
             outfit = np.asarray(outfit_image)
             anchor = front_head_anchor(rgba, outfit) if frame == "front" else head_anchor(rgba, frame)
-            if frame == "front":
-                emblem_x, emblem_y, emblem_width = front_emblem_anchor(outfit)
-            else:
-                emblem_x, emblem_y, emblem_width = back_emblem_anchor(rgba, anchor, frame)
             anchors[frame] = {
                 "head_center": [anchor[0], anchor[1]],
                 "head_width": anchor[2],
                 "face_view": "front" if frame in FRONT_FRAMES else "back",
-                "emblem_center": [emblem_x, emblem_y],
-                "emblem_width": emblem_width,
             }
             if frame == "front":
                 _, _, body_x1, body_y1 = opaque_bounds(rgba[:, :, 3])

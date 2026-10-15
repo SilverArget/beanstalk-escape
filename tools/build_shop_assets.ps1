@@ -50,14 +50,3 @@ foreach ($skin in @('m1','m2','m3','f1','f2','f3')) {
     $outfit.Save((Join-Path $target 'front_outfit_mask.png'),[System.Drawing.Imaging.ImageFormat]::Png)
     $front.Dispose(); $outfit.Dispose()
 }
-
-$sheet = [System.Drawing.Bitmap]::new((Join-Path $root 'assets/art/cosmetics/emblems_imagegen_2026-10-13.png'))
-$names = @('emblem_leaf','emblem_star','emblem_sun','emblem_bolt','emblem_spider','emblem_crown')
-for ($i=0; $i -lt 6; $i++) {
-    $cell = [System.Drawing.Rectangle]::new(($i%3)*512,[Math]::Floor($i/3)*512,512,512)
-    $icon = [System.Drawing.Bitmap]::new(256,256,[System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
-    $g=[System.Drawing.Graphics]::FromImage($icon); $g.InterpolationMode=[System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
-    $g.DrawImage($sheet,[System.Drawing.Rectangle]::new(0,0,256,256),$cell,[System.Drawing.GraphicsUnit]::Pixel); $g.Dispose()
-    $icon.Save((Join-Path $root "assets/art/cosmetics/$($names[$i]).png"),[System.Drawing.Imaging.ImageFormat]::Png); $icon.Dispose()
-}
-$sheet.Dispose()

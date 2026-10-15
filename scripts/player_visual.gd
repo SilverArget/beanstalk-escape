@@ -26,7 +26,6 @@ const BACK_FRAME_WIDTHS := {
 	"hang": 112.0, "jump": 189.0, "hurt": 129.0, "fall": 191.0, "cheer": 136.0,
 }
 const FRAME_NAMES := ["climb_left", "climb_right", "climb_reach", "hang"]
-const BACK_EMBLEM_FRAMES := ["climb_left", "climb_right", "climb_reach", "hang", "jump", "fall"]
 const SKIN_IDS := ["M1", "M2", "M3", "F1", "F2", "F3"]
 const FRAME_RATE := 8.0
 const ART_SCALE := 0.49
@@ -35,14 +34,6 @@ const TIME_WINGS_TARGET_SCALE := 0.72
 const TIME_WINGS_REVEAL_SECONDS := 0.18
 const PET_PREVIEW_HEIGHT := 60.0
 const PET_PREVIEW_BOUNDS := {}
-const EMBLEM_VISIBLE_BOUNDS := {
-	"emblem_bolt.png": Rect2(58, 2, 176, 234),
-	"emblem_crown.png": Rect2(20, 11, 212, 213),
-	"emblem_leaf.png": Rect2(13, 19, 243, 221),
-	"emblem_spider.png": Rect2(22, 0, 218, 231),
-	"emblem_star.png": Rect2(0, 11, 243, 245),
-	"emblem_sun.png": Rect2(1, 9, 247, 238),
-}
 
 var skin_id := "M1"
 var mode := "hang"
@@ -61,10 +52,9 @@ var transfer_trails: Array[Line2D] = []
 var fire_trails: Array[Polygon2D] = []
 var flash_material: ShaderMaterial
 var cosmetic_sprites: Dictionary = {}
-var equipped_cosmetics := {"OUTFIT": "", "EMBLEM": "", "PET": "", "TRAIL": ""}
+var equipped_cosmetics := {"OUTFIT": "", "PET": "", "TRAIL": ""}
 var cosmetic_data: Dictionary = {}
 var anchor_data: Dictionary = {}
-var emblem_layout: Dictionary = {}
 var frame_metrics: Dictionary = {}
 var fairy_effect: FairyEffect
 var trail_effect: TrailEffect
@@ -74,7 +64,6 @@ var outfit_back_sprite: Sprite2D
 var outfit_front_texture: Texture2D
 var pet_preview_time := 0.0
 var pet_preview_scale := Vector2.ONE
-var emblem_visible_bounds := Rect2()
 var _was_transferring := false
 var _transfer_trail_alpha := 0.0
 var _last_transfer_direction := 1.0
@@ -227,7 +216,6 @@ func _load_skin(requested_skin: String) -> void:
 			"used": Rect2i(Vector2i.ZERO, Vector2i(int(texture_size.x), int(texture_size.y * 0.75))),
 		}
 	_load_anchors()
-	_load_emblem_layout()
 	_load_outfit_art()
 	var current := frame_name
 	frame_name = ""
@@ -246,22 +234,12 @@ func _load_anchors() -> void:
 	if parsed is Dictionary:
 		anchor_data = (parsed as Dictionary).get("frames", {}).duplicate(true)
 
-func _load_emblem_layout() -> void:
-	emblem_layout.clear()
-	var path := "%s/emblem_layout.json" % FRAME_ROOT
-	var file := FileAccess.open(path, FileAccess.READ)
-	if file == null:
-		return
-	var parsed: Variant = JSON.parse_string(file.get_as_text())
-	if parsed is Dictionary:
-		emblem_layout = (parsed as Dictionary).get(skin_id.to_lower(), {}).duplicate(true)
-
 func set_cosmetics(equipped: Dictionary, catalog: Array) -> void:
 	equipped_cosmetics = equipped.duplicate(true)
 	cosmetic_data.clear()
 	for item in catalog:
 		cosmetic_data[str(item.get("id", ""))] = item
-	for slot in ["EMBLEM", "PET"]:
+	for slot in ["PET"]:
 		var item_id := str(equipped_cosmetics.get(slot, ""))
 		var layer := cosmetic_sprites.get(slot) as Sprite2D
 		if layer == null:
@@ -269,11 +247,9 @@ func set_cosmetics(equipped: Dictionary, catalog: Array) -> void:
 		layer.visible = not item_id.is_empty() and cosmetic_data.has(item_id)
 		if layer.visible:
 			var image_name := str(cosmetic_data[item_id].get("image", ""))
-			var art_folder := "pets" if slot == "PET" else "cosmetics"
+			var art_folder := "pets"
 			var art_path := "res://assets/art/%s/%s" % [art_folder, image_name]
 			layer.texture = load(art_path)
-			if slot == "EMBLEM" and layer.texture != null:
-				emblem_visible_bounds = EMBLEM_VISIBLE_BOUNDS.get(image_name, Rect2(Vector2.ZERO, layer.texture.get_size()))
 			if slot == "PET" and layer.texture != null:
 				var preview_bounds: Rect2 = PET_PREVIEW_BOUNDS.get(image_name, Rect2(Vector2.ZERO, layer.texture.get_size()))
 				var pet_scale := PET_PREVIEW_HEIGHT / maxf(preview_bounds.size.y, 1.0)
@@ -310,13 +286,7 @@ func _update_cosmetic_anchors() -> void:
 	var head_width := float(frame_anchor.get("head_width", float(used.size.x) * 0.42))
 	var source_to_local := func(source_point: Vector2) -> Vector2:
 		return sprite.position + (source_point - texture_size * 0.5) * ART_SCALE
-	var emblem := cosmetic_sprites.get("EMBLEM") as Sprite2D
 	var pet := cosmetic_sprites.get("PET") as Sprite2D
-	var emblem_measurement: Dictionary = emblem_layout.get(frame_name, {})
-	var emblem_data: Array = emblem_measurement.get("emblem_center", [])
-	var has_emblem_layout := emblem_data.size() == 2 \
-		and float(emblem_measurement.get("emblem_width", 0.0)) > 0.0 \
-		and bool(emblem_measurement.get("emblem_visible", false))
 	var pet_data: Array = frame_anchor.get("pet_anchor", [])
 	if frame_name == "front" and pet_data.size() == 2 and pet.texture != null:
 		var pet_bottom_left: Vector2 = source_to_local.call(Vector2(float(pet_data[0]), float(pet_data[1])))
@@ -354,16 +324,6 @@ func _update_cosmetic_anchors() -> void:
 		outfit_effect.position = sprite.position
 		outfit_effect.set_body_box(effect_size)
 		outfit_effect.visible = not outfit_effect.effect_name.is_empty()
-	if emblem.texture != null and has_emblem_layout:
-		var emblem_anchor: Vector2 = source_to_local.call(Vector2(float(emblem_data[0]), float(emblem_data[1])))
-		var emblem_width := float(emblem_measurement.get("emblem_width", 0.0))
-		var visible_width: float = emblem_visible_bounds.size.x if emblem_visible_bounds.size.x > 0.0 else float(emblem.texture.get_width())
-		var emblem_scale: float = emblem_width * ART_SCALE / maxf(visible_width, 1.0)
-		emblem.scale = Vector2.ONE * emblem_scale
-		var visible_center_offset: Vector2 = emblem_visible_bounds.get_center() - emblem.texture.get_size() * 0.5
-		emblem.position = emblem_anchor - visible_center_offset * emblem_scale
-	emblem.visible = emblem.texture != null and not str(equipped_cosmetics.get("EMBLEM", "")).is_empty() \
-		and has_emblem_layout and frame_name in BACK_EMBLEM_FRAMES
 
 func play_celebration() -> void:
 	celebrate_remaining = 0.75
@@ -544,11 +504,11 @@ void fragment() {
 	outfit_back_sprite.z_index = 1
 	outfit_back_sprite.visible = false
 	add_child(outfit_back_sprite)
-	for slot in ["EMBLEM", "PET"]:
+	for slot in ["PET"]:
 		var layer := Sprite2D.new()
 		layer.name = "%sCosmetic" % slot.capitalize()
 		layer.centered = true
-		layer.scale = Vector2.ONE * (0.13 if slot == "EMBLEM" else 0.17)
+		layer.scale = Vector2.ONE * 0.17
 		layer.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
 		layer.z_index = 2
 		layer.visible = false
@@ -569,7 +529,7 @@ void fragment() {
 	outfit_effect.z_index = 2
 	outfit_effect.visible = false
 	add_child(outfit_effect)
-	for slot in ["EMBLEM", "PET"]:
+	for slot in ["PET"]:
 		(cosmetic_sprites[slot] as Sprite2D).z_index = 3
 
 func _build_transfer_motion_trails() -> void:

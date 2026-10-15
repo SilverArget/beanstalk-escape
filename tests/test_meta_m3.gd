@@ -36,19 +36,19 @@ func _init() -> void:
 	_check(str(stage_ten_reward.get("type", "")) == "gold" and int(stage_ten_reward.get("amount", 0)) == 900, "stage 10 retired SILVER reward replaced with 900 gold")
 	economy.gold = 1000
 	economy.level = 1
-	_check(not economy.buy("emblem_sun") and economy.locked_reason("emblem_sun") == "LV 3", "level lock")
+	_check(not economy.buy("outfit_ocean") and economy.locked_reason("outfit_ocean") == "LV 3", "level lock")
 	economy.gold = 100
-	_check(not economy.buy("emblem_leaf") and economy.locked_reason("emblem_leaf") == "NEED 50 GOLD", "gold shortfall")
+	_check(not economy.buy("outfit_moss") and economy.locked_reason("outfit_moss") == "NEED 50 GOLD", "gold shortfall")
 	economy.gold = 150
-	_check(economy.buy("emblem_leaf") and economy.gold == 0 and economy.shop.owned.has("emblem_leaf"), "purchase")
-	var equipped_ok: bool = economy.equip("emblem_leaf") and economy.shop.equipped.EMBLEM == "emblem_leaf"
-	var unequipped_ok: bool = economy.equip("emblem_leaf") and economy.shop.equipped.EMBLEM == ""
+	_check(economy.buy("outfit_moss") and economy.gold == 0 and economy.shop.owned.has("outfit_moss"), "purchase")
+	var equipped_ok: bool = economy.equip("outfit_moss") and economy.shop.equipped.OUTFIT == "outfit_moss"
+	var unequipped_ok: bool = economy.equip("outfit_moss") and economy.shop.equipped.OUTFIT == ""
 	_check(equipped_ok and unequipped_ok, "equip and unequip")
-	economy.equip("emblem_leaf")
+	economy.equip("outfit_moss")
 	var loaded_save := SaveManager.new(TEST_PATH)
 	var loaded := EconomyManager.new()
 	var load_ok := loaded.initialize(loaded_save)
-	_check(load_ok and loaded.shop.owned.has("emblem_leaf") and loaded.shop.equipped.EMBLEM == "emblem_leaf" and loaded.gold == 0, "save and load")
+	_check(load_ok and loaded.shop.owned.has("outfit_moss") and loaded.shop.equipped.OUTFIT == "outfit_moss" and loaded.gold == 0, "save and load")
 	var shop := MetaShopUI.new()
 	root.add_child(shop)
 	await process_frame

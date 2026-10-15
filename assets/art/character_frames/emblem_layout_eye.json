@@ -1,6 +1,0 @@
-{"m1": {"climb_left": {"belt_y": 137}, "climb_reach": {"belt_y": 145}, "jump": {"belt_y": 138}},
- "m2": {"climb_left": {"belt_y": 135}, "jump": {"belt_y": 135}},
- "m3": {"climb_left": {"belt_y": 137}, "climb_reach": {"belt_y": 145, "back_left": 162, "back_right": 204}, "jump": {"belt_y": 140}, "fall": {"belt_y": 147}},
- "f1": {"climb_left": {"belt_y": 139}, "climb_right": {"belt_y": 137}, "climb_reach": {"belt_y": 143, "back_left": 162}, "jump": {"belt_y": 138}, "fall": {"belt_y": 160}},
- "f2": {"climb_left": {"belt_y": 135, "back_left": 165}, "climb_right": {"belt_y": 133}, "climb_reach": {"belt_y": 143}, "jump": {"belt_y": 140}},
- "f3": {"climb_right": {"belt_y": 130}, "hang": {"belt_y": 130}, "jump": {"belt_y": 133}, "fall": {"belt_y": 154}, "climb_reach": {"back_left": 160}}}

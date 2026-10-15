@@ -47,8 +47,8 @@ func _init() -> void:
 	_check(economy.initialize(save), "config loads")
 	platform.complete_get(false, null)
 
-	_check(economy.buy("emblem_leaf"), "buy starts bridge write")
-	_check(economy.equip("emblem_leaf"), "equip is queued while write is in flight")
+	_check(economy.buy("outfit_moss"), "buy starts bridge write")
+	_check(economy.equip("outfit_moss"), "equip is queued while write is in flight")
 	_check(economy.select_character("M2"), "character selection joins queued latest state")
 	platform.complete_set()
 	_check(platform.set_in_flight, "dirty queue starts one follow-up write")
@@ -58,21 +58,21 @@ func _init() -> void:
 	var final_shop: Dictionary = platform.stored.get("shop", {})
 	var final_equipped: Dictionary = final_shop.get("equipped", {})
 	_check(int(final_meta.get("gold", -1)) == 0, "latest gold reaches bridge")
-	_check(final_shop.get("owned", []).has("emblem_leaf"), "latest ownership reaches bridge")
-	_check(str(final_equipped.get("EMBLEM", "")) == "emblem_leaf", "latest equipment reaches bridge")
+	_check(final_shop.get("owned", []).has("outfit_moss"), "latest ownership reaches bridge")
+	_check(str(final_equipped.get("OUTFIT", "")) == "outfit_moss", "latest equipment reaches bridge")
 	_check(str(final_shop.get("selected_character", "")) == "M2", "latest character reaches bridge")
 
 	var stale := platform.stored.duplicate(true)
 	stale.meta.save_seq = maxi(int(stale.meta.save_seq) - 1, 0)
 	stale.meta.gold = 999
 	stale.shop.owned = ["M1", "F1"]
-	stale.shop.equipped.EMBLEM = ""
+	stale.shop.equipped.OUTFIT = ""
 	stale.shop.selected_character = "M1"
 	save._on_bridge_profile_loaded(true, stale)
 	_check(platform.set_in_flight, "older bridge profile queues local repair")
 	platform.complete_set()
 	var reloaded := SaveManager.new(TEST_PATH).load_profile()
-	_check(int(reloaded.meta.gold) == 0 and reloaded.shop.owned.has("emblem_leaf") and reloaded.shop.equipped.EMBLEM == "emblem_leaf" and reloaded.shop.selected_character == "M2", "older bridge profile does not overwrite local state")
+	_check(int(reloaded.meta.gold) == 0 and reloaded.shop.owned.has("outfit_moss") and reloaded.shop.equipped.OUTFIT == "outfit_moss" and reloaded.shop.selected_character == "M2", "older bridge profile does not overwrite local state")
 
 	print("test_save_bridge_queue.gd: %d PASS / %d FAIL" % [passed, failed])
 	save.platform_service = null
@@ -95,13 +95,13 @@ func _write_starting_profile() -> void:
 	var file := FileAccess.open(TEST_PATH, FileAccess.WRITE)
 	file.store_string(JSON.stringify({
 		"version": 4,
-		"meta": {"gold": 150, "xp": 0, "level": 3, "hair_refund_done": true, "save_seq": 4},
+		"meta": {"gold": 150, "xp": 0, "level": 3, "hair_refund_done": true, "emblem_refund_done": true, "save_seq": 4},
 		"progression": {"completed_stages": [], "skipped_stages": [], "treasures_claimed": []},
 		"daily": {"day_index": 0, "last_claim_date": ""},
 		"purchases": {"remove_ads": false},
 		"shop": {
 			"owned": ["M1", "F1", "M2"],
-			"equipped": {"OUTFIT": "", "EMBLEM": "", "PET": "", "TRAIL": ""},
+			"equipped": {"OUTFIT": "", "PET": "", "TRAIL": ""},
 			"selected_character": "M1",
 		},
 		"replay": {

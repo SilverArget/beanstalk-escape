@@ -4,7 +4,7 @@ extends Control
 signal closed
 signal run_started
 
-const SLOTS := ["CHARACTERS", "OUTFIT", "EMBLEM", "PET", "TRAIL"]
+const SLOTS := ["CHARACTERS", "OUTFIT", "PET", "TRAIL"]
 
 class TurnIcon:
 	extends Control
@@ -227,7 +227,7 @@ func refresh() -> void:
 
 func _sync_preview_tab(next_tab: String) -> void:
 	if next_tab != _last_preview_tab:
-		preview_back = next_tab == "EMBLEM"
+		preview_back = false
 		_last_preview_tab = next_tab
 	if preview != null:
 		preview.set_trail_preview_enabled(next_tab == "TRAIL")
@@ -473,8 +473,6 @@ func _preview_character(character_id: String) -> void:
 
 func _preview_item(item: Dictionary) -> void:
 	preview_item = item.duplicate(true)
-	if str(item.get("slot", "")) == "EMBLEM":
-		preview_back = true
 	_apply_preview()
 
 func _apply_preview() -> void:

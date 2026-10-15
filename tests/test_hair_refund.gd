@@ -35,7 +35,7 @@ func _write_legacy_hair_profile() -> void:
 		"purchases": {"remove_ads": false},
 		"shop": {
 			"owned": ["M1", "F1", "hair_blonde"],
-			"equipped": {"HAIR": "hair_blonde", "OUTFIT": "", "EMBLEM": "", "PET": "", "TRAIL": ""},
+			"equipped": {"HAIR": "hair_blonde", "OUTFIT": "", "PET": "", "TRAIL": ""},
 			"selected_character": "M1",
 		},
 	}, "\t"))

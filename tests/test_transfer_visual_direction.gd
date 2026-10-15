@@ -53,8 +53,6 @@ func _init() -> void:
 	if trails.size() == 3:
 		_check(trails[0].to_global(trails[0].points[-1]).x < trails[0].to_global(trails[0].points[0]).x, "right transfer throws its trail left")
 
-	var emblem := visual.cosmetic_sprites.get("EMBLEM") as Sprite2D
-	_check(emblem != null and emblem.get_parent() == visual, "cosmetics share the mirrored and leaning visual root")
 
 	var follower := PetFollower.new()
 	game.add_child(follower)
