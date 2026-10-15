@@ -1443,6 +1443,7 @@ func _setup_hud() -> void:
 	_add_action_button("RetryStage", "RESTART", _restart_from_death)
 	_add_action_button("RestartRun", "RESTART RUN", _restart_run_from_death)
 	_add_action_button("DeathMenu", "MENU", _menu_from_death)
+	_add_action_button("PauseMenu", "MENU", _menu_from_death)
 	_add_action_button("SkipStageAd", "SKIP STAGE (AD)", _skip_stage_with_ad)
 	_add_action_button("DoubleStageReward", "DOUBLE +0 (AD)", _double_stage_reward_with_ad)
 	_add_action_button("GetMoreGold", "GET 100 GOLD (AD)", _get_more_gold_with_ad)
@@ -1706,6 +1707,11 @@ func layout_hud_for_viewport(viewport_size: Vector2) -> void:
 	$HUD/Gauge.position = Vector2(width - 44.0 if portrait else width - 54.0, 205.0 if portrait else 86.0)
 	$HUD/Gauge.size = Vector2(28.0, maxf(map_height, 80.0))
 	_layout_centered_label($HUD/Pause, width, height * 0.38, 42.0, 40.0)
+	var pause_width := minf(230.0, width - 32.0)
+	$HUD/ReduceMotion.size = Vector2(pause_width, 52.0)
+	$HUD/ReduceMotion.position = Vector2((width - $HUD/ReduceMotion.size.x) * 0.5, $HUD/Pause.position.y + $HUD/Pause.size.y + 16.0)
+	$HUD/PauseMenu.size = Vector2(pause_width, 52.0)
+	$HUD/PauseMenu.position = Vector2((width - pause_width) * 0.5, $HUD/ReduceMotion.position.y + $HUD/ReduceMotion.size.y + 12.0)
 	_layout_centered_label($HUD/Dead, width, height * 0.36, 80.0, 36.0)
 	var result_margin := 18.0 if compact else 32.0
 	var result_top := 12.0 if compact else 20.0
@@ -1967,7 +1973,8 @@ func _update_hud() -> void:
 	$HUD/ContinueAd.visible = death_visible and _can_offer_ad_revive() and platform_services.is_rewarded_supported()
 	$HUD/RetryStage.visible = death_visible
 	$HUD/RestartRun.visible = false
-	$HUD/DeathMenu.visible = death_visible or app_state == AppState.PAUSED
+	$HUD/DeathMenu.visible = death_visible
+	$HUD/PauseMenu.visible = app_state == AppState.PAUSED
 	var dead_stage := stages.stage_for_y(player.global_position.y)
 	$HUD/SkipStageAd.visible = death_visible and dead_stage < Balance.STAGE_COUNT and int(death_count_by_stage.get(dead_stage, 0)) >= economy.value("skip_stage_death_count") and platform_services.is_rewarded_supported()
 	$HUD/DoubleStageReward.visible = meta_visible and double_reward_remaining > 0.0 and platform_services.is_rewarded_supported()
