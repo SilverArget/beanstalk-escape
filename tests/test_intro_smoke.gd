@@ -55,6 +55,9 @@ func _run() -> void:
 		var guardian := guardian_body.get("sprite") as Sprite2D
 		var sprite_rect: Rect2 = guardian.get_global_transform_with_canvas() * guardian.get_rect()
 		var text_rect := guardian_text.get_global_rect()
+		var player_sprite := (complete_game.player.get_node("Body") as PlayerVisual).sprite
+		var player_rect := player_sprite.get_global_transform_with_canvas() * player_sprite.get_rect()
+		_check(text_rect.end.y + 8.0 < player_rect.position.y and player_rect.end.y + 8.0 < sprite_rect.position.y and player_rect.position.x >= 0.0 and player_rect.end.x <= viewport_size.x and sprite_rect.size.y >= 100.0, "GUARDIAN-PLAYER-SEPARATION", "%s text_bottom=%.1f player_top=%.1f feet=%.1f spider_top=%.1f spider_height=%.1f" % [viewport_size, text_rect.end.y, player_rect.position.y, player_rect.end.y, sprite_rect.position.y, sprite_rect.size.y])
 		_check(text_rect.end.y + 8.0 < sprite_rect.position.y and sprite_rect.end.y <= viewport_size.y and sprite_rect.position.x >= 0.0 and sprite_rect.end.x <= viewport_size.x, "GUARDIAN-SEPARATION", "%s text_bottom=%.1f sprite_top=%.1f" % [viewport_size, text_rect.end.y, sprite_rect.position.y])
 		var logo := complete_game.get_node("HUD/MenuLogo") as TextureRect
 		var prompt := complete_game.get_node("HUD/Menu") as Label
@@ -62,7 +65,7 @@ func _run() -> void:
 	complete_game._update_intro(float(GameManager.INTRO_BEAT_SECONDS[2]) + 0.01)
 	var complete_snapshot := [complete_game.player.global_position, complete_game.spider.global_position, complete_game.beans.hit_count, complete_game.total_time]
 	_check(complete_game.app_state == GameManager.AppState.PLAYING and not complete_game.intro_active, "INTRO-COMPLETE", "state=%s duration=%.1f" % [GameManager.AppState.keys()[complete_game.app_state], 7.6])
-	var presentation_reset: bool = not complete_game.get_node("HUD/IntroSummit").visible and guardian_body.scale == Vector2.ONE and complete_game.player.get_node("Camera2D").offset == Vector2.ZERO
+	var presentation_reset: bool = not complete_game.get_node("HUD/IntroSummit").visible and guardian_body.scale == Vector2.ONE and guardian_body.position == Vector2.ZERO and complete_game.player.get_node("Camera2D").position == GameManager.CAMERA_PLAY_POSITION and complete_game.player.get_node("Camera2D").offset == Vector2.ZERO
 	_check(skip_snapshot == complete_snapshot and complete_game.player.global_position == Vector2.ZERO and complete_game.spider.global_position == Vector2(0.0, Balance.START_DISTANCE) and presentation_reset, "INTRO-EQUIVALENCE", "skip_and_complete_start_equal=%s presentation_reset=%s" % [str(skip_snapshot == complete_snapshot), str(presentation_reset)])
 	complete_game._finish_onboarding()
 	complete_game.save_manager.profile.replay.nightmare_unlocked = true

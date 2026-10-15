@@ -1756,20 +1756,28 @@ func _layout_intro_guardian(viewport_size: Vector2) -> void:
 	var guardian := body.get("sprite") as Sprite2D
 	if guardian == null or guardian.texture == null:
 		return
-	# Reserve the actual label height (including wrapped text), then fit the
-	# entire sprite below it. Padding also covers the small animated lean.
+	# Frame the real player sprite directly below the wrapped text panel.
+	# Only the intro camera moves; _finish_intro restores the normal run view.
 	var panel := $HUD/IntroText as Label
-	var top := panel.position.y + panel.size.y + 24.0
+	var camera := player.get_node("Camera2D") as Camera2D
+	var player_sprite := (player.get_node("Body") as PlayerVisual).sprite
+	camera.force_update_scroll()
+	var player_bounds := player_sprite.get_global_transform_with_canvas() * player_sprite.get_rect()
+	var player_top := panel.get_global_rect().end.y + 16.0
+	var canvas := get_viewport().get_canvas_transform()
+	camera.global_position += canvas.affine_inverse().basis_xform(Vector2(0.0, player_bounds.position.y - player_top))
+	camera.force_update_scroll()
+	player_bounds = player_sprite.get_global_transform_with_canvas() * player_sprite.get_rect()
+	var top := player_bounds.end.y + 24.0
 	var available := Vector2(maxf(viewport_size.x - 32.0, 1.0), maxf(viewport_size.y - top - 16.0, 1.0))
-	var bounds: Rect2 = guardian.transform * guardian.get_rect().grow(16.0)
+	canvas = get_viewport().get_canvas_transform()
+	var local_bounds: Rect2 = guardian.transform * guardian.get_rect().grow(16.0)
+	var bounds: Rect2 = Transform2D(canvas.x, canvas.y, Vector2.ZERO) * local_bounds
 	var fit := minf(INTRO_GUARDIAN_SCALE.x, minf(available.x / bounds.size.x, available.y / bounds.size.y))
 	body.scale = Vector2.ONE * fit
 	body.position = Vector2.ZERO
-	var camera := player.get_node("Camera2D") as Camera2D
-	camera.force_update_scroll()
-	var canvas := get_viewport().get_canvas_transform()
 	var center := Vector2(viewport_size.x * 0.5, top + available.y * 0.5)
-	spider.global_position = canvas.affine_inverse() * center - bounds.get_center() * fit
+	spider.global_position = canvas.affine_inverse() * center - local_bounds.get_center() * fit
 
 func _add_label(name: String, pos: Vector2, text: String, font_size: int) -> Label:
 	var label := Label.new()
