@@ -85,6 +85,8 @@ enum AppState { MENU, INTRO, PLAYING, PAUSED, PLAYER_DEAD, FINAL_CINEMATIC, GAME
 enum DeathCause { NONE, FALL, CAUGHT, OBSTACLE }
 var state := State.PLAYING
 var app_state := AppState.MENU
+var resume_available := false
+var menu_help_open := false
 var death_cause := DeathCause.NONE
 @onready var player: PlayerController = $Player
 @onready var spider: SpiderController = $Spider
@@ -408,6 +410,7 @@ func _handle_screen_touch(event: InputEventScreenTouch) -> void:
 			Input.action_release(released_action)
 
 func restart() -> void:
+	resume_available = false
 	_clear_direction_inputs()
 	for child in get_tree().get_nodes_in_group("run_transient"): child.free()
 	beans.reset_run()
@@ -650,6 +653,7 @@ func restart_stage() -> void:
 	_publish_readonly_web_state()
 
 func _on_prototype_completed() -> void:
+	resume_available = false
 	state = State.PROTOTYPE_COMPLETE
 	completed_stages[Balance.STAGE_COUNT] = true
 	_commit_run_completion()
@@ -849,6 +853,7 @@ func _lose_life(cause: DeathCause, respawn_from_checkpoint: bool) -> bool:
 	return true
 
 func _enter_player_dead(cause: DeathCause) -> void:
+	resume_available = false
 	state = State.PLAYER_DEAD
 	app_state = AppState.PLAYER_DEAD
 	death_cause = cause
@@ -959,6 +964,7 @@ func _resume_game() -> void:
 	_update_hud()
 
 func _show_menu() -> void:
+	menu_help_open = false
 	app_state = AppState.MENU
 	if meta_ui != null:
 		meta_ui.visible = false
@@ -966,12 +972,21 @@ func _show_menu() -> void:
 	spider.set_physics_process(false)
 	beans.set_physics_process(false)
 	golds.visible = false
+	layout_hud_for_viewport(get_viewport_rect().size)
 	_update_hud()
 	call_deferred("_focus_menu_action")
 
 func _focus_menu_action() -> void:
 	if app_state == AppState.MENU:
-		($HUD/NewRun as Button).grab_focus()
+		var action := $HUD/Resume if resume_available else $HUD/NewRun
+		(action as Button).grab_focus()
+
+func _resume_from_menu() -> void:
+	if app_state != AppState.MENU or not resume_available or platform_pause_active:
+		return
+	resume_available = false
+	golds.visible = true
+	_resume_game()
 
 func _show_credits() -> void:
 	app_state = AppState.CREDITS
@@ -979,6 +994,10 @@ func _show_credits() -> void:
 	($HUD/InfoBack as Button).grab_focus()
 
 func _replay_tutorial() -> void:
+	if resume_available:
+		menu_help_open = true
+		_show_credits()
+		return
 	mode = MODE_NORMAL
 	tutorial_force = true
 	restart()
@@ -1091,6 +1110,7 @@ func _restart_from_death() -> void:
 
 func _menu_from_death() -> void:
 	if app_state in [AppState.PLAYER_DEAD, AppState.PAUSED]:
+		resume_available = app_state == AppState.PAUSED
 		_show_menu()
 
 func _focus_default_death_action() -> void:
@@ -1352,6 +1372,7 @@ func _setup_hud() -> void:
 	$HUD/Complete.position = Vector2(300, 170)
 	_add_menu_logo()
 	_add_label("Menu", Vector2(320, 300), "CHOOSE AN OPTION", 22)
+	_add_action_button("Resume", "RESUME", _resume_from_menu)
 	_add_action_button("NewRun", "NEW RUN", _start_selected_run)
 	_add_action_button("Nightmare", "NIGHTMARE", _start_nightmare_run)
 	_add_action_button("Shop", "SHOP", _show_shop)
@@ -1652,6 +1673,12 @@ func layout_hud_for_viewport(viewport_size: Vector2) -> void:
 		commerce_buttons[index].size = Vector2(commerce_width, 48.0)
 	var menu_width := minf(220.0, width * 0.34)
 	var menu_gap := 8.0
+	var menu_button_height := 44.0 if compact else 48.0
+	var primary_y := prompt.position.y + prompt.size.y + 8.0
+	$HUD/Resume.position = Vector2((width - menu_width) * 0.5, primary_y)
+	$HUD/Resume.size = Vector2(menu_width, menu_button_height)
+	if resume_available:
+		primary_y += menu_button_height + menu_gap
 	var primary_buttons: Array[Button] = [$HUD/NewRun, $HUD/Shop, $HUD/Map]
 	if bool(save_manager.replay_snapshot().nightmare_unlocked):
 		primary_buttons.append($HUD/Nightmare)
@@ -1660,7 +1687,7 @@ func layout_hud_for_viewport(viewport_size: Vector2) -> void:
 	var menu_x := (width - menu_row_width) * 0.5
 	for index in primary_buttons.size():
 		var menu_button: Button = primary_buttons[index]
-		menu_button.position = Vector2(menu_x + index * (menu_width + menu_gap), prompt.position.y + prompt.size.y + 8.0)
+		menu_button.position = Vector2(menu_x + index * (menu_width + menu_gap), primary_y)
 		menu_button.size = Vector2(menu_width, 44.0 if compact else 48.0)
 	var secondary_width := minf(220.0, (width - 32.0 - menu_gap) / 2.0)
 	var secondary_total := secondary_width * 2.0 + menu_gap
@@ -1920,6 +1947,7 @@ func _update_hud() -> void:
 	player.visible = not result_visible
 	spider.visible = not result_visible
 	$HUD/MenuLogo.visible = app_state == AppState.MENU
+	$HUD/Resume.visible = app_state == AppState.MENU and resume_available
 	$HUD/NewRun.visible = app_state == AppState.MENU
 	$HUD/Nightmare.visible = app_state == AppState.MENU and bool(save_manager.replay_snapshot().nightmare_unlocked)
 	$HUD/Shop.visible = app_state == AppState.MENU
@@ -1932,6 +1960,9 @@ func _update_hud() -> void:
 	$HUD/InfoTitle.text = "CREDITS"
 	$HUD/InfoBody.visible = credits_visible
 	$HUD/InfoBody.text = "BEANSTALK ESCAPE\nMade with Godot\n\nArt: Kenney (CC0), Codex image_gen project assets, manager-provided logo (origin review pending)\nMusic: MintoDog and TAD (CC0)\nAudio: Kenney (CC0), Sonniss GDC 2026 (commercial use; raw redistribution prohibited)\nFont: Lilita One (SIL OFL 1.1)\nFull attributions: CREDITS.md"
+	if menu_help_open:
+		$HUD/InfoTitle.text = "HOW TO PLAY"
+		$HUD/InfoBody.text = "A / D or LEFT / RIGHT: switch branches\nTouch the left / right side to move\n\nClimb to the summit and stay ahead of the spider.\nAvoid falling beans, rocks and broken branches.\nCollect gold along the way.\n\nF / TIME: Time Wings (from stage 5)\nH / FIRE: Fire Wings (from stage 10)\n\nESC: pause / resume"
 	$HUD/InfoBack.visible = credits_visible
 	$HUD/TutorialPanel.visible = tutorial_active
 	$HUD/TutorialSkip.visible = tutorial_active
@@ -2135,6 +2166,7 @@ func _readonly_state_snapshot() -> Dictionary:
 		})
 	return {
 		"app_state": AppState.keys()[app_state],
+		"resume_available": resume_available,
 		"mode": mode,
 		"nightmare_unlocked": bool(save_manager.replay_snapshot().nightmare_unlocked),
 		"challenges": _challenge_snapshot(),
