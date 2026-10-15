@@ -27,27 +27,30 @@ func _click(control: Control) -> void:
 
 func _run() -> void:
 	root.content_scale_size = Vector2i.ZERO
+	var saves := SaveManager.new("user://qa/pause_legacy_settings.json")
+	var legacy := saves._default_profile()
+	legacy.meta.gold = 321
+	legacy.meta_systems.settings = {"sound": false, "music": true, "ghost": false, "reduced_motion": true, "reduce_effects": true}
+	var sanitized := saves._sanitize_profile(legacy)
+	_check(sanitized.meta_systems.settings == {"sound": false, "music": true, "ghost": false} and sanitized.meta.gold == 321, "legacy effects fields ignored; saved settings and gold retained")
 	var game := (load("res://scenes/main.tscn") as PackedScene).instantiate() as GameManager
 	root.add_child(game)
 	game._finish_intro()
 	game._finish_onboarding()
+	game.shake_remaining = 0.20
+	game._apply_impact_fx(0.0)
+	_check(not (game.player.get_node("Camera2D") as Camera2D).offset.is_zero_approx(), "full impact shake retained")
 	for viewport_size in [Vector2i(960, 540), Vector2i(1586, 669), Vector2i(540, 960)]:
 		root.size = viewport_size
 		await process_frame
 		game._pause_game()
 		await process_frame
-		var toggle := game.get_node("HUD/ReduceMotion") as CheckButton
-		var menu := game.get_node_or_null("HUD/PauseMenu") as Button
-		if menu == null:
-			menu = game.get_node("HUD/DeathMenu") as Button
-		var toggle_rect := toggle.get_global_rect()
+		var menu := game.get_node("HUD/PauseMenu") as Button
+		var title := game.get_node("HUD/Pause") as Label
 		var menu_rect := menu.get_global_rect()
 		var screen := Rect2(Vector2.ZERO, Vector2(viewport_size))
-		_check(toggle.visible and menu.visible and not toggle_rect.intersects(menu_rect), "%s separate visible controls" % viewport_size)
-		_check(screen.encloses(toggle_rect) and screen.encloses(menu_rect) and game.get_node("HUD/Pause").get_global_rect().end.y <= toggle_rect.position.y, "%s full controls below title" % viewport_size)
-		var previous := game.reduced_motion
-		await _click(toggle)
-		_check(game.reduced_motion != previous, "%s effects mouse click" % viewport_size)
+		_check(game.get_node_or_null("HUD/ReduceMotion") == null and game.find_children("*", "CheckButton", true, false).is_empty(), "%s no effects toggle" % viewport_size)
+		_check(title.visible and menu.visible and screen.encloses(menu_rect) and title.get_global_rect().end.y + 16.0 <= menu_rect.position.y and is_equal_approx(menu_rect.get_center().x, viewport_size.x * 0.5) and is_equal_approx(title.get_global_rect().get_center().x, viewport_size.x * 0.5), "%s centered title and menu" % viewport_size)
 		await _click(menu)
 		_check(game.app_state == GameManager.AppState.MENU, "%s menu mouse click" % viewport_size)
 		game.get_node("HUD/NewRun").pressed.emit()

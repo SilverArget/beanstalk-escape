@@ -96,7 +96,6 @@ var tutorial_text := ""
 var touch_actions := {}
 var dead_restart_delay := 0.0
 var confirm_pending := false
-var reduced_motion := false
 var ui_theme: Theme
 var stage_restart_count := 0
 var stage_restart_start_distance := 0.0
@@ -493,7 +492,7 @@ func _update_intro(delta: float) -> void:
 			camera.position = CAMERA_PLAY_POSITION.lerp(INTRO_LOOK_UP_POSITION, progress * progress * (3.0 - 2.0 * progress))
 		elif intro_beat == 2:
 			camera.position = CAMERA_PLAY_POSITION
-			if not reduced_motion and intro_t < 0.34:
+			if intro_t < 0.34:
 				var shake_strength := 9.0 * (1.0 - intro_t / 0.34)
 				camera.offset = Vector2.from_angle(intro_t * TAU * 18.0) * shake_strength
 			else:
@@ -819,8 +818,7 @@ func _lose_life(cause: DeathCause, respawn_from_checkpoint: bool) -> bool:
 	damage_events += 1
 	challenge_eligible = false
 	hit_invulnerability_remaining = float(economy.config.get("hit_invulnerability_seconds", 1.5))
-	if not reduced_motion:
-		shake_remaining = 0.20
+	shake_remaining = 0.20
 	if current_lives <= 0:
 		_enter_player_dead(cause)
 	elif respawn_from_checkpoint:
@@ -1321,7 +1319,7 @@ func _spider_start_gap(stage_number: int) -> float:
 func _apply_impact_fx(_delta: float) -> void:
 	var camera := player.get_node_or_null("Camera2D") as Camera2D
 	if camera != null:
-		if shake_remaining > 0.0 and not reduced_motion and app_state == AppState.PLAYING:
+		if shake_remaining > 0.0 and app_state == AppState.PLAYING:
 			var progress := 1.0 - shake_remaining / 0.20
 			camera.offset = Vector2.from_angle(progress * TAU * 7.0) * (6.0 * shake_remaining / 0.20)
 		else:
@@ -1507,7 +1505,6 @@ func _setup_hud() -> void:
 	$HUD.add_child(danger_overlay)
 	danger_overlay.game = self
 	_add_mute_button()
-	_add_reduce_motion_toggle()
 	_add_touch_button("TouchLeft", Rect2(36, 392, 136, 132), "LEFT", "move_left")
 	_add_touch_button("TouchRight", Rect2(180, 392, 136, 132), "RIGHT", "move_right")
 	_add_touch_button("TouchWings", Rect2(640, 392, 145, 132), "TIME", "time_wings")
@@ -1708,10 +1705,8 @@ func layout_hud_for_viewport(viewport_size: Vector2) -> void:
 	$HUD/Gauge.size = Vector2(28.0, maxf(map_height, 80.0))
 	_layout_centered_label($HUD/Pause, width, height * 0.38, 42.0, 40.0)
 	var pause_width := minf(230.0, width - 32.0)
-	$HUD/ReduceMotion.size = Vector2(pause_width, 52.0)
-	$HUD/ReduceMotion.position = Vector2((width - $HUD/ReduceMotion.size.x) * 0.5, $HUD/Pause.position.y + $HUD/Pause.size.y + 16.0)
 	$HUD/PauseMenu.size = Vector2(pause_width, 52.0)
-	$HUD/PauseMenu.position = Vector2((width - pause_width) * 0.5, $HUD/ReduceMotion.position.y + $HUD/ReduceMotion.size.y + 12.0)
+	$HUD/PauseMenu.position = Vector2((width - pause_width) * 0.5, $HUD/Pause.position.y + $HUD/Pause.size.y + 16.0)
 	_layout_centered_label($HUD/Dead, width, height * 0.36, 80.0, 36.0)
 	var result_margin := 18.0 if compact else 32.0
 	var result_top := 12.0 if compact else 20.0
@@ -1859,16 +1854,6 @@ func _add_mute_button() -> void:
 	button.pressed.connect(_toggle_sound_setting)
 	$HUD.add_child(button)
 
-func _add_reduce_motion_toggle() -> void:
-	var toggle := CheckButton.new()
-	toggle.name = "ReduceMotion"
-	toggle.theme = ui_theme
-	toggle.text = "REDUCE EFFECTS"
-	toggle.position = Vector2(372, 278)
-	toggle.size = Vector2(220, 48)
-	toggle.toggled.connect(func(value: bool): reduced_motion = value)
-	$HUD.add_child(toggle)
-
 func _add_touch_button(name: String, rect: Rect2, text: String, action: String) -> void:
 	var button := Button.new()
 	button.name = name
@@ -1952,7 +1937,6 @@ func _update_hud() -> void:
 	$HUD/TutorialSkip.visible = tutorial_active
 	$HUD/Mute.visible = app_state == AppState.MENU
 	$HUD/IntroText.visible = app_state in [AppState.INTRO, AppState.FINAL_CINEMATIC]
-	$HUD/ReduceMotion.visible = app_state == AppState.PAUSED
 	$HUD/Gauge.visible = normal_playing
 	$HUD/MiniMap.visible = normal_playing
 	$HUD/StageBanner.visible = normal_playing
