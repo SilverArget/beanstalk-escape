@@ -1,20 +1,20 @@
 extends Node2D
 
 const ATMOSPHERE_TEXTURE := preload("res://assets/art/world/sunny_atmosphere.png")
-const VINE_SURFACE_TEXTURE := preload("res://assets/art/world/vine_helix_tile_v4.png")
-const BRANCH_SURFACE_TEXTURE := preload("res://assets/art/world/bean_branch_surface_v1.png")
 const BRANCH_DETAILS_TEXTURE := preload("res://assets/art/world/vine_details_atlas_v2.png")
 const FOLIAGE_TEXTURE := preload("res://assets/art/world/foliage_atlas.png")
 const SKY_TOP := Color("366bb4")
 const SKY_BOTTOM := Color("80d5f4")
-const OUTLINE_COLOR := Color8(25, 68, 49)
-const VINE_BASE_COLOR := Color("4c9a4d")
 const MODULE_HEIGHT := 256.0
-const TEXTURE_REPEAT := 52.0
 const MAX_TEXTURE_ELEMENT := 54.0
 const GRIP_DETAIL_SIZE := 12.0
 const MAX_LEAF_SIZE := 140.0
-const VISUAL_OUTLINE_WIDTH := 5.0
+const VISUAL_OUTLINE_WIDTH := 1.0
+# Three rounded shoots, lit from the upper left like the logo. The two
+# winding shoots disappear around the sides of the solid supporting shoot.
+const SHOOT_PITCH := 610.0
+const SHOOT_PROFILE := [0.0, 0.02, 0.13, 0.35, 0.58, 0.84, 0.98, 1.0]
+const SHOOT_COLORS := [Color("245332"), Color("367635"), Color("6ba72e"), Color("b4d844"), Color("79b82f"), Color("3c8c35"), Color("28633a"), Color("245332")]
 const FOLIAGE_CELL := Vector2(512.0, 512.0)
 const BRANCH_DETAIL_GRID := Vector2(4.0, 2.0)
 const BRANCH_NODE_SPACING := [173.0, 211.0, 187.0]
@@ -42,8 +42,6 @@ var draw_mesh_cache: Array[ArrayMesh] = []
 var detail_vertices := PackedVector2Array()
 var detail_uvs := PackedVector2Array()
 var detail_indices := PackedInt32Array()
-var outline_vertices := PackedVector2Array()
-var outline_indices := PackedInt32Array()
 
 func _ready() -> void:
 	texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
@@ -79,8 +77,6 @@ func _draw() -> void:
 	detail_vertices.clear()
 	detail_uvs.clear()
 	detail_indices.clear()
-	outline_vertices.clear()
-	outline_indices.clear()
 	branch_point_count = 0
 	var camera_top := cached_camera_top if not is_inf(cached_camera_top) else _camera_top()
 	if qa_sky_only:
@@ -90,7 +86,6 @@ func _draw() -> void:
 		_draw_trunk_features(camera_top)
 	for stage_number in range(3, Balance.STAGE_COUNT + 1):
 		_draw_stage_branches(stage_number, camera_top)
-	_flush_outlines()
 	_flush_branch_details()
 
 func _draw_sky(camera_top: float) -> void:
@@ -164,8 +159,7 @@ func _draw_foreground_foliage(camera_top: float) -> void:
 		_draw_foliage_sprite(4, center, Vector2(MAX_LEAF_SIZE, MAX_LEAF_SIZE), side < 0.0, Color(1.0, 1.0, 1.0, 0.32))
 
 func _draw_trunk(camera_top: float) -> void:
-	# One continuous ribbon becomes the middle Stage 3 vine. Because the width,
-	# centerline, UV and glaze all live in this draw call, there is no fork seam.
+	# World-Y phase continues through the narrowing middle vine into Stage 3.
 	var transition_top_y := _stage_3_bottom_y() - STAGE_3_ENTRY_HEIGHT
 	var visible_top := maxf(transition_top_y, camera_top - 64.0 - SURFACE_CACHE_MARGIN_PX)
 	var visible_bottom := minf(740.0, camera_top + 620.0 + SURFACE_CACHE_MARGIN_PX)
@@ -175,16 +169,46 @@ func _draw_trunk(camera_top: float) -> void:
 	var y := visible_bottom
 	while y > visible_top:
 		centers.append(Vector2(_main_stem_center_x(y), y))
-		y = maxf(y - 32.0, visible_top)
+		y = maxf((ceil(y / 12.0) - 1.0) * 12.0, visible_top)
 	if centers.is_empty() or centers[centers.size() - 1].y != visible_top:
 		centers.append(Vector2(_main_stem_center_x(visible_top), visible_top))
-	_draw_textured_ribbon(centers, _trunk_widths(centers), -visible_bottom / MODULE_HEIGHT, true, true, false, 0, 0, false, true)
+	_draw_textured_ribbon(centers, _trunk_widths(centers))
+	if not qa_support_mask:
+		_draw_stem_growth(visible_top, visible_bottom)
 
 func _trunk_widths(points: PackedVector2Array) -> PackedFloat32Array:
 	var widths := PackedFloat32Array()
 	for point in points:
-		widths.append(_main_stem_width(point.y))
+		var width := _main_stem_width(point.y)
+		# Match the branch's actual painted width at the join, without changing
+		# the authored main-stem width or any support calculation.
+		var join_y := _stage_3_bottom_y() - STAGE_3_ENTRY_HEIGHT
+		var join_mix := 1.0 - smoothstep(join_y, join_y + 96.0, point.y)
+		width += (_branch_painted_width(1, point.y) - ScaleLock.BRANCH_WIDTH) * join_mix
+		widths.append(width)
 	return widths
+
+func _draw_stem_growth(top_y: float, bottom_y: float) -> void:
+	# Stable world-space nodes survive surface-cache scrolls without popping.
+	var node := int(ceil(top_y / 157.0))
+	while float(node) * 157.0 < bottom_y:
+		var y := float(node) * 157.0 + sin(float(node) * 2.3) * 23.0
+		var side := -1.0 if posmod(node, 2) == 0 else 1.0
+		var width := _main_stem_width(y)
+		var leaf_size := 88.0 + 18.0 * _detail_noise(1, 0, node, 1)
+		var angle := side * (0.48 + 0.22 * _detail_noise(1, 0, node, 2))
+		# Atlas leaf roots sit near local (0, +0.4 * size). Anchor that root
+		# inside the stem instead of placing a floating leaf beside its edge.
+		var root := Vector2(_main_stem_center_x(y) + side * width * 0.36, y)
+		var center := root - Vector2(0.0, leaf_size * 0.39).rotated(angle)
+		_draw_branch_detail_sprite(posmod(node, 4), center, Vector2.ONE * leaf_size, angle, side < 0.0)
+		if posmod(node, 3) == 0:
+			var curl_size := 76.0 + 12.0 * _detail_noise(1, 0, node, 3)
+			var curl_angle := -side * 0.55
+			var curl_root := Vector2(_main_stem_center_x(y + 57.0) - side * _main_stem_width(y + 57.0) * 0.34, y + 57.0)
+			var curl_center := curl_root - Vector2(0.0, curl_size * 0.4).rotated(curl_angle)
+			_draw_branch_detail_sprite(6 + posmod(node, 2), curl_center, Vector2.ONE * curl_size, curl_angle, side > 0.0)
+		node += 1
 
 func _main_stem_center_x(world_y: float) -> float:
 	var stage_3_bottom := _stage_3_bottom_y()
@@ -289,25 +313,26 @@ func _branch_visual_x(route: int, world_y: float) -> float:
 func _draw_branch_ribbon(points: PackedVector2Array, route: int, cap_start: bool, cap_end: bool) -> void:
 	var widths := PackedFloat32Array()
 	for point in points:
-		var spacing: float = BRANCH_NODE_SPACING[route]
-		var node_phase := fposmod(-point.y + float(route) * 47.0, spacing)
-		var node_distance := minf(node_phase, spacing - node_phase)
-		var node_weight := 0.5 + 0.5 * cos(clampf(node_distance / 30.0, 0.0, 1.0) * PI)
-		var breathing := sin((-point.y + float(route) * 67.0) * TAU / 390.0) * 4.5
-		widths.append(clampf(45.0 + breathing + node_weight * 5.5, 36.0, 56.0))
+		widths.append(_branch_painted_width(route, point.y))
 	# Taper the retained ribbon itself. Painting a taper over a full-width ribbon
 	# leaves the old square silhouette visible underneath.
 	if cap_start:
 		_taper_branch_endpoint(points, widths, true)
 	if cap_end:
 		_taper_branch_endpoint(points, widths, false)
-	# All routes share one material phase; world position must not turn the
-	# center vine yellow while its neighbours remain green.
-	_draw_textured_ribbon(points, widths, 0.5, true, true, false, 0, 0, true)
+	_draw_textured_ribbon(points, widths)
 	if cap_start and not qa_support_mask:
 		_draw_branch_tip_detail(points[0], (points[0] - points[1]).normalized(), route, true)
 	if cap_end and not qa_support_mask:
 		_draw_branch_tip_detail(points[points.size() - 1], (points[points.size() - 1] - points[points.size() - 2]).normalized(), route, false)
+
+func _branch_painted_width(route: int, world_y: float) -> float:
+	var spacing: float = BRANCH_NODE_SPACING[route]
+	var node_phase := fposmod(-world_y + float(route) * 47.0, spacing)
+	var node_distance := minf(node_phase, spacing - node_phase)
+	var node_weight := 0.5 + 0.5 * cos(clampf(node_distance / 30.0, 0.0, 1.0) * PI)
+	var breathing := sin((-world_y + float(route) * 67.0) * TAU / 390.0) * 4.5
+	return clampf(45.0 + breathing + node_weight * 5.5, 36.0, 56.0)
 
 func _taper_branch_endpoint(points: PackedVector2Array, widths: PackedFloat32Array, at_start: bool) -> void:
 	var endpoint_index := 0 if at_start else points.size() - 1
@@ -393,130 +418,87 @@ func _flush_branch_details() -> void:
 	var mesh := _build_ribbon_mesh(detail_vertices, detail_uvs, detail_indices)
 	draw_mesh(mesh, BRANCH_DETAILS_TEXTURE)
 
-func _draw_textured_ribbon(points: PackedVector2Array, widths: PackedFloat32Array, texture_phase: float, draw_outline := true, world_locked_v := false, tangent_uv := false, outline_start_trim := 0, outline_end_trim := 0, branch_material := false, blend_to_branch_material := false) -> void:
+func _draw_textured_ribbon(points: PackedVector2Array, widths: PackedFloat32Array) -> void:
 	if points.size() < 2:
 		return
-	var distances := PackedFloat32Array([0.0])
-	for point_index in range(1, points.size()):
-		distances.append(distances[point_index - 1] + points[point_index - 1].distance_to(points[point_index]))
-	var total_distance := distances[distances.size() - 1]
-	var vertical_span := absf(points[points.size() - 1].y - points[0].y)
-	# Follow the ribbon tangent, then normalize to the same world-Y phase at
-	# both ends. This removes the fan-like UV stretch at the Y split without
-	# introducing a texture jump where the split meets trunk or branches.
-	var endpoint_flow_scale := vertical_span / total_distance if vertical_span > 1.0 and total_distance > 0.0 else 1.0
-	# Never stretch a 52 px source feature beyond the §5.1 54 px ceiling.
-	var flow_scale := maxf(TEXTURE_REPEAT / MAX_TEXTURE_ELEMENT, endpoint_flow_scale)
-	var start_v := -points[0].y / MODULE_HEIGHT if vertical_span > 1.0 else texture_phase
-	var extra_width := VISUAL_OUTLINE_WIDTH if qa_support_mask and qa_support_mask_include_outline else 0.0
-	var strip := _ribbon_geometry(points, widths, extra_width, texture_phase)
-	var mesh_vertices := PackedVector2Array()
-	var mesh_uvs := PackedVector2Array()
-	var mesh_indices := PackedInt32Array()
-	for index in points.size():
-		var left: Vector2 = strip.left[index]
-		var right: Vector2 = strip.right[index]
-		mesh_vertices.append(left)
-		mesh_vertices.append(right)
-		var center_v := start_v + distances[index] * flow_scale / MODULE_HEIGHT
-		if qa_support_mask:
-			mesh_uvs.append(Vector2.ZERO)
-			mesh_uvs.append(Vector2.RIGHT)
-		elif tangent_uv:
-			# The source fibers run along V. Mapping V to path distance makes them
-			# follow a curved transfer arch instead of forming a vertical barcode.
-			mesh_uvs.append(Vector2(texture_phase - widths[index] * 0.5 / 512.0, center_v))
-			mesh_uvs.append(Vector2(texture_phase + widths[index] * 0.5 / 512.0, center_v))
-		elif branch_material:
-			# Every lane samples the same green-lit local band. World-X sampling made
-			# the center lane land on the atlas' yellow highlight column.
-			var local_half_u := widths[index] * 0.5 / 512.0
-			mesh_uvs.append(Vector2(0.19 - local_half_u, center_v))
-			mesh_uvs.append(Vector2(0.19 + local_half_u, center_v))
-		elif world_locked_v:
-			var left_v := -left.y / MODULE_HEIGHT
-			var right_v := -right.y / MODULE_HEIGHT
-			var left_u := _surface_u(left.x, left_v)
-			var right_u := _surface_u(right.x, right_v)
-			if blend_to_branch_material:
-				var stage_3_bottom := _stage_3_bottom_y()
-				var mix_amount := clampf((stage_3_bottom - points[index].y) / STAGE_3_ENTRY_HEIGHT, 0.0, 1.0)
-				mix_amount = mix_amount * mix_amount * (3.0 - 2.0 * mix_amount)
-				var local_half_u := widths[index] * 0.5 / 512.0
-				left_u = lerpf(left_u, 0.19 - local_half_u, mix_amount)
-				right_u = lerpf(right_u, 0.19 + local_half_u, mix_amount)
-			mesh_uvs.append(Vector2(left_u, left_v))
-			mesh_uvs.append(Vector2(right_u, right_v))
-		else:
-			mesh_uvs.append(Vector2(_surface_u(left.x, center_v), center_v))
-			mesh_uvs.append(Vector2(_surface_u(right.x, center_v), center_v))
-	for index in range(points.size() - 1):
-		var left := index * 2
-		var right := left + 1
-		var next_left := left + 2
-		var next_right := left + 3
-		mesh_indices.append_array(PackedInt32Array([left, right, next_right, left, next_right, next_left]))
-	if not mesh_vertices.is_empty():
-		var ribbon_mesh := _build_ribbon_mesh(mesh_vertices, mesh_uvs, mesh_indices)
-		if qa_support_mask:
-			draw_mesh(ribbon_mesh, null, Transform2D.IDENTITY, Color.WHITE)
-		else:
-			# One indexed mesh replaces hundreds of identical per-segment canvas
-			# commands. UVs and overlap geometry are unchanged.
-			draw_mesh(ribbon_mesh, VINE_SURFACE_TEXTURE)
-	if not qa_support_mask and draw_outline:
-		var edge_geometry := _ribbon_geometry(points, widths, VISUAL_OUTLINE_WIDTH, texture_phase)
-		_batch_edge_pair(edge_geometry.left, edge_geometry.right, VISUAL_OUTLINE_WIDTH, outline_start_trim, outline_end_trim)
-
-func _batch_edge_pair(left: PackedVector2Array, right: PackedVector2Array, width: float, start_trim: int, end_trim: int) -> void:
-	var finish := left.size() - end_trim
-	if finish - start_trim < 2:
+	var strip := _ribbon_geometry(points, widths, 0.0)
+	if qa_support_mask:
+		var mask_width := VISUAL_OUTLINE_WIDTH if qa_support_mask_include_outline else 0.0
+		var mask := _ribbon_geometry(points, widths, mask_width)
+		var vertices := PackedVector2Array()
+		var indices := PackedInt32Array()
+		for index in points.size():
+			vertices.append(mask.left[index])
+			vertices.append(mask.right[index])
+			if index > 0:
+				var base := (index - 1) * 2
+				indices.append_array(PackedInt32Array([base, base + 1, base + 3, base, base + 3, base + 2]))
+		draw_mesh(_build_ribbon_mesh(vertices, PackedVector2Array(), indices), null, Transform2D.IDENTITY, Color.WHITE)
 		return
-	for edge: PackedVector2Array in [left, right]:
-		for index in range(start_trim, finish - 1):
-			var direction := (edge[index + 1] - edge[index]).normalized()
-			var normal := Vector2(-direction.y, direction.x) * width * 0.5
-			var base := outline_vertices.size()
-			outline_vertices.append(edge[index] - normal)
-			outline_vertices.append(edge[index] + normal)
-			outline_vertices.append(edge[index + 1] + normal)
-			outline_vertices.append(edge[index + 1] - normal)
-			outline_indices.append_array(PackedInt32Array([base, base + 1, base + 2, base, base + 2, base + 3]))
+	# One mesh per shoot, retained by the existing surface cache. The broad
+	# central shoot fills the entire authored support envelope at every row.
+	# Winding shoots use the front half of a cylindrical projection: their
+	# width tends to zero at the silhouette as they pass behind the core.
+	for shoot in 3:
+		var vertices := PackedVector2Array()
+		var colors := PackedColorArray()
+		var indices := PackedInt32Array()
+		var columns := SHOOT_PROFILE.size()
+		for index in points.size():
+			var left: Vector2 = strip.left[index]
+			var right: Vector2 = strip.right[index]
+			var across := right - left
+			var center := (left + right) * 0.5
+			var painted_width := 1.0
+			if shoot > 0:
+				var phase := _shoot_phase(points[index].y) + float(shoot - 1) * PI
+				var front := maxf(cos(phase), 0.0)
+				painted_width = 0.62 * smoothstep(0.0, 0.85, front)
+				painted_width *= 0.96 + 0.04 * sin(points[index].y * TAU / 283.0)
+				center += across * sin(phase) * (0.5 - painted_width * 0.5)
+			var light := 0.94 + 0.06 * sin(points[index].y * TAU / 347.0 + float(shoot))
+			if shoot == 0:
+				light *= 0.88
+			for column in columns:
+				var u: float = SHOOT_PROFILE[column]
+				vertices.append(center + across * ((u - 0.5) * painted_width))
+				var color: Color = SHOOT_COLORS[column]
+				colors.append(Color(color.r * light, color.g * light, color.b * light, 1.0))
+			if index > 0:
+				for column in range(columns - 1):
+					var base := (index - 1) * columns + column
+					indices.append_array(PackedInt32Array([base, base + 1, base + columns + 1, base, base + columns + 1, base + columns]))
+		var arrays := []
+		arrays.resize(Mesh.ARRAY_MAX)
+		arrays[Mesh.ARRAY_VERTEX] = vertices
+		arrays[Mesh.ARRAY_COLOR] = colors
+		arrays[Mesh.ARRAY_INDEX] = indices
+		var mesh := ArrayMesh.new()
+		mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+		draw_mesh_cache.append(mesh)
+		draw_mesh(mesh, null)
 
-func _flush_outlines() -> void:
-	if outline_vertices.is_empty():
-		return
-	var arrays := []
-	arrays.resize(Mesh.ARRAY_MAX)
-	arrays[Mesh.ARRAY_VERTEX] = outline_vertices
-	arrays[Mesh.ARRAY_INDEX] = outline_indices
-	var mesh := ArrayMesh.new()
-	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
-	draw_mesh_cache.append(mesh)
-	draw_mesh(mesh, null, Transform2D.IDENTITY, OUTLINE_COLOR)
+func _shoot_phase(world_y: float) -> float:
+	# Absolute height, shared by trunk and all branches: no phase reset at
+	# stage boundaries, no camera-relative swimming and no tiled rope motif.
+	return world_y * TAU / SHOOT_PITCH + sin(world_y * TAU / 1370.0) * 0.22
 
 func _build_ribbon_mesh(vertices: PackedVector2Array, uvs: PackedVector2Array, indices: PackedInt32Array) -> ArrayMesh:
 	var arrays := []
 	arrays.resize(Mesh.ARRAY_MAX)
 	arrays[Mesh.ARRAY_VERTEX] = vertices
-	arrays[Mesh.ARRAY_TEX_UV] = uvs
+	if not uvs.is_empty():
+		arrays[Mesh.ARRAY_TEX_UV] = uvs
 	arrays[Mesh.ARRAY_INDEX] = indices
 	var mesh := ArrayMesh.new()
 	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
 	draw_mesh_cache.append(mesh)
 	return mesh
 
-func _surface_u(world_x: float, flow_v: float) -> float:
-	# The v2 source has no centered motif. World-X phase makes overlapping
-	# split ribbons sample identical paint, while the slow drift avoids a
-	# ruler-straight vertical repeat without mirroring the source.
-	return 0.5 + world_x / 512.0 + sin(flow_v * TAU / 7.3) * 0.035
-
-func _ribbon_geometry(points: PackedVector2Array, widths: PackedFloat32Array, extra_width: float, texture_phase: float) -> Dictionary:
+func _ribbon_geometry(points: PackedVector2Array, widths: PackedFloat32Array, extra_width: float) -> Dictionary:
 	var left := PackedVector2Array()
 	var right := PackedVector2Array()
-	var left_uv := PackedVector2Array()
-	var right_uv := PackedVector2Array()
+	var join_y := _stage_3_bottom_y() - STAGE_3_ENTRY_HEIGHT
 	for index in points.size():
 		var tangent: Vector2
 		if index == 0:
@@ -527,22 +509,14 @@ func _ribbon_geometry(points: PackedVector2Array, widths: PackedFloat32Array, ex
 			tangent = points[index + 1] - points[index - 1]
 		tangent = tangent.normalized()
 		var normal := Vector2(-tangent.y, tangent.x)
+		# The authored transition has a vertical end tangent. Share its exact
+		# cross-section on both meshes rather than leaving two angled end caps.
+		if is_equal_approx(points[index].y, join_y) and is_equal_approx(points[index].x, _branch_visual_x(1, join_y)):
+			normal = Vector2.RIGHT
 		var half_width := widths[index] * 0.5 + extra_width
 		left.append(points[index] - normal * half_width)
 		right.append(points[index] + normal * half_width)
-		# World-locked vertical UVs join trunk/split/branch without mirrored
-		# modules. A long-period lateral offset breaks the former V repetition.
-		var v := -points[index].y / MODULE_HEIGHT + texture_phase * 0.0
-		left_uv.append(Vector2(_surface_u(left[left.size() - 1].x, v), v))
-		right_uv.append(Vector2(_surface_u(right[right.size() - 1].x, v), v))
-	var polygon := PackedVector2Array()
-	var uvs := PackedVector2Array()
-	polygon.append_array(left)
-	uvs.append_array(left_uv)
-	for reverse_index in range(right.size() - 1, -1, -1):
-		polygon.append(right[reverse_index])
-		uvs.append(right_uv[reverse_index])
-	return {"polygon": polygon, "uvs": uvs, "left": left, "right": right}
+	return {"left": left, "right": right}
 
 func _draw_trunk_features(camera_top: float) -> void:
 	var camera_bottom := camera_top + 556.0
@@ -605,8 +579,9 @@ func qa_visual_contract() -> Dictionary:
 		"grip_detail_px": GRIP_DETAIL_SIZE,
 		"max_leaf_px": MAX_LEAF_SIZE,
 		"outline_px": VISUAL_OUTLINE_WIDTH,
-		"surface_texture": "res://assets/art/world/vine_helix_tile_v4.png",
-		"branch_surface_texture": "res://assets/art/world/vine_helix_tile_v4.png",
+		"surface_texture": "procedural_shoot_vertex_colors",
+		"branch_surface_texture": "procedural_shoot_vertex_colors",
+		"shoot_meshes_per_ribbon": 3,
 		"branch_detail_atlas": "res://assets/art/world/vine_details_atlas_v2.png",
 		"branch_node_spacing_px": BRANCH_NODE_SPACING.duplicate(),
 		"stage_3_layout": "continuous_middle_with_separate_side_vines",
