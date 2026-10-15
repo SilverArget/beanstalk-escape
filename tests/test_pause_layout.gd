@@ -32,7 +32,7 @@ func _run() -> void:
 	legacy.meta.gold = 321
 	legacy.meta_systems.settings = {"sound": false, "music": true, "ghost": false, "reduced_motion": true, "reduce_effects": true}
 	var sanitized := saves._sanitize_profile(legacy)
-	_check(sanitized.meta_systems.settings == {"sound": false, "music": true, "ghost": false} and sanitized.meta.gold == 321, "legacy effects fields ignored; saved settings and gold retained")
+	_check(sanitized.meta_systems.settings == {"sound": false, "ghost": false} and sanitized.meta.gold == 321, "legacy effects fields ignored; saved settings and gold retained")
 	var game := (load("res://scenes/main.tscn") as PackedScene).instantiate() as GameManager
 	root.add_child(game)
 	game._finish_intro()

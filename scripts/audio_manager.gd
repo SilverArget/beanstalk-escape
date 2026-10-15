@@ -25,7 +25,6 @@ var sfx := AudioStreamPlayer.new()
 var heartbeat := AudioStreamPlayer.new()
 var game_music_prewarm := AudioStreamPlayer.new()
 var muted := false
-var music_enabled := true
 var sound_enabled := true
 var platform_audio_enabled := true
 var last_app_state := -1
@@ -188,17 +187,13 @@ func set_sound_enabled(value: bool) -> void:
 	muted = not value
 	_apply_master_mute()
 
-func set_music_enabled(value: bool) -> void:
-	music_enabled = value
-	_apply_master_mute()
-
 func set_platform_audio_enabled(value: bool) -> void:
 	platform_audio_enabled = value
 	_apply_master_mute()
 
 func _apply_master_mute() -> void:
 	AudioServer.set_bus_mute(AudioServer.get_bus_index("Master"), not platform_audio_enabled or not sound_enabled)
-	music.volume_db = VOLUME_DB.music if music_enabled else -80.0
+	music.volume_db = VOLUME_DB.music if sound_enabled else -80.0
 	wind.volume_db = VOLUME_DB.ambience if sound_enabled else -80.0
 	sfx.volume_db = VOLUME_DB.sfx if sound_enabled else -80.0
 	heartbeat.volume_db = VOLUME_DB.heartbeat if sound_enabled else -80.0

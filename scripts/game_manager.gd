@@ -145,7 +145,7 @@ var final_wings: Polygon2D
 var last_web_state_publish_msec := -1000
 const WEB_STATE_INTERVAL_MSEC := 50
 const GHOST_SAMPLE_SECONDS := 0.1
-var meta_settings := {"sound": true, "music": true, "ghost": true}
+var meta_settings := {"sound": true, "ghost": true}
 var tutorial_active := false
 var tutorial_step := 0
 var tutorial_force := false
@@ -325,8 +325,7 @@ func _unhandled_input(event: InputEvent) -> void:
 			spider.global_position = player.global_position + Vector2(0, 48)
 			return
 	if event.is_action_pressed("mute"):
-		audio.toggle_mute()
-		_update_hud()
+		_toggle_sound_setting()
 		return
 	if app_state == AppState.PLAYING and event.is_action_pressed("move_left") and not (event is InputEventKey and event.echo):
 		dispatch_command("move_left", "keyboard")
@@ -975,11 +974,6 @@ func _toggle_sound_setting() -> void:
 	audio.set_sound_enabled(bool(meta_settings.sound))
 	_save_meta_settings()
 
-func _toggle_music_setting() -> void:
-	meta_settings.music = not bool(meta_settings.music)
-	audio.set_music_enabled(bool(meta_settings.music))
-	_save_meta_settings()
-
 func _toggle_ghost_setting() -> void:
 	meta_settings.ghost = not bool(meta_settings.ghost)
 	_save_meta_settings()
@@ -993,20 +987,17 @@ func _apply_loaded_profile(loaded_profile: Dictionary) -> void:
 	var systems: Dictionary = loaded_profile.get("meta_systems", {}) if loaded_profile.get("meta_systems", {}) is Dictionary else {}
 	var settings: Dictionary = systems.get("settings", {}) if systems.get("settings", {}) is Dictionary else {}
 	meta_settings = {
-		"sound": bool(settings.get("sound", true)),
-		"music": bool(settings.get("music", true)),
+		"sound": bool(settings.get("sound", true)) and bool(settings.get("music", true)),
 		"ghost": bool(settings.get("ghost", true)),
 	}
 	if audio != null:
 		audio.set_sound_enabled(bool(meta_settings.sound))
-		audio.set_music_enabled(bool(meta_settings.music))
 	_refresh_settings_text()
 
 func _refresh_settings_text() -> void:
 	if not has_node("HUD/SettingsSound"):
 		return
 	$HUD/SettingsSound.text = "SOUND ON" if bool(meta_settings.sound) else "SOUND OFF"
-	$HUD/SettingsMusic.text = "MUSIC ON" if bool(meta_settings.music) else "MUSIC OFF"
 	$HUD/SettingsGhost.text = "GHOST: ON" if bool(meta_settings.ghost) else "GHOST: OFF"
 
 func _show_shop() -> void:
@@ -1364,7 +1355,6 @@ func _setup_hud() -> void:
 	info_body.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	info_body.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	_add_action_button("SettingsSound", "SOUND: ON", _toggle_sound_setting)
-	_add_action_button("SettingsMusic", "MUSIC: ON", _toggle_music_setting)
 	_add_action_button("SettingsGhost", "GHOST: ON", _toggle_ghost_setting)
 	_add_action_button("InfoBack", "BACK", _show_menu)
 	var tutorial_panel := _add_label("TutorialPanel", Vector2.ZERO, "", 24)
@@ -1677,11 +1667,10 @@ func layout_hud_for_viewport(viewport_size: Vector2) -> void:
 		daily_card.size = Vector2(minf(190.0 if compact else 220.0, width * 0.27), 108.0 if compact else 112.0)
 	_layout_centered_label($HUD/InfoTitle, width, 36.0, 52.0, 24.0)
 	_layout_centered_label($HUD/InfoBody, width, 92.0, maxf(height - 190.0, 130.0), 64.0)
-	var setting_width := minf(220.0, (width - 48.0) / 3.0)
-	var setting_start := (width - setting_width * 3.0 - 16.0) * 0.5
-	for index in 3:
-		var setting_button: Button = [$HUD/SettingsSound, $HUD/SettingsMusic, $HUD/SettingsGhost][index]
-		setting_button.position = Vector2(setting_start + index * (setting_width + 8.0), height * 0.43)
+	var setting_width := minf(220.0, width - 48.0)
+	for index in 2:
+		var setting_button: Button = [$HUD/SettingsSound, $HUD/SettingsGhost][index]
+		setting_button.position = Vector2((width - setting_width) * 0.5, height * 0.5 - 58.0 + index * 64.0)
 		setting_button.size = Vector2(setting_width, 52.0)
 	$HUD/InfoBack.position = Vector2((width - 220.0) * 0.5, height - 76.0)
 	$HUD/InfoBack.size = Vector2(220.0, 52.0)
@@ -1927,10 +1916,9 @@ func _update_hud() -> void:
 	var credits_visible := app_state == AppState.CREDITS
 	$HUD/InfoTitle.visible = settings_visible or credits_visible
 	$HUD/InfoTitle.text = "SETTINGS" if settings_visible else "CREDITS"
-	$HUD/InfoBody.visible = settings_visible or credits_visible
-	$HUD/InfoBody.text = "Sound, music, and the best-run ghost are saved automatically." if settings_visible else "BEANSTALK ESCAPE\nMade with Godot\n\nArt: Kenney (CC0), Codex image_gen project assets, manager-provided logo (origin review pending)\nMusic: MintoDog and TAD (CC0)\nAudio: Kenney (CC0), Sonniss GDC 2026 (commercial use; raw redistribution prohibited)\nFont: Lilita One (SIL OFL 1.1)\nFull attributions: CREDITS.md"
+	$HUD/InfoBody.visible = credits_visible
+	$HUD/InfoBody.text = "" if settings_visible else "BEANSTALK ESCAPE\nMade with Godot\n\nArt: Kenney (CC0), Codex image_gen project assets, manager-provided logo (origin review pending)\nMusic: MintoDog and TAD (CC0)\nAudio: Kenney (CC0), Sonniss GDC 2026 (commercial use; raw redistribution prohibited)\nFont: Lilita One (SIL OFL 1.1)\nFull attributions: CREDITS.md"
 	$HUD/SettingsSound.visible = settings_visible
-	$HUD/SettingsMusic.visible = settings_visible
 	$HUD/SettingsGhost.visible = settings_visible
 	$HUD/InfoBack.visible = settings_visible or credits_visible
 	$HUD/TutorialPanel.visible = tutorial_active

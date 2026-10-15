@@ -309,7 +309,7 @@ func _default_profile() -> Dictionary:
 func _default_meta_systems() -> Dictionary:
 	return {
 		"tutorial_completed": false,
-		"settings": {"sound": true, "music": true, "ghost": true},
+		"settings": {"sound": true, "ghost": true},
 		"ghosts": {"NORMAL": {}, "NIGHTMARE": {}},
 	}
 
@@ -451,8 +451,7 @@ func _sanitize_profile(value: Dictionary) -> Dictionary:
 func _sanitize_settings(value: Variant) -> Dictionary:
 	var source: Dictionary = value if value is Dictionary else {}
 	return {
-		"sound": bool(source.get("sound", true)),
-		"music": bool(source.get("music", true)),
+		"sound": bool(source.get("sound", true)) and bool(source.get("music", true)),
 		"ghost": bool(source.get("ghost", true)),
 	}
 

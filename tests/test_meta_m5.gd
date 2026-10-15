@@ -26,7 +26,7 @@ func _run() -> void:
 	_check(save.record_stage_ghost("NIGHTMARE", 1, 8.5, trace), "nightmare ghost stored separately")
 	var loaded = SaveManagerType.new(TEST_PATH)
 	var systems := loaded.meta_systems_snapshot()
-	_check(bool(systems.tutorial_completed) and not bool(systems.settings.sound) and bool(systems.settings.music) and not bool(systems.settings.ghost), "settings and tutorial persist")
+	_check(bool(systems.tutorial_completed) and not bool(systems.settings.sound) and not systems.settings.has("music") and not bool(systems.settings.ghost), "settings and tutorial persist")
 	_check(is_equal_approx(float(systems.ghosts.NORMAL["1"].time), 9.5) and is_equal_approx(float(systems.ghosts.NIGHTMARE["1"].time), 8.5), "mode-specific ghost bests persist")
 	var scene = MainScene.instantiate()
 	root.add_child(scene)

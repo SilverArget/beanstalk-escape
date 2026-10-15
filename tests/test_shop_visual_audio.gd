@@ -93,14 +93,14 @@ func _run() -> void:
 	_check(AudioServer.is_bus_mute(master) or AudioServer.get_bus_volume_db(master) <= -60.0, "sound off mutes Master bus")
 	audio.set_sound_enabled(true)
 	_check(not AudioServer.is_bus_mute(master) and AudioServer.get_bus_volume_db(master) > -60.0, "sound on restores Master bus")
-	audio.set_music_enabled(false)
+	audio.set_sound_enabled(false)
 	_check(audio.music.volume_db <= -60.0, "music off silences music")
-	audio.set_music_enabled(true)
+	audio.set_sound_enabled(true)
 	_check(audio.music.volume_db > -60.0, "music on restores music")
 	_check(save.write_settings({"sound": false, "music": false, "ghost": true}), "audio settings save immediately")
 	var reloaded := SaveManager.new(TEST_PATH)
 	var reloaded_settings: Dictionary = reloaded.meta_systems_snapshot().settings
-	_check(not bool(reloaded_settings.sound) and not bool(reloaded_settings.music), "new SaveManager reads muted settings")
+	_check(not bool(reloaded_settings.sound) and not reloaded_settings.has("music"), "new SaveManager reads unified muted settings")
 	var game := GameManager.new()
 	game.audio = audio
 	var can_apply_loaded_audio := game.has_method("_apply_loaded_profile")
