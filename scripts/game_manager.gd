@@ -458,6 +458,7 @@ func restart() -> void:
 
 func start_game() -> void:
 	audio.play_sfx("ui_click")
+	(player.get_node("Body") as PlayerVisual).set_skin(str(economy.shop.selected_character))
 	restart()
 	_begin_intro()
 
@@ -501,9 +502,8 @@ func _update_intro(delta: float) -> void:
 	var spider_body := spider.get_node_or_null("Body") as CanvasItem
 	if spider_body != null and intro_beat == 2:
 		spider_body.visible = true
-		spider_body.scale = INTRO_GUARDIAN_SCALE
 		spider_body.position = Vector2.ZERO
-		spider.global_position = player.global_position + CAMERA_PLAY_POSITION + Vector2(0.0, 18.0)
+		_layout_intro_text(get_viewport_rect().size)
 	if intro_t < duration:
 		return
 	intro_t = 0.0
@@ -528,10 +528,10 @@ func _update_intro_presentation() -> void:
 		spider_body.visible = intro_beat == 2
 		spider_body.scale = INTRO_GUARDIAN_SCALE if intro_beat == 2 else Vector2.ONE
 	if intro_beat == 2:
-		spider.global_position = player.global_position + CAMERA_PLAY_POSITION + Vector2(0.0, 18.0)
 		var camera := player.get_node_or_null("Camera2D") as Camera2D
 		if camera != null:
 			camera.position = CAMERA_PLAY_POSITION
+		_layout_intro_text(get_viewport_rect().size)
 		audio.play_sfx("spider_scream")
 
 func _finish_intro() -> void:
@@ -895,7 +895,7 @@ func _request_confirm() -> void:
 		if focused != null and focused.visible and not focused.disabled:
 			focused.pressed.emit()
 		else:
-			_show_character_select()
+			_start_selected_run()
 	elif app_state == AppState.INTRO:
 		_finish_intro()
 	elif app_state == AppState.PLAYER_DEAD:
@@ -1353,7 +1353,7 @@ func _setup_hud() -> void:
 	$HUD/Complete.position = Vector2(300, 170)
 	_add_menu_logo()
 	_add_label("Menu", Vector2(320, 300), "CHOOSE AN OPTION", 22)
-	_add_action_button("NewRun", "NEW RUN", _show_character_select)
+	_add_action_button("NewRun", "NEW RUN", _start_selected_run)
 	_add_action_button("Nightmare", "NIGHTMARE", _start_nightmare_run)
 	_add_action_button("Shop", "SHOP", _show_shop)
 	_add_action_button("Map", "MAP", _show_map)
@@ -1595,7 +1595,7 @@ func layout_hud_for_viewport(viewport_size: Vector2) -> void:
 	logo.position = Vector2((width - logo_width) * 0.5, logo_y)
 	logo.size = Vector2(logo_width, logo_height)
 	var prompt := $HUD/Menu as Label
-	prompt.position = Vector2(0.0, 126.0 if compact else 202.0)
+	prompt.position = Vector2(0.0, logo.position.y + logo.size.y + 24.0)
 	prompt.size = Vector2(width, 26.0 if compact else 30.0)
 	prompt.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	$HUD/Mute.position = Vector2(width - 124.0, 10.0)
@@ -1665,14 +1665,14 @@ func layout_hud_for_viewport(viewport_size: Vector2) -> void:
 	var menu_x := (width - menu_row_width) * 0.5
 	for index in primary_buttons.size():
 		var menu_button: Button = primary_buttons[index]
-		menu_button.position = Vector2(menu_x + index * (menu_width + menu_gap), 158.0 if compact else 240.0)
+		menu_button.position = Vector2(menu_x + index * (menu_width + menu_gap), prompt.position.y + prompt.size.y + 8.0)
 		menu_button.size = Vector2(menu_width, 44.0 if compact else 48.0)
 	var secondary_width := minf(220.0, (width - 32.0 - menu_gap * 2.0) / 3.0)
 	var secondary_total := secondary_width * 3.0 + menu_gap * 2.0
 	var secondary_x := (width - secondary_total) * 0.5
 	for index in 3:
 		var secondary_button: Button = [$HUD/Settings, $HUD/HowToPlay, $HUD/Credits][index]
-		secondary_button.position = Vector2(secondary_x + index * (secondary_width + menu_gap), 210.0 if compact else 296.0)
+		secondary_button.position = Vector2(secondary_x + index * (secondary_width + menu_gap), $HUD/NewRun.position.y + $HUD/NewRun.size.y + 8.0)
 		secondary_button.size = Vector2(secondary_width, 44.0 if compact else 48.0)
 	if daily_card != null:
 		daily_card.position = Vector2(12.0 if compact else 16.0, 10.0 if compact else 54.0)
@@ -1756,6 +1756,28 @@ func _layout_intro_text(viewport_size: Vector2) -> void:
 	var panel_y := 12.0 if guardian_beat else viewport_size.y * 0.34
 	var panel_height := 96.0 if guardian_beat else 110.0
 	_layout_centered_label($HUD/IntroText, viewport_size.x, panel_y, panel_height, 72.0)
+	if guardian_beat:
+		_layout_intro_guardian(viewport_size)
+
+func _layout_intro_guardian(viewport_size: Vector2) -> void:
+	var body := spider.get_node("Body") as Node2D
+	var guardian := body.get("sprite") as Sprite2D
+	if guardian == null or guardian.texture == null:
+		return
+	# Reserve the actual label height (including wrapped text), then fit the
+	# entire sprite below it. Padding also covers the small animated lean.
+	var panel := $HUD/IntroText as Label
+	var top := panel.position.y + panel.size.y + 24.0
+	var available := Vector2(maxf(viewport_size.x - 32.0, 1.0), maxf(viewport_size.y - top - 16.0, 1.0))
+	var bounds: Rect2 = guardian.transform * guardian.get_rect().grow(16.0)
+	var fit := minf(INTRO_GUARDIAN_SCALE.x, minf(available.x / bounds.size.x, available.y / bounds.size.y))
+	body.scale = Vector2.ONE * fit
+	body.position = Vector2.ZERO
+	var camera := player.get_node("Camera2D") as Camera2D
+	camera.force_update_scroll()
+	var canvas := get_viewport().get_canvas_transform()
+	var center := Vector2(viewport_size.x * 0.5, top + available.y * 0.5)
+	spider.global_position = canvas.affine_inverse() * center - bounds.get_center() * fit
 
 func _add_label(name: String, pos: Vector2, text: String, font_size: int) -> Label:
 	var label := Label.new()
