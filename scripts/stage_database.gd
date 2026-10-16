@@ -12,6 +12,14 @@ const OCCUPANCY_HEIGHT := 220
 const STAGE_TEMPO_CONFIG_PATH := "res://config/stage_tempo.json"
 const REPLAY_NIGHTMARE_CONFIG_PATH := "res://config/replay_nightmare.json"
 
+static var active_run_seed: int = Balance.PATTERN_SEED
+static var _sequence_cache: Dictionary = {}
+
+static func set_run_seed(seed_value: int) -> void:
+	if active_run_seed != seed_value:
+		active_run_seed = seed_value
+		_sequence_cache.clear()
+
 static func replay_nightmare_config() -> Dictionary:
 	var parsed: Variant = JSON.parse_string(FileAccess.get_file_as_string(REPLAY_NIGHTMARE_CONFIG_PATH))
 	if parsed is Dictionary:
@@ -291,17 +299,47 @@ static func _fallback_stage_length(stage_number: int) -> int:
 	return DEFAULT_STAGE_LENGTH if stage_number <= 9 else DEFAULT_LATE_STAGE_LENGTH
 
 static func stages_for_variant(variant: String) -> Array:
-	var stages := canonical_stages()
-	if variant == CANONICAL_VARIANT:
-		return stages
-	if variant != MIRROR_VARIANT:
+	return _cached_stages_for_variant(variant).duplicate(true)
+
+static func _cached_stages_for_variant(variant: String) -> Array:
+	if variant not in QA_VARIANTS:
 		return []
-	for stage: Dictionary in stages:
-		stage["witness"] = _mirror_sequence(stage.witness)
-		for encounter: Dictionary in stage.encounters:
-			encounter["witness"] = _mirror_position(encounter.witness)
-			var recipe: Dictionary = encounter.recipe
-			_mirror_recipe(recipe)
+	if _sequence_cache.has(variant):
+		return _sequence_cache[variant]
+	var templates := canonical_stages()
+	if variant == MIRROR_VARIANT:
+		for template: Dictionary in templates:
+			template["witness"] = _mirror_sequence(template.witness)
+			for encounter: Dictionary in template.encounters:
+				encounter["witness"] = _mirror_position(encounter.witness)
+				_mirror_recipe(encounter.recipe)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = active_run_seed
+	var stages: Array = []
+	var recent_templates: Array[int] = []
+	var accumulated_height := 0
+	for number in range(1, Balance.STAGE_COUNT + 1):
+		var tier := Balance.difficulty_tier_for_time(Balance.estimated_time_for_height(float(accumulated_height)))
+		var template_number := number
+		if number >= 4:
+			var pool: Array[int] = []
+			var last_template: int = [8, 14, 22, 30][tier]
+			for candidate in range(4, last_template + 1):
+				if not recent_templates.has(candidate):
+					pool.append(candidate)
+			template_number = pool[rng.randi_range(0, pool.size() - 1)]
+		var stage: Dictionary = templates[template_number - 1].duplicate(true)
+		stage["number"] = number
+		stage["template"] = template_number
+		stage["tier"] = tier
+		stage["start_height"] = accumulated_height
+		accumulated_height += int(stage.length)
+		stage["target_height"] = accumulated_height
+		stages.append(stage)
+		recent_templates.append(template_number)
+		if recent_templates.size() > 3:
+			recent_templates.pop_front()
+	_sequence_cache[variant] = stages
 	return stages
 
 static func _mirror_recipe(recipe: Dictionary) -> void:
@@ -320,10 +358,16 @@ static func _mirror_recipe(recipe: Dictionary) -> void:
 			for threat: Dictionary in recipe.threats: _mirror_recipe(threat)
 
 static func stage(stage_number: int, variant := CANONICAL_VARIANT) -> Dictionary:
-	var stages := stages_for_variant(variant)
+	var stages := _cached_stages_for_variant(variant)
 	if stage_number < 1 or stage_number > stages.size():
 		return {}
 	return (stages[stage_number - 1] as Dictionary).duplicate(true)
+
+static func template_for(n: int) -> int:
+	var stages := _cached_stages_for_variant(CANONICAL_VARIANT)
+	if n < 1 or n > stages.size():
+		return 0
+	return int(stages[n - 1].template)
 
 static func _mirror_sequence(values: Array) -> Array:
 	var result: Array = []

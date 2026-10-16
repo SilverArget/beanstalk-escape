@@ -21,6 +21,7 @@ var stage_starts := PackedFloat32Array()
 var stage_lengths := PackedFloat32Array()
 var pattern_by_stage: Dictionary = {}
 var cached_variant := ""
+var cached_seed := -1
 
 func _ready() -> void:
 	_rebuild_stage_cache()
@@ -43,26 +44,37 @@ func _complete_stage(stage_number: int) -> void:
 	completed_stages[stage_number] = true
 	completion_count += 1
 	summit_flash_count += 3
-	stage_banner = "STAGE %d COMPLETE" % stage_number
-	stage_banner_remaining = Balance.STAGE_COMPLETE_SECONDS
+	stage_banner = ""
+	stage_banner_remaining = 0.0
 	stage_completed.emit(stage_number)
 	if stage_number == Balance.STAGE_COUNT: prototype_completed.emit()
-func reset_run() -> void:
+func reset_run(new_seed := -1) -> void:
+	if new_seed == -1:
+		var rng := RandomNumberGenerator.new()
+		rng.randomize()
+		new_seed = rng.randi()
+		while new_seed == run_seed:
+			new_seed = rng.randi()
+	run_seed = new_seed
 	current_stage = 1
 	completion_count = 0
 	completed_stages.clear()
 	summit_flash_count = 0
 	stage_banner = ""
 	stage_banner_remaining = 0.0
-	if patterns.is_empty() or cached_variant != run_variant:
+	if patterns.is_empty() or cached_variant != run_variant or cached_seed != run_seed:
 		_rebuild_stage_cache()
 		patterns = generate_patterns(run_seed)
 		_rebuild_pattern_cache()
+	else:
+		StageDatabase.set_run_seed(run_seed)
 	clear_runtime_hazards()
 
 func _rebuild_stage_cache() -> void:
+	StageDatabase.set_run_seed(run_seed)
 	stage_records = StageDatabase.stages_for_variant(run_variant)
 	cached_variant = run_variant
+	cached_seed = run_seed
 	stage_targets.clear()
 	stage_starts.clear()
 	stage_lengths.clear()
@@ -108,7 +120,7 @@ func can_enter_route_at(stage_number: int, route: int, progress: float) -> bool:
 	return has_route_support_at(stage_number, route, progress) and not _runtime_hazard_at(runtime_webs, stage_number, route, progress)
 
 func transfer_window_open(stage_number: int, progress: float) -> bool:
-	if stage_number != 13:
+	if template_for_stage(stage_number) != 13:
 		return true
 	var height := progress * stage_length(stage_number)
 	var previous_end := 0.0
@@ -247,6 +259,16 @@ func stage_length(stage_number: int) -> float:
 		return Balance.STAGE_HEIGHT
 	var index := clampi(stage_number - 1, 0, stage_lengths.size() - 1)
 	return stage_lengths[index]
+
+func template_for_stage(n: int) -> int:
+	if n < 1 or n > stage_records.size():
+		return 0
+	return int(stage_records[n - 1].template)
+
+func tier_for_stage(n: int) -> int:
+	if n < 1 or n > stage_records.size():
+		return 0
+	return int(stage_records[n - 1].tier)
 
 func stage_bottom_y(stage_number: int) -> float:
 	return -stage_start_height(stage_number)

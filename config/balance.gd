@@ -37,7 +37,11 @@ const SPIDER_PRESSURE_BANDS := [
 const ROUTE_X := [-150.0, 0.0, 150.0]
 ## Legacy fallback only; runtime stage durations come from StageDatabase lengths.
 const STAGE_DURATION_SECONDS := 22.4
-const STAGE_COUNT := 30
+const STAGE_COUNT := 240
+const ENDLESS_SPEED_RAMP_SECONDS := 180.0
+const ENDLESS_MAX_SPEED_SCALE := 2.0
+const DIFFICULTY_STEP_SECONDS := 20.0
+const DIFFICULTY_MAX_TIER := 3
 ## Legacy fallback only; runtime geometry comes from each stage's length.
 const STAGE_HEIGHT := 2800.0
 const PATTERN_SEED := 20260923
@@ -76,3 +80,21 @@ const GAUGE_THRESHOLDS := {
 	"DANGER": 1.00,
 }
 const GAUGE_GAP_THRESHOLDS := {"GREEN": 240.0, "YELLOW": 180.0, "ORANGE": 96.0, "RED": 56.0, "DANGER": 28.0}
+
+static func speed_scale_for_time(t: float) -> float:
+	return 1.0 + (ENDLESS_MAX_SPEED_SCALE - 1.0) * clampf(t / ENDLESS_SPEED_RAMP_SECONDS, 0.0, 1.0)
+
+static func difficulty_tier_for_time(t: float) -> int:
+	return mini(int(floor(t / DIFFICULTY_STEP_SECONDS)), DIFFICULTY_MAX_TIER)
+
+static func tier_name(tier: int) -> String:
+	return ["EASY", "NORMAL", "HARD", "EXPERT"][clampi(tier, 0, DIFFICULTY_MAX_TIER)]
+
+static func estimated_time_for_height(h: float) -> float:
+	var distance := maxf(h, 0.0) / PLAYER_VERTICAL_SPEED
+	var ramp_distance := ENDLESS_SPEED_RAMP_SECONDS * (1.0 + ENDLESS_MAX_SPEED_SCALE) * 0.5
+	if distance >= ramp_distance:
+		return ENDLESS_SPEED_RAMP_SECONDS + (distance - ramp_distance) / ENDLESS_MAX_SPEED_SCALE
+	var acceleration := (ENDLESS_MAX_SPEED_SCALE - 1.0) / ENDLESS_SPEED_RAMP_SECONDS
+	# Rationalized quadratic root avoids cancellation near the start of a run.
+	return 2.0 * distance / (1.0 + sqrt(1.0 + 2.0 * acceleration * distance))
