@@ -11,6 +11,11 @@ var horizontal_motion_speed := 0.0
 var _follow_start_x := 0.0
 var _follow_elapsed := 0.0
 var _follow_delay_remaining := 0.0
+var _danger_tracking := false
+var _gap_transition_elapsed := 0.0
+var _gap_transition_seconds := 0.0
+var _gap_transition_from := 0.0
+var _gap_transition_to := 0.0
 @onready var player: PlayerController = get_parent().get_node_or_null("Player") as PlayerController
 @onready var stages: StageManager = get_parent().get_node_or_null("StageManager") as StageManager
 @onready var game: GameManager = get_parent() as GameManager
@@ -18,6 +23,9 @@ var nightmare_modifiers := StageDatabase.nightmare_modifiers()
 
 func _physics_process(delta: float) -> void:
 	advance_active_clocks(delta)
+	if player != null and (_danger_tracking or _gap_transition_seconds > 0.0):
+		_update_danger_gap(delta)
+		return
 	var gap := distance_to_player()
 	var catchup := catchup_state(gap, catchup_active, catchup_blend, delta)
 	catchup_active = bool(catchup.active)
@@ -35,6 +43,8 @@ func _physics_process(delta: float) -> void:
 	move_and_slide()
 
 func reset_run(at_position: Vector2) -> void:
+	_danger_tracking = false
+	_gap_transition_seconds = 0.0
 	var reset_x := player.global_position.x if player != null else at_position.x
 	global_position = Vector2(reset_x, at_position.y)
 	velocity = Vector2.ZERO
@@ -48,6 +58,40 @@ func reset_run(at_position: Vector2) -> void:
 	_follow_start_x = reset_x
 	_follow_elapsed = 0.0
 	_follow_delay_remaining = 0.0
+
+func begin_danger(immediate := false) -> void:
+	_danger_tracking = true
+	_start_gap_transition(Balance.DANGER_GAP, Balance.DANGER_APPROACH_SECONDS)
+	if immediate and player != null:
+		global_position.y = player.global_position.y + Balance.DANGER_GAP
+		_gap_transition_seconds = 0.0
+
+func retreat_from_danger(normal_gap: float) -> void:
+	_danger_tracking = false
+	_start_gap_transition(normal_gap, Balance.DANGER_RETREAT_SECONDS)
+
+func _start_gap_transition(target_gap: float, seconds: float) -> void:
+	_gap_transition_from = maxf(distance_to_player(), Balance.DANGER_GAP)
+	_gap_transition_to = target_gap
+	_gap_transition_elapsed = 0.0
+	_gap_transition_seconds = seconds
+
+func _update_danger_gap(delta: float) -> void:
+	var gap := Balance.DANGER_GAP
+	if _gap_transition_seconds > 0.0:
+		_gap_transition_elapsed = minf(_gap_transition_elapsed + delta, _gap_transition_seconds)
+		var progress := _gap_transition_elapsed / _gap_transition_seconds
+		gap = lerpf(_gap_transition_from, _gap_transition_to, smoothstep(0.0, 1.0, progress))
+		if _gap_transition_elapsed >= _gap_transition_seconds:
+			_gap_transition_seconds = 0.0
+	var previous_y := global_position.y
+	global_position.y = player.global_position.y + maxf(gap, Balance.DANGER_GAP)
+	velocity = Vector2(0.0, (global_position.y - previous_y) / maxf(delta, 0.000001))
+	speed_ratio = -velocity.y / Balance.PLAYER_VERTICAL_SPEED
+	catchup_active = false
+	catchup_blend = 0.0
+	var stage_number := stages.stage_for_y(player.global_position.y) if stages != null else 1
+	_update_horizontal_follow(delta, stage_number)
 
 func _update_horizontal_follow(delta: float, stage_number: int) -> void:
 	if player == null:

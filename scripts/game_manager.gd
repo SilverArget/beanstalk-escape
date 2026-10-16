@@ -136,6 +136,10 @@ var continue_checkpoint := {}
 var max_lives := 3
 var current_lives := 3
 var hit_invulnerability_remaining := 0.0
+var danger_remaining := 0.0
+var danger_vignette: ColorRect
+var danger_vignette_alpha := 0.0
+var danger_pulse_elapsed := 0.0
 var displayed_lives := -1
 var ad_revives_by_stage := {}
 var completed_since_interstitial := 0
@@ -223,6 +227,7 @@ func _ready() -> void:
 
 func _physics_process(delta: float) -> void:
 	_update_hit_invulnerability(delta)
+	_update_danger(delta)
 	reward_toast_remaining = maxf(reward_toast_remaining - delta, 0.0)
 	time_wings_notice_remaining = maxf(time_wings_notice_remaining - delta, 0.0)
 	level_up_remaining = maxf(level_up_remaining - delta, 0.0)
@@ -474,6 +479,7 @@ func restart() -> void:
 	player.remove_from_group("time_wings_active")
 	_show_tutorial_for_stage(1)
 	_reset_stage_ghost(1)
+	_begin_danger(true)
 	gauge.update_from_positions(player.global_position.y, spider.global_position.y)
 	_remember_continue_checkpoint()
 	_update_hud()
@@ -596,6 +602,8 @@ func _finish_intro() -> void:
 	audio.play_music("music_game")
 	if mode == MODE_NORMAL and (tutorial_force or not bool(save_manager.meta_systems_snapshot().tutorial_completed)):
 		_start_onboarding()
+	else:
+		_begin_danger(true)
 	_update_hud()
 	_publish_readonly_web_state()
 
@@ -626,6 +634,7 @@ func restart_stage() -> void:
 	_apply_impact_fx(0.0)
 	player.reset_run(Vector2(0, start_y))
 	spider.reset_run(Vector2(0, start_y + _spider_start_gap(stage_number)))
+	_begin_danger(true)
 	stage_restart_count += 1
 	stage_restart_start_distance = spider.global_position.y - player.global_position.y
 	player.set_physics_process(true)
@@ -769,6 +778,7 @@ func _on_stage_completed(stage_number: int) -> void:
 	if stage_number < Balance.STAGE_COUNT:
 		_show_tutorial_for_stage(stage_number + 1)
 		_reset_stage_ghost(stage_number + 1)
+		_begin_danger(true)
 
 func try_time_wings() -> bool:
 	var stage_number := stages.stage_for_y(player.global_position.y)
@@ -839,6 +849,7 @@ func _lose_life(cause: DeathCause, respawn_from_checkpoint: bool) -> bool:
 	if tutorial_active or app_state != AppState.PLAYING or hit_invulnerability_remaining > 0.0 or current_lives <= 0:
 		return false
 	current_lives -= 1
+	_end_danger()
 	damage_events += 1
 	challenge_eligible = false
 	hit_invulnerability_remaining = float(economy.config.get("hit_invulnerability_seconds", 1.5))
@@ -1135,6 +1146,7 @@ func _skip_stage_after_reward(stage_number: int) -> void:
 	var next_y := stages.stage_bottom_y(stage_number + 1)
 	player.reset_run(Vector2(0, next_y))
 	spider.reset_run(Vector2(0, next_y + _spider_start_gap(stage_number + 1)))
+	_begin_danger(true)
 	golds.reset_run()
 	_resume_after_death()
 
@@ -1174,6 +1186,8 @@ func _start_onboarding() -> void:
 	_show_onboarding_step()
 
 func _enter_tutorial_arena() -> void:
+	danger_remaining = 0.0
+	danger_vignette_alpha = 0.0
 	for child in get_tree().get_nodes_in_group("run_transient"):
 		child.free()
 	beans.reset_run()
@@ -1319,10 +1333,46 @@ func on_bean_hit() -> void:
 		tutorial_bean = null
 		$HUD/TutorialPanel.text = "2 / 3  TRY AGAIN\nThe bean hit this branch. Wait for the warning, then change branch once."
 		return
-	_lose_life(DeathCause.OBSTACLE, false)
+	_on_danger_obstacle_hit()
 
 func on_rock_hit() -> void:
-	_lose_life(DeathCause.OBSTACLE, false)
+	_on_danger_obstacle_hit()
+
+func _on_danger_obstacle_hit() -> void:
+	if tutorial_active or app_state != AppState.PLAYING or hit_invulnerability_remaining > 0.0 or current_lives <= 0:
+		return
+	if danger_remaining > 0.0:
+		_lose_life(DeathCause.OBSTACLE, false)
+	else:
+		_begin_danger()
+		hit_invulnerability_remaining = 0.5
+		shake_remaining = 0.20
+
+func _begin_danger(immediate := false) -> void:
+	danger_remaining = 0.0 if tutorial_active else Balance.DANGER_SECONDS
+	if tutorial_active:
+		return
+	danger_pulse_elapsed = 0.0
+	spider.begin_danger(immediate)
+
+func _end_danger() -> void:
+	if danger_remaining <= 0.0:
+		return
+	danger_remaining = 0.0
+	spider.retreat_from_danger(_spider_start_gap(stages.stage_for_y(player.global_position.y)))
+
+func _update_danger(delta: float) -> void:
+	if app_state != AppState.PLAYING or tutorial_active:
+		return
+	if danger_remaining > 0.0:
+		if danger_remaining <= delta:
+			_end_danger()
+		else:
+			danger_remaining -= delta
+		danger_pulse_elapsed += delta
+		danger_vignette_alpha = 0.45 + 0.25 * cos(danger_pulse_elapsed * TAU / 0.5)
+	else:
+		danger_vignette_alpha = move_toward(danger_vignette_alpha, 0.0, delta / 0.3)
 
 func on_environment_hit(kind: String, respawn_from_checkpoint := false) -> void:
 	var cause := DeathCause.FALL if kind == "branch_break" else DeathCause.OBSTACLE
@@ -1351,6 +1401,25 @@ func _apply_impact_fx(_delta: float) -> void:
 
 func _setup_hud() -> void:
 	_apply_theme()
+	danger_vignette = ColorRect.new()
+	danger_vignette.name = "DangerVignette"
+	danger_vignette.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	danger_vignette.z_index = 20
+	var danger_shader := Shader.new()
+	danger_shader.code = """shader_type canvas_item;
+render_mode unshaded;
+void fragment() {
+    vec2 edge_distance = min(UV, vec2(1.0) - UV);
+    float edge = 1.0 - smoothstep(0.0, 0.14, min(edge_distance.x, edge_distance.y));
+    COLOR = vec4(0.85, 0.015, 0.025, edge * COLOR.a);
+}
+"""
+	var danger_material := ShaderMaterial.new()
+	danger_material.shader = danger_shader
+	danger_vignette.material = danger_material
+	$HUD.add_child(danger_vignette)
+	danger_vignette.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	danger_vignette.visible = false
 	var close_label := Label.new()
 	close_label.name = "CloseCall"
 	close_label.text = "CLOSE!"
@@ -1929,6 +1998,8 @@ func _update_lives_hud() -> void:
 func _update_hud() -> void:
 	var playing := app_state == AppState.PLAYING
 	var normal_playing := playing and not tutorial_active
+	danger_vignette.visible = normal_playing and danger_vignette_alpha > 0.0
+	danger_vignette.modulate.a = danger_vignette_alpha
 	var result_visible := app_state == AppState.GAME_COMPLETE
 	var meta_visible := normal_playing or result_visible
 	$HUD/Menu.visible = app_state == AppState.MENU
@@ -2175,6 +2246,7 @@ func _readonly_state_snapshot() -> Dictionary:
 		"ghost": {"enabled": bool(meta_settings.ghost), "visible": ghost_sprite != null and ghost_sprite.visible, "stage_best_time": ghost_best_time},
 		"final": {"active": app_state == AppState.FINAL_CINEMATIC, "t": final_t, "duration": FINAL_CINEMATIC_SECONDS},
 		"death_cause": DeathCause.keys()[death_cause],
+		"danger_remaining": danger_remaining,
 		"lives": {"current": current_lives, "max": max_lives, "invulnerable_remaining": hit_invulnerability_remaining},
 		"revive_panel": app_state == AppState.PLAYER_DEAD and current_lives <= 0,
 		"fake_ad": platform_services.fake_ad_snapshot(),
@@ -2266,6 +2338,7 @@ func _start_debug_stage(stage_number: int) -> void:
 	var start_y := stages.stage_bottom_y(stage_number)
 	player.reset_run(Vector2(0.0, start_y))
 	spider.reset_run(Vector2(0.0, start_y + _spider_start_gap(stage_number)))
+	_begin_danger(true)
 	rocks.sync_after_player_teleport()
 	golds.refresh_active_window(true)
 	stages.update_progress(start_y)
