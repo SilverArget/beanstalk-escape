@@ -9,7 +9,7 @@ const REQUIRED_KEYS := [
 	"stage_gold_count_min", "stage_gold_count_max",
 	"gold_per_collectible",
 	"stage_completion_gold_base", "stage_completion_gold_per_stage",
-	"xp_per_stage", "xp_per_gold", "level_threshold_base",
+	"xp_per_stage", "xp_per_gold", "xp_per_100_px", "level_threshold_base",
 	"level_threshold_per_level", "level_up_gold", "get_more_gold_reward",
 	"skip_stage_death_count", "interstitial_min_stage",
 	"interstitial_completed_stage_interval", "interstitial_min_delay_seconds",
@@ -21,6 +21,10 @@ var gold := 0
 var xp := 0
 var level := 1
 var shop: Dictionary = {}
+var run_xp := 0
+var _climb_remainder_px := 0.0
+var _climb_save_elapsed := 0.0
+var _climb_save_pending := false
 
 func initialize(manager: SaveManager) -> bool:
 	save_manager = manager
@@ -54,12 +58,38 @@ func collect_gold(multiplier: int = 1) -> Dictionary:
 	_persist_and_emit()
 	return {"gold": reward, "xp": value("xp_per_gold") * multiplier, "level_ups": levels}
 
-func complete_stage(stage_number: int) -> Dictionary:
-	var reward := value("stage_completion_gold_base") + value("stage_completion_gold_per_stage") * stage_number
-	gold += reward
-	var levels := _add_xp(value("xp_per_stage"))
-	_persist_and_emit()
-	return {"gold": reward, "xp": value("xp_per_stage"), "level_ups": levels}
+func complete_stage(_stage_number: int) -> Dictionary:
+	return {"gold": 0, "xp": 0, "level_ups": 0}
+
+func begin_run() -> void:
+	flush_climb_save()
+	run_xp = 0
+	_climb_remainder_px = 0.0
+	_climb_save_elapsed = 0.0
+
+func add_climb(px: float) -> void:
+	if not is_finite(px) or px <= 0.0:
+		return
+	_climb_remainder_px += px
+	var hundreds := int(floor(_climb_remainder_px / 100.0))
+	if hundreds == 0:
+		return
+	_climb_remainder_px -= float(hundreds) * 100.0
+	var amount := hundreds * value("xp_per_100_px")
+	if amount <= 0:
+		return
+	_add_xp(amount)
+	_climb_save_pending = true
+	changed.emit(snapshot())
+
+func update_climb_save(delta: float) -> void:
+	_climb_save_elapsed = minf(_climb_save_elapsed + delta, 1.0)
+	if _climb_save_elapsed >= 1.0:
+		flush_climb_save()
+
+func flush_climb_save() -> void:
+	if _climb_save_pending:
+		_persist_and_emit()
 
 func grant_gold(amount: int) -> int:
 	var reward := maxi(amount, 0)
@@ -224,6 +254,8 @@ func _catalog_item(item_id: String) -> Dictionary:
 func _persist_shop() -> void:
 	if save_manager != null:
 		save_manager.write_meta_and_shop(snapshot(), shop)
+	_climb_save_pending = false
+	_climb_save_elapsed = 0.0
 	changed.emit(snapshot())
 
 func _unlock_item(item_id: String) -> void:
@@ -251,6 +283,7 @@ func value(key: String) -> int:
 
 func _add_xp(amount: int) -> int:
 	xp += amount
+	run_xp += amount
 	var levels := 0
 	while xp >= threshold_for():
 		xp -= threshold_for()
@@ -264,6 +297,8 @@ func _add_xp(amount: int) -> int:
 func _persist_and_emit() -> void:
 	if save_manager != null:
 		save_manager.write_meta(snapshot())
+	_climb_save_pending = false
+	_climb_save_elapsed = 0.0
 	changed.emit(snapshot())
 
 func _load_local_config() -> bool:

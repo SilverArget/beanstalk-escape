@@ -101,6 +101,7 @@ var total_time := 0.0
 var score := 0.0
 var run_coins := 0
 var score_previous_y := 0.0
+var climb_previous_y := 0.0
 var run_generation := 0
 var close_calls := 0
 var danger_was_active := false
@@ -254,6 +255,9 @@ func _physics_process(delta: float) -> void:
 			_show_leaderboard()
 	if app_state == AppState.PLAYING and not tutorial_active:
 		score += maxf(score_previous_y - player.global_position.y, 0.0) * 0.1 * clampi(golds.combo, 1, 5)
+		economy.add_climb(maxf(climb_previous_y - player.global_position.y, 0.0))
+	climb_previous_y = player.global_position.y
+	economy.update_climb_save(delta)
 	score_previous_y = player.global_position.y
 	player.speed_scale = 1.0 if tutorial_active else Balance.speed_scale_for_time(total_time)
 	_update_hit_invulnerability(delta)
@@ -412,6 +416,9 @@ func _notification(what: int) -> void:
 	if what == NOTIFICATION_APPLICATION_FOCUS_OUT and is_node_ready() and app_state == AppState.PLAYING:
 		_pause_game()
 
+func _exit_tree() -> void:
+	economy.flush_climb_save()
+
 func _debug_evidence_stage(stage_number: int) -> void:
 	if not _debug_state_enabled() or stage_number < 1 or stage_number > Balance.STAGE_COUNT:
 		return
@@ -451,6 +458,7 @@ func _handle_screen_touch(event: InputEventScreenTouch) -> void:
 			Input.action_release(released_action)
 
 func restart() -> void:
+	economy.begin_run()
 	resume_available = false
 	_clear_direction_inputs()
 	for child in get_tree().get_nodes_in_group("run_transient"): child.free()
@@ -459,6 +467,7 @@ func restart() -> void:
 	rocks.reset_run()
 	storm.reset_run()
 	player.reset_run(Vector2(0, 0))
+	climb_previous_y = player.global_position.y
 	spider.reset_run(Vector2(0, _spider_start_gap(1)))
 	player.set_physics_process(true)
 	spider.set_physics_process(true)
@@ -618,6 +627,7 @@ func _finish_intro() -> void:
 	intro_t = 0.0
 	# Rebuild the exact normal run start so watching and skipping are identical.
 	player.reset_run(Vector2.ZERO)
+	climb_previous_y = player.global_position.y
 	spider.reset_run(Vector2(0.0, _spider_start_gap(1)))
 	beans.reset_run()
 	rocks.reset_run()
@@ -683,6 +693,7 @@ func restart_stage() -> void:
 	danger_pulse_remaining = 0.0
 	_apply_impact_fx(0.0)
 	player.reset_run(Vector2(0, start_y))
+	climb_previous_y = player.global_position.y
 	spider.reset_run(Vector2(0, start_y + _spider_start_gap(stage_number)))
 	_begin_danger(true)
 	stage_restart_count += 1
@@ -712,6 +723,7 @@ func restart_stage() -> void:
 	_publish_readonly_web_state()
 
 func _on_prototype_completed() -> void:
+	economy.flush_climb_save()
 	resume_available = false
 	state = State.PROTOTYPE_COMPLETE
 	completed_stages[Balance.STAGE_COUNT] = true
@@ -818,8 +830,8 @@ func _on_stage_completed(stage_number: int) -> void:
 	var reward := economy.complete_stage(stage_number)
 	economy.mark_stage_completed(stage_number)
 	last_stage_gold_reward = int(reward.gold)
-	reward_toast_remaining = 2.0
-	double_reward_remaining = 2.0 if platform_services.is_rewarded_supported() else 0.0
+	reward_toast_remaining = 0.0
+	double_reward_remaining = 0.0
 	$HUD/RewardToast.text = "+%d GOLD  +%d XP" % [reward.gold, reward.xp]
 	if stage_number < Balance.STAGE_COUNT:
 		_show_tutorial_for_stage(stage_number + 1)
@@ -910,6 +922,7 @@ func _lose_life(cause: DeathCause, respawn_from_checkpoint: bool) -> bool:
 	return true
 
 func _enter_player_dead(cause: DeathCause) -> void:
+	economy.flush_climb_save()
 	golds.reset_combo()
 	resume_available = false
 	state = State.PLAYER_DEAD
@@ -1000,6 +1013,7 @@ func _respawn_at_continue_checkpoint() -> void:
 	safe_position = _validated_continue_position(safe_position)
 	continue_checkpoint = {"position": safe_position, "stage": stages.stage_for_y(safe_position.y)}
 	player.reset_run(safe_position)
+	climb_previous_y = player.global_position.y
 	score_previous_y = player.global_position.y
 	var safe_stage := stages.stage_for_y(safe_position.y)
 	spider.reset_run(safe_position + Vector2(0, _spider_start_gap(safe_stage)))
@@ -1083,6 +1097,7 @@ func _resume_game() -> void:
 	_update_hud()
 
 func _show_menu() -> void:
+	economy.flush_climb_save()
 	menu_help_open = false
 	app_state = AppState.MENU
 	death_phase = ""
@@ -1264,6 +1279,7 @@ func _skip_stage_after_reward(stage_number: int) -> void:
 	stages.current_stage = stage_number + 1
 	var next_y := stages.stage_bottom_y(stage_number + 1)
 	player.reset_run(Vector2(0, next_y))
+	climb_previous_y = player.global_position.y
 	spider.reset_run(Vector2(0, next_y + _spider_start_gap(stage_number + 1)))
 	_begin_danger(true)
 	golds.reset_run()
@@ -1322,6 +1338,7 @@ func _enter_tutorial_arena() -> void:
 			break
 	var practice_y := -(stages.stage_start_height(stage_number) + stages.stage_length(stage_number) * practice_progress)
 	player.reset_run(Vector2(stages.branch_x_at(1, practice_y), practice_y))
+	climb_previous_y = player.global_position.y
 	spider.reset_run(player.global_position + Vector2(0.0, 900.0))
 	player.set_physics_process(true)
 	spider.set_physics_process(false)
@@ -2524,6 +2541,8 @@ func _readonly_state_snapshot() -> Dictionary:
 		"run_time": total_time,
 		"score": int(score),
 		"run_coins": run_coins,
+		"run_xp": economy.run_xp,
+		"economy_level": economy.level,
 		"best_score": int(save_manager.profile.get("best_score", 0)),
 		"death_phase": death_phase,
 		"result_new_best": result_new_best,
@@ -2638,6 +2657,7 @@ func _start_debug_stage(stage_number: int) -> void:
 		return
 	var start_y := stages.stage_bottom_y(stage_number)
 	player.reset_run(Vector2(0.0, start_y))
+	climb_previous_y = player.global_position.y
 	spider.reset_run(Vector2(0.0, start_y + _spider_start_gap(stage_number)))
 	_begin_danger(true)
 	rocks.sync_after_player_teleport()
