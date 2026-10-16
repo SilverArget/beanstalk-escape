@@ -8,13 +8,6 @@ const ROCK_FIRE_ATLAS := preload("res://assets/art/hazards/rock_fire_atlas.png")
 const FAIRY_EFFECT := preload("res://scripts/fairy_effect.gd")
 const OUTFIT_EFFECT := preload("res://scripts/outfit_effect.gd")
 const OUTFIT_ROOT := "res://assets/art/outfits"
-const OUTFIT_BACK_BOUNDS := {
-	"outfit_moss": Rect2(79, 99, 105, 74), "outfit_fern": Rect2(77, 96, 104, 76),
-	"outfit_sky": Rect2(79, 104, 104, 65), "outfit_ocean": Rect2(71, 95, 115, 72),
-	"outfit_plum": Rect2(70, 100, 116, 77), "outfit_ember": Rect2(85, 84, 86, 104),
-	"outfit_clay": Rect2(73, 94, 105, 89), "outfit_sun": Rect2(72, 90, 113, 91),
-	"outfit_night": Rect2(87, 63, 91, 147),
-}
 const OUTFIT_FRONT_WIDTHS := {
 	"outfit_moss": 182.0, "outfit_fern": 182.0, "outfit_sky": 182.0,
 	"outfit_ocean": 182.0, "outfit_plum": 182.0, "outfit_ember": 183.0,
@@ -65,6 +58,7 @@ var outfit_aura: OutfitEffect
 var outfit_effect: OutfitEffect
 var outfit_back_sprite: Sprite2D
 var outfit_front_texture: Texture2D
+var outfit_frame_textures: Dictionary = {}
 var pet_preview_time := 0.0
 var pet_preview_scale := Vector2.ONE
 var _was_transferring := false
@@ -184,6 +178,8 @@ func _set_frame(requested_frame: String) -> void:
 	var requested_texture := frame_textures.get(requested_frame) as Texture2D
 	if requested_frame == "front" and outfit_front_texture != null:
 		requested_texture = outfit_front_texture
+	elif outfit_frame_textures.has(requested_frame):
+		requested_texture = outfit_frame_textures[requested_frame] as Texture2D
 	if frame_name == requested_frame and sprite.texture == requested_texture:
 		return
 	frame_name = requested_frame
@@ -302,17 +298,7 @@ func _update_cosmetic_anchors() -> void:
 		fairy_effect.position = pet.position
 		fairy_effect.visible = pet.visible and not fairy_effect.effect_name.is_empty()
 	if outfit_back_sprite != null:
-		var outfit_anchor_data: Array = frame_anchor.get("outfit_back", [head_center.x, head_center.y + head_width * 0.38, head_width * 1.45])
-		var back_outfit_id := str(equipped_cosmetics.get("OUTFIT", ""))
-		var art_bounds: Rect2 = OUTFIT_BACK_BOUNDS.get(back_outfit_id, Rect2(64, 64, 128, 128))
-		var target_width := float(outfit_anchor_data[2]) if outfit_anchor_data.size() >= 3 else head_width * 1.45
-		var art_scale := ART_SCALE * target_width / maxf(art_bounds.size.x, 1.0)
-		var shoulder: Vector2 = source_to_local.call(Vector2(float(outfit_anchor_data[0]), float(outfit_anchor_data[1])))
-		var visible_center_x := art_bounds.get_center().x - float(outfit_back_sprite.texture.get_width()) * 0.5 if outfit_back_sprite.texture != null else 0.0
-		var visible_top_y := art_bounds.position.y - float(outfit_back_sprite.texture.get_height()) * 0.5 if outfit_back_sprite.texture != null else 0.0
-		outfit_back_sprite.position = shoulder - Vector2(visible_center_x, visible_top_y) * art_scale
-		outfit_back_sprite.scale = Vector2.ONE * art_scale
-		outfit_back_sprite.visible = outfit_back_sprite.texture != null and frame_name != "front"
+		outfit_back_sprite.visible = false
 	var outfit_id := str(equipped_cosmetics.get("OUTFIT", ""))
 	var effect_width := float(OUTFIT_FRONT_WIDTHS.get(outfit_id, head_width * 1.65)) if frame_name == "front" else float(BACK_FRAME_WIDTHS.get(frame_name, head_width * 1.65))
 	var effect_size := Vector2(effect_width * ART_SCALE, (482.0 if frame_name == "front" else texture_size.y * 0.79) * ART_SCALE)
@@ -359,9 +345,21 @@ func show_back_preview() -> void:
 
 func _load_outfit_art() -> void:
 	outfit_front_texture = null
+	outfit_frame_textures.clear()
 	if outfit_back_sprite != null:
 		outfit_back_sprite.texture = null
+		outfit_back_sprite.visible = false
 	var outfit_id := str(equipped_cosmetics.get("OUTFIT", ""))
+	if not outfit_id.is_empty():
+		var outfit_name := outfit_id.trim_prefix("outfit_")
+		for pose in frame_textures:
+			if pose == "front":
+				continue
+			var pose_path := "%s/%s/outfits/%s/%s.png" % [FRAME_ROOT, skin_id.to_lower(), outfit_name, pose]
+			if ResourceLoader.exists(pose_path):
+				var pose_texture := load(pose_path) as Texture2D
+				if pose_texture != null:
+					outfit_frame_textures[pose] = pose_texture
 	var item: Dictionary = cosmetic_data.get(outfit_id, {})
 	if outfit_id.is_empty() or item.is_empty():
 		if outfit_aura != null:
@@ -370,11 +368,8 @@ func _load_outfit_art() -> void:
 			outfit_effect.configure({})
 		return
 	var front_path := "%s/front/%s/%s.png" % [OUTFIT_ROOT, skin_id.to_lower(), outfit_id]
-	var back_path := "%s/back/%s.png" % [OUTFIT_ROOT, outfit_id]
 	if ResourceLoader.exists(front_path):
 		outfit_front_texture = load(front_path) as Texture2D
-	if outfit_back_sprite != null and ResourceLoader.exists(back_path):
-		outfit_back_sprite.texture = load(back_path) as Texture2D
 	if outfit_effect != null:
 		outfit_effect.configure(item)
 	if outfit_aura != null:
