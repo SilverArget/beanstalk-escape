@@ -11,12 +11,10 @@ const FRAMES := [
 	preload("res://assets/art/gpt/spider/idle.png"),
 ]
 
-# The source frames are tightly cropped 176x152 images. At the old 0.64 scale
-# their opaque area was too short to reach the viewport from the spider's real
-# chase position. Keep the gameplay body untouched and frame this giant visual
-# against the lower edge whenever its natural world position falls below it.
-const VISUAL_SCALE := 2.15
-const EDGE_REVEAL_PX := 72.0
+# Keep the 176x152 frames near native size, slightly taller than the player.
+# Reveal the smaller visual at the lower edge without moving the gameplay body.
+const VISUAL_SCALE := 1.0
+const EDGE_REVEAL_PX := 112.0
 const BASE_POSITION := Vector2(0, -8)
 const FRAME_ALPHA_TOP := [31.0, 43.0, 31.0, 40.0, 24.0, 37.0, 33.0, 40.0]
 const FRAME_ALPHA_BOTTOM := 144.0
@@ -55,6 +53,8 @@ func _process(_delta: float) -> void:
 	sprite.texture = FRAMES[current_frame]
 	_update_follow_pose(spider)
 	_apply_bottom_edge_framing()
+	if web_line.visible:
+		_update_web_line(clampf(spider.horizontal_motion_speed / 900.0, -1.0, 1.0))
 
 func _stage_number(spider: SpiderController) -> int:
 	if spider.stages == null or spider.player == null:
@@ -68,9 +68,12 @@ func _update_follow_pose(spider: SpiderController) -> void:
 	var lean := 0.16 if stage_number >= 3 else 0.10
 	sprite.rotation = direction * lean if moving else move_toward(sprite.rotation, 0.0, 0.035)
 	web_line.visible = moving and stage_number >= 3
-	if web_line.visible:
-		var sway := clampf(spider.horizontal_motion_speed / 900.0, -1.0, 1.0)
-		web_line.points = PackedVector2Array([Vector2(-sway * 34.0, -280.0), Vector2(0.0, -38.0)])
+
+func _update_web_line(sway: float) -> void:
+	web_line.points = PackedVector2Array([
+		sprite.position + Vector2(-sway * 34.0, -280.0),
+		sprite.transform * Vector2(0.0, -38.0),
+	])
 
 func visibility_snapshot() -> Dictionary:
 	if sprite.texture == null or not is_inside_tree():
@@ -96,11 +99,11 @@ func _apply_bottom_edge_framing() -> void:
 	var texture_height := float(sprite.texture.get_height())
 	var safe_top_local := SAFE_ALPHA_TOP - texture_height * 0.5
 	var screen_top := (sprite.get_global_transform_with_canvas() * Vector2(0.0, safe_top_local)).y
-	var desired_top := get_viewport_rect().size.y - EDGE_REVEAL_PX
-	if screen_top <= desired_top:
-		return
 	var body_transform := get_global_transform_with_canvas()
 	var screen_origin := body_transform * Vector2.ZERO
 	var screen_unit_y := body_transform * Vector2.DOWN
 	var pixels_per_world_unit := maxf((screen_unit_y - screen_origin).length(), 0.001)
+	var desired_top := get_viewport_rect().size.y - EDGE_REVEAL_PX * pixels_per_world_unit
+	if screen_top <= desired_top:
+		return
 	sprite.position.y -= (screen_top - desired_top) / pixels_per_world_unit

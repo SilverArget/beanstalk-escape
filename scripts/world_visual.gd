@@ -86,8 +86,7 @@ func _draw() -> void:
 	_draw_trunk(camera_top)
 	if not qa_support_mask:
 		_draw_trunk_features(camera_top)
-	for stage_number in range(3, Balance.STAGE_COUNT + 1):
-		_draw_stage_branches(stage_number, camera_top)
+	_draw_stage_branches(camera_top)
 	_flush_branch_details()
 
 func _draw_sky(camera_top: float) -> void:
@@ -222,24 +221,34 @@ func _trunk_center_x(world_y: float) -> float:
 func _trunk_half_width(world_y: float) -> float:
 	return 90.0 + sin(world_y * TAU / 470.0) * 7.0 + sin(world_y * TAU / 150.0) * 3.0
 
-func _draw_stage_branches(stage_number: int, camera_top: float) -> void:
-	var stage_bottom := stages.stage_bottom_y(stage_number)
-	var stage_length := stages.stage_length(stage_number)
-	var stage_top := stage_bottom - stage_length
-	var camera_bottom := camera_top + 556.0
-	if stage_bottom < camera_top - 120.0 - SURFACE_CACHE_MARGIN_PX or stage_top > camera_bottom + 120.0 + SURFACE_CACHE_MARGIN_PX:
-		return
-	var visible_start := clampf((stage_bottom - (camera_bottom + 160.0 + SURFACE_CACHE_MARGIN_PX)) / stage_length, 0.0, 1.0)
-	var visible_end := clampf((stage_bottom - (camera_top - 160.0 - SURFACE_CACHE_MARGIN_PX)) / stage_length, 0.0, 1.0)
+func _draw_stage_branches(camera_top: float) -> void:
+	var visible_bottom := camera_top + 556.0 + 160.0 + SURFACE_CACHE_MARGIN_PX
+	var visible_top := camera_top - 160.0 - SURFACE_CACHE_MARGIN_PX
 	for route in 3:
-		for segment: Array in stages.support_segments(stage_number, route):
-			var authored_start := float(segment[0])
-			var authored_end := float(segment[1])
-			var clipped_start := maxf(authored_start, visible_start)
-			var clipped_end := minf(authored_end, visible_end)
-			if clipped_end <= clipped_start:
+		# Union touching support intervals before clipping or building geometry.
+		# A stage/support boundary is not a botanical endpoint.
+		var spans: Array[Vector3] = []
+		for stage_number in range(3, Balance.STAGE_COUNT + 1):
+			var bottom := stages.stage_bottom_y(stage_number)
+			var length := stages.stage_length(stage_number)
+			for segment: Array in stages.support_segments(stage_number, route):
+				spans.append(Vector3(bottom - float(segment[0]) * length, bottom - float(segment[1]) * length, stage_number))
+		spans.sort_custom(func(a: Vector3, b: Vector3) -> bool: return a.x > b.x)
+		var joined: Array[Vector3] = []
+		for span in spans:
+			if not joined.is_empty() and span.x >= joined[joined.size() - 1].y - 0.01:
+				joined[joined.size() - 1].y = minf(joined[joined.size() - 1].y, span.y)
+			else:
+				joined.append(span)
+		for span in joined:
+			var start_y := minf(span.x, visible_bottom)
+			var end_y := maxf(span.y, visible_top)
+			if start_y <= end_y:
 				continue
-			_draw_branch_segment(stage_number, route, clipped_start, clipped_end, is_equal_approx(clipped_start, authored_start), is_equal_approx(clipped_end, authored_end))
+			var stage_number := int(span.z)
+			var bottom := stages.stage_bottom_y(stage_number)
+			var length := stages.stage_length(stage_number)
+			_draw_branch_segment(stage_number, route, (bottom - start_y) / length, (bottom - end_y) / length, is_equal_approx(start_y, span.x), is_equal_approx(end_y, span.y))
 
 func _draw_branch_segment(stage_number: int, route: int, start_progress: float, end_progress: float, show_start_tip := true, show_end_tip := true) -> void:
 	var stage_bottom := stages.stage_bottom_y(stage_number)
@@ -247,6 +256,8 @@ func _draw_branch_segment(stage_number: int, route: int, start_progress: float, 
 	var cap_start := start_progress > 0.0 and show_start_tip
 	if stage_number == 3 and route == 1 and start_progress <= 0.0:
 		start_progress = STAGE_3_ENTRY_HEIGHT / stage_length
+	if end_progress <= start_progress:
+		return
 	var start_y := stage_bottom - start_progress * stage_length
 	var end_y := stage_bottom - end_progress * stage_length
 	var points := PackedVector2Array()
@@ -259,7 +270,7 @@ func _draw_branch_segment(stage_number: int, route: int, start_progress: float, 
 		points.append(Vector2(_branch_visual_x(route, start_y), start_y))
 	var cursor_y := start_y
 	while cursor_y > end_y:
-		cursor_y = maxf(cursor_y - 12.0, end_y)
+		cursor_y = maxf((ceilf(cursor_y / 12.0) - 1.0) * 12.0, end_y)
 		points.append(Vector2(_branch_visual_x(route, cursor_y), cursor_y))
 	if points.size() < 2:
 		return
@@ -441,17 +452,20 @@ func _draw_textured_ribbon(points: PackedVector2Array, widths: PackedFloat32Arra
 			cursor_y -= 6.0
 	rows.append(points[points.size() - 1])
 	row_widths.append(widths[widths.size() - 1])
-	# Subdivide exactly at depth swaps rather than letting draw order change
-	# halfway through a quad. Bisection uses the same world phase on both sides.
+	# Split both depth swaps and outer-edge ownership changes. Across a sine
+	# zero the two cylinders exchange silhouette sides; without that exact row,
+	# both interpolated edges retreat inside the envelope and leave a notch.
 	for index in range(rows.size() - 2, -1, -1):
 		var a := rows[index].y
 		var b := rows[index + 1].y
-		if cos(_shoot_phase(a)) * cos(_shoot_phase(b)) < 0.0:
+		for phase_offset in [0.0, PI * 0.5]:
+			if sin(_shoot_phase(a) + phase_offset) * sin(_shoot_phase(b) + phase_offset) >= 0.0:
+				continue
 			var lower := a
 			var upper := b
 			for iteration in 16:
 				var middle := (lower + upper) * 0.5
-				if cos(_shoot_phase(lower)) * cos(_shoot_phase(middle)) > 0.0:
+				if sin(_shoot_phase(lower) + phase_offset) * sin(_shoot_phase(middle) + phase_offset) > 0.0:
 					lower = middle
 				else:
 					upper = middle
@@ -492,11 +506,9 @@ func _append_shoot_row(vertices: PackedVector2Array, colors: PackedColorArray, u
 	var normal := across.normalized()
 	var phase := _shoot_phase(world_y)
 	var winding := sin(phase)
-	# Equal-radius, touching cylinders fill the support envelope without any
-	# backing strip. Only the broad trunk gets a small scalloped silhouette;
-	# all branch widths and the narrow end of the transition stay unchanged.
-	var scallop := 1.0 + 0.024 * smoothstep(56.0, 130.0, width) * cos(phase * 2.0)
-	var radius := width * 0.5 * scallop / (1.0 + absf(winding))
+	# The authored envelope alone owns the silhouette. Winding changes the
+	# interior overlap, never the outer width or the constant-pixel edge fringe.
+	var radius := width * 0.5 / (1.0 + absf(winding))
 	var side := 1.0 if shoot == 0 else -1.0
 	var center_offset := side * winding * radius
 	var center := (left + right) * 0.5 + normal * center_offset
@@ -524,7 +536,10 @@ func _append_shoot_row(vertices: PackedVector2Array, colors: PackedColorArray, u
 		if shoot != front_shoot:
 			var x := center_offset + (u - 0.5) * diameter
 			var distance := maxf(absf(x - front_offset) - radius, 0.0)
-			shadow -= 0.32 * (1.0 - smoothstep(0.0, 6.0, distance))
+			# At the side-by-side crossing, front/back identity changes. Fade the
+			# contact shadow to zero there so both incident rows shade identically.
+			var overlap := smoothstep(0.0, 0.25, absf(cos(phase)))
+			shadow -= 0.32 * overlap * (1.0 - smoothstep(0.0, 6.0, distance))
 		var alpha := 1.0
 		if value < 0.0 or value > 1.0:
 			alpha = 0.0
