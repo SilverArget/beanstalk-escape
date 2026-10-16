@@ -13,6 +13,7 @@ var threat_time := 0.0
 var previous_position := Vector2.ZERO
 var stages: StageManager
 var sprite := Sprite2D.new()
+var split_wall_sprites: Array[Sprite2D] = []
 var redraw_count := 0
 
 func setup(id: String, recipe_kind: String, lane_values: Array, at_y: float, stage_manager: StageManager) -> void:
@@ -31,6 +32,15 @@ func setup(id: String, recipe_kind: String, lane_values: Array, at_y: float, sta
 	sprite.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
 	sprite.scale = Vector2.ONE * (0.26 if kind == "WALL" else (0.23 if kind == "S" else 0.18))
 	add_child(sprite)
+	if kind == "WALL" and routes.size() > 1 and absi(routes[0] - routes[-1]) > 1:
+		split_wall_sprites.append(sprite)
+		for index in range(1, routes.size()):
+			var arch := Sprite2D.new()
+			arch.texture = sprite.texture
+			arch.texture_filter = sprite.texture_filter
+			arch.scale = sprite.scale
+			add_child(arch)
+			split_wall_sprites.append(arch)
 	_reset_position()
 	_update_vine_visual_offset()
 	previous_position = global_position
@@ -73,11 +83,20 @@ func advance_threat_clock(delta: float, time_active: bool, player_y: float) -> v
 	_update_vine_visual_offset()
 
 func _update_vine_visual_offset() -> void:
+	if not split_wall_sprites.is_empty():
+		for index in split_wall_sprites.size():
+			var route := routes[index]
+			var vine_offset := ScaleLock.vine_visual_offset(route, global_position.y) if stages != null and stages.stage_for_y(global_position.y) > 2 else 0.0
+			split_wall_sprites[index].position.x = float(Balance.ROUTE_X[route]) + vine_offset - position.x
+		return
 	if sprite == null or stages == null or stages.stage_for_y(global_position.y) <= 2 or routes.is_empty():
 		if sprite != null: sprite.position.x = 0.0
 		return
 	var offset := ScaleLock.vine_visual_offset(routes[0], global_position.y)
-	if kind in ["M", "WALL"] and routes.size() > 1:
+	if kind == "M" and routes.size() > 1:
+		var t := clampf(inverse_lerp(float(Balance.ROUTE_X[routes[0]]), float(Balance.ROUTE_X[routes[-1]]), position.x), 0.0, 1.0)
+		offset = lerpf(ScaleLock.vine_visual_offset(routes[0], global_position.y), ScaleLock.vine_visual_offset(routes[-1], global_position.y), t)
+	elif kind == "WALL" and routes.size() > 1:
 		offset = (ScaleLock.vine_visual_offset(routes[0], global_position.y) + ScaleLock.vine_visual_offset(routes[-1], global_position.y)) * 0.5
 	sprite.position.x = offset
 
