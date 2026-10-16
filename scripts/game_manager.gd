@@ -228,6 +228,7 @@ func _ready() -> void:
 	_start_selected_run()
 
 func _physics_process(delta: float) -> void:
+	player.speed_scale = 1.0 if tutorial_active else Balance.speed_scale_for_time(total_time)
 	_update_hit_invulnerability(delta)
 	_update_danger(delta)
 	reward_toast_remaining = maxf(reward_toast_remaining - delta, 0.0)
@@ -257,6 +258,7 @@ func _physics_process(delta: float) -> void:
 		return
 	if not tutorial_active:
 		total_time += delta
+		player.speed_scale = Balance.speed_scale_for_time(total_time)
 	if tutorial_active:
 		_update_onboarding(delta)
 	else:
@@ -382,7 +384,7 @@ func _debug_evidence_stage(stage_number: int) -> void:
 	if not _debug_state_enabled() or stage_number < 1 or stage_number > Balance.STAGE_COUNT:
 		return
 	player.global_position = Vector2(0, -(stages.stage_start_height(stage_number) + stages.stage_length(stage_number) * 0.35))
-	spider.reset_run(player.global_position + Vector2(0, SpiderController.stage_start_gap(stage_number)))
+	spider.reset_run(player.global_position + Vector2(0, _spider_start_gap(stage_number)))
 	player._sync_stage_mode()
 	stages.update_progress(player.global_position.y)
 
@@ -445,6 +447,7 @@ func restart() -> void:
 	dead_restart_delay = 0.0
 	confirm_pending = false
 	total_time = 0.0
+	player.speed_scale = 1.0
 	close_calls = 0
 	danger_was_active = false
 	shake_remaining = 0.0
@@ -762,7 +765,6 @@ func _complete_menu() -> void:
 		_show_menu()
 
 func _on_stage_completed(stage_number: int) -> void:
-	golds.reset_combo()
 	if not tutorial_active and stage_number == ghost_stage:
 		save_manager.record_stage_ghost(mode, stage_number, ghost_stage_elapsed, ghost_trace)
 	completed_stages[stage_number] = true
@@ -775,14 +777,9 @@ func _on_stage_completed(stage_number: int) -> void:
 	reward_toast_remaining = 2.0
 	double_reward_remaining = 2.0 if platform_services.is_rewarded_supported() else 0.0
 	$HUD/RewardToast.text = "+%d GOLD  +%d XP" % [reward.gold, reward.xp]
-	completed_since_interstitial += 1
-	if stage_number >= economy.value("interstitial_min_stage") and completed_since_interstitial >= economy.value("interstitial_completed_stage_interval"):
-		if platform_services.show_interstitial("stage_transition"):
-			completed_since_interstitial = 0
 	if stage_number < Balance.STAGE_COUNT:
 		_show_tutorial_for_stage(stage_number + 1)
 		_reset_stage_ghost(stage_number + 1)
-		_begin_danger(true)
 
 func try_time_wings() -> bool:
 	var stage_number := stages.stage_for_y(player.global_position.y)
@@ -1193,6 +1190,7 @@ func _start_onboarding() -> void:
 	_show_onboarding_step()
 
 func _enter_tutorial_arena() -> void:
+	player.speed_scale = 1.0
 	danger_remaining = 0.0
 	danger_vignette_alpha = 0.0
 	for child in get_tree().get_nodes_in_group("run_transient"):
@@ -1389,7 +1387,7 @@ func is_nightmare_mode() -> bool:
 	return mode == MODE_NIGHTMARE
 
 func _spider_start_gap(stage_number: int) -> float:
-	var gap := SpiderController.stage_start_gap(stage_number)
+	var gap := SpiderController.stage_start_gap(stages.template_for_stage(stage_number))
 	if is_nightmare_mode():
 		gap *= float(StageDatabase.nightmare_modifiers().get("spider_start_gap_scale", 1.0))
 	return gap
@@ -2298,6 +2296,13 @@ func _readonly_state_snapshot() -> Dictionary:
 		})
 	return {
 		"app_state": AppState.keys()[app_state],
+		"run_time": total_time,
+		"speed_scale": player.speed_scale,
+		"climb_speed": player.climb_speed(),
+		"difficulty_tier": Balance.difficulty_tier_for_time(total_time),
+		"difficulty_name": Balance.tier_name(Balance.difficulty_tier_for_time(total_time)),
+		"chunk_template": stages.template_for_stage(stage_number),
+		"chunk_tier": stages.tier_for_stage(stage_number),
 		"resume_available": resume_available,
 		"mode": mode,
 		"nightmare_unlocked": bool(save_manager.replay_snapshot().nightmare_unlocked),

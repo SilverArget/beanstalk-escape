@@ -11,6 +11,7 @@ var bean_penalty_count := 0
 var vertical_blocked := false
 var time_wings_active := false
 var fire_wings_active := false
+var speed_scale := 1.0
 var rock_penalty_count := 0
 var knockback_speed := Balance.BEAN_KNOCKBACK_SPEED
 var rock_knockback_requires_support := false
@@ -111,8 +112,9 @@ func _sync_stage_mode() -> void:
 
 func _update_trunk_movement(delta: float) -> void:
 	var axis := Input.get_axis("move_left", "move_right")
+	var horizontal_scale := Balance.BRANCH_TRANSITION_SECONDS / branch_transition_seconds()
 	if stun_remaining <= 0.0:
-		velocity.x = move_toward(velocity.x, axis * Balance.PLAYER_HORIZONTAL_SPEED, Balance.PLAYER_HORIZONTAL_ACCELERATION * delta)
+		velocity.x = move_toward(velocity.x, axis * Balance.PLAYER_HORIZONTAL_SPEED * horizontal_scale, Balance.PLAYER_HORIZONTAL_ACCELERATION * horizontal_scale * delta)
 	else:
 		velocity.x = move_toward(velocity.x, 0.0, Balance.PLAYER_HORIZONTAL_ACCELERATION * delta)
 	active_branch = stages.route_for_x(global_position.x)
@@ -127,7 +129,7 @@ func _update_branch_movement(delta: float) -> void:
 			var wind_step := storm.step_transfer_wind(transfer_wind_offset, transfer_wind_velocity, transition_base_y, delta, time_wings_active)
 			transfer_wind_offset = wind_step.x
 			transfer_wind_velocity = wind_step.y
-		transition_progress = minf(transition_progress + delta / Balance.BRANCH_TRANSITION_SECONDS, 1.0)
+		transition_progress = minf(transition_progress + delta / branch_transition_seconds(), 1.0)
 		if transition_progress >= 1.0 - 0.00001:
 			transition_progress = 1.0
 		transition_base_y -= climb_speed() * delta
@@ -307,4 +309,7 @@ func apply_rock_hit(_hit_id: String) -> void:
 	knockback_speed = Balance.ROCK_KNOCKBACK_SPEED
 
 func climb_speed() -> float:
-	return Balance.PLAYER_VERTICAL_SPEED * (Balance.FIRE_WINGS_SPEED_SCALE if fire_wings_active else 1.0)
+	return Balance.PLAYER_VERTICAL_SPEED * speed_scale * (Balance.FIRE_WINGS_SPEED_SCALE if fire_wings_active else 1.0)
+
+func branch_transition_seconds() -> float:
+	return Balance.BRANCH_TRANSITION_SECONDS * (1.0 - 0.5 * (speed_scale - 1.0) * 2.0 / 3.0)

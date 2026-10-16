@@ -31,15 +31,17 @@ func _physics_process(delta: float) -> void:
 	catchup_active = bool(catchup.active)
 	catchup_blend = float(catchup.blend)
 	var stage_number := stages.stage_for_y(player.global_position.y) if stages != null and player != null else 1
-	var speed := speed_for_state(gap, stage_number, catchup_blend, boost_remaining > 0.0, player != null and player.time_wings_active)
+	var template_number := stages.template_for_stage(stage_number) if stages != null else stage_number
+	var run_speed_scale := player.speed_scale if player != null else 1.0
+	var speed := speed_for_state(gap, template_number, catchup_blend, boost_remaining > 0.0, player != null and player.time_wings_active)
 	if game != null and game.is_nightmare_mode():
-		var profile := pressure_profile(stage_number)
+		var profile := pressure_profile(template_number)
 		var pressure_c := clampf((gap - float(profile.g_lo)) / Balance.SPIDER_RAMP_SPAN, 0.0, 1.0)
 		var time_scale := Balance.TIME_WINGS_SLOW_SCALE if player != null and player.time_wings_active else 1.0
 		speed += float(profile.pressure) * pressure_c * (float(nightmare_modifiers.get("spider_pressure_scale", 1.0)) - 1.0) * time_scale
 	speed_ratio = speed / Balance.PLAYER_VERTICAL_SPEED
 	_update_horizontal_follow(delta, stage_number)
-	velocity = Vector2(0.0, -speed)
+	velocity = Vector2(0.0, -speed * run_speed_scale)
 	move_and_slide()
 
 func reset_run(at_position: Vector2) -> void:
@@ -87,7 +89,7 @@ func _update_danger_gap(delta: float) -> void:
 	var previous_y := global_position.y
 	global_position.y = player.global_position.y + maxf(gap, Balance.DANGER_GAP)
 	velocity = Vector2(0.0, (global_position.y - previous_y) / maxf(delta, 0.000001))
-	speed_ratio = -velocity.y / Balance.PLAYER_VERTICAL_SPEED
+	speed_ratio = -velocity.y / (Balance.PLAYER_VERTICAL_SPEED * player.speed_scale)
 	catchup_active = false
 	catchup_blend = 0.0
 	var stage_number := stages.stage_for_y(player.global_position.y) if stages != null else 1
@@ -100,7 +102,7 @@ func _update_horizontal_follow(delta: float, stage_number: int) -> void:
 	var previous_x := global_position.x
 	if stage_number <= 2:
 		target_x = player.global_position.x
-		global_position.x = move_toward(global_position.x, target_x, Balance.SPIDER_TRUNK_FOLLOW_SPEED * delta)
+		global_position.x = move_toward(global_position.x, target_x, Balance.SPIDER_TRUNK_FOLLOW_SPEED * player.speed_scale * delta)
 	else:
 		var target_branch := player.transition_to if player.movement_mode == PlayerController.MovementMode.TRANSITION else player.active_branch
 		var desired_x := float(Balance.ROUTE_X[clampi(target_branch, 0, Balance.ROUTE_X.size() - 1)])
@@ -112,7 +114,7 @@ func _update_horizontal_follow(delta: float, stage_number: int) -> void:
 		if _follow_delay_remaining > 0.0:
 			_follow_delay_remaining = maxf(_follow_delay_remaining - delta, 0.0)
 		else:
-			_follow_elapsed = minf(_follow_elapsed + delta, Balance.SPIDER_FOLLOW_SECONDS)
+			_follow_elapsed = minf(_follow_elapsed + delta * player.speed_scale, Balance.SPIDER_FOLLOW_SECONDS)
 			var progress := _follow_elapsed / Balance.SPIDER_FOLLOW_SECONDS
 			var eased := progress * progress * (3.0 - 2.0 * progress)
 			global_position.x = lerpf(_follow_start_x, target_x, eased)
