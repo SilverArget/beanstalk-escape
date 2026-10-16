@@ -25,6 +25,6 @@
 		"backfillId": ""
 	},
 	"payments": [{"id": "remove_ads"}],
-	"leaderboards": [],
+	"leaderboards": [{"id": "best_score", "isMain": true}],
 	"sendAnalyticsEvents": true
 }
