@@ -22,13 +22,18 @@ const SKIN_IDS := ["M1", "M2", "M3", "F1", "F2", "F3"]
 const FRAME_RATE := 8.0
 const ART_SCALE := 0.49
 const BASE_Y := -7.2
-const TIME_WINGS_TARGET_SCALE := 0.72
+const WINGS_TARGET_WIDTH := ScaleLock.CHARACTER_WIDTH * 1.8
+const TIME_WINGS_VISIBLE_RATIO := 1344.0 / 1415.0
+const FIRE_WINGS_REGION_SIZE := Vector2(512, 512)
+const FIRE_WINGS_VISIBLE_RATIO := 465.0 / 512.0
+const FIRE_WINGS_TARGET_SCALE := WINGS_TARGET_WIDTH / (FIRE_WINGS_REGION_SIZE.x * FIRE_WINGS_VISIBLE_RATIO)
+const FIRE_TRAIL_REFERENCE_SCALE := 0.32
 const TIME_WINGS_REVEAL_SECONDS := 0.18
 # Normalized source clasp position, independent of the texture import size.
 const TIME_WING_ROOT_UV := Vector2(707.0 / 1415.0, 584.0 / 1111.0)
 const FIRE_WING_ROOT := Vector2(256, 320) # Relative to the 512 x 512 atlas region.
 # Original trail coordinates relative to the fire clasp at its base scale.
-const FIRE_TRAIL_ROOT := Vector2(0, -12) + (FIRE_WING_ROOT - Vector2(256, 256)) * 0.32
+const FIRE_TRAIL_ROOT := Vector2(0, -12) + (FIRE_WING_ROOT - Vector2(256, 256)) * FIRE_TRAIL_REFERENCE_SCALE
 const PET_PREVIEW_HEIGHT := 60.0
 const PET_PREVIEW_BOUNDS := {}
 
@@ -66,6 +71,7 @@ var _transfer_trail_alpha := 0.0
 var _last_transfer_direction := 1.0
 var _time_wings_reveal := 0.0
 var _time_wings_was_active := false
+var _time_wings_target_scale := WINGS_TARGET_WIDTH / (WING_TEXTURE.get_width() * TIME_WINGS_VISIBLE_RATIO)
 
 func _ready() -> void:
 	_build_visual()
@@ -87,9 +93,9 @@ func _process(delta: float) -> void:
 	if player.time_wings_active:
 		_time_wings_reveal = minf(_time_wings_reveal + delta / TIME_WINGS_REVEAL_SECONDS, 1.0)
 		var reveal := smoothstep(0.0, 1.0, _time_wings_reveal)
-		var wing_pulse := sin(Time.get_ticks_msec() * 0.010) * 0.003
-		var reveal_scale := TIME_WINGS_TARGET_SCALE * lerpf(0.70, 1.0, reveal)
-		time_wings.scale = Vector2(reveal_scale + wing_pulse, reveal_scale - wing_pulse * 0.5)
+		var wing_pulse := sin(Time.get_ticks_msec() * 0.010) * 0.01
+		var reveal_scale := _time_wings_target_scale * lerpf(0.70, 1.0, reveal)
+		time_wings.scale = reveal_scale * Vector2(1.0 + wing_pulse, 1.0 - wing_pulse * 0.5)
 		time_wings.modulate.a = reveal
 		time_wings.visible = true
 	else:
@@ -100,9 +106,10 @@ func _process(delta: float) -> void:
 	fire_wings.visible = player.fire_wings_active
 	for trail in fire_trails: trail.visible = player.fire_wings_active
 	if fire_wings.visible:
-		var fire_pulse := sin(Time.get_ticks_msec() * 0.014) * 0.008
-		fire_wings.scale = Vector2(0.32 + fire_pulse, 0.32 - fire_pulse * 0.35)
+		var fire_pulse := sin(Time.get_ticks_msec() * 0.014) * 0.01
+		fire_wings.scale = FIRE_WINGS_TARGET_SCALE * Vector2(1.0 + fire_pulse, 1.0 - fire_pulse * 0.35)
 		for index in fire_trails.size():
+			fire_trails[index].scale = fire_wings.scale / FIRE_TRAIL_REFERENCE_SCALE
 			fire_trails[index].modulate.a = 0.55 + 0.18 * sin(Time.get_ticks_msec() * 0.018 + float(index) * PI)
 	_update_mode(player, delta)
 	flash_material.set_shader_parameter("flash_amount", 0.78 if hurt_remaining > 0.18 else 0.0)
@@ -277,11 +284,15 @@ func _update_cosmetic_anchors() -> void:
 	var source_to_local := func(source_point: Vector2) -> Vector2:
 		return sprite.position + (source_point - texture_size * 0.5) * ART_SCALE
 	var wing_anchor_data: Array = frame_anchor.get("outfit_back", [head_center.x, head_center.y + head_width * 0.38])
-	var wing_anchor: Vector2 = source_to_local.call(Vector2(float(wing_anchor_data[0]), float(wing_anchor_data[1])))
+	var wing_anchor: Vector2 = source_to_local.call(Vector2(float(wing_anchor_data[0]), float(wing_anchor_data[1]) + 14.0))
+	var back_view := str(frame_anchor.get("face_view", "back")) == "back"
+	time_wings.z_index = 1 if back_view else -1
+	fire_wings.z_index = 1 if back_view else -1
 	time_wings.position = wing_anchor
 	fire_wings.position = wing_anchor
 	for trail in fire_trails:
 		trail.position = wing_anchor
+		trail.z_index = 1 if back_view else -2
 	var pet := cosmetic_sprites.get("PET") as Sprite2D
 	var pet_data: Array = frame_anchor.get("pet_anchor", [])
 	if frame_name == "front" and pet_data.size() == 2 and pet.texture != null:
@@ -408,11 +419,11 @@ func _build_visual() -> void:
 	fire_wings.name = "FireWings"
 	var fire_texture := AtlasTexture.new()
 	fire_texture.atlas = ROCK_FIRE_ATLAS
-	fire_texture.region = Rect2(1024, 512, 512, 512)
+	fire_texture.region = Rect2(Vector2(1024, 512), FIRE_WINGS_REGION_SIZE)
 	fire_wings.texture = fire_texture
 	fire_wings.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
 	fire_wings.offset = fire_texture.get_size() * 0.5 - FIRE_WING_ROOT
-	fire_wings.scale = Vector2.ONE * 0.32
+	fire_wings.scale = Vector2.ONE * FIRE_WINGS_TARGET_SCALE
 	fire_wings.z_index = -1
 	fire_wings.visible = false
 	add_child(fire_wings)
@@ -422,6 +433,7 @@ func _build_visual() -> void:
 		for index in points.size():
 			points[index] -= FIRE_TRAIL_ROOT
 		trail.polygon = points
+		trail.scale = Vector2.ONE * FIRE_WINGS_TARGET_SCALE / FIRE_TRAIL_REFERENCE_SCALE
 		trail.color = Color("ff8a24")
 		trail.modulate.a = 0.65
 		trail.z_index = -2
@@ -433,7 +445,7 @@ func _build_visual() -> void:
 	time_wings.texture = WING_TEXTURE
 	time_wings.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
 	time_wings.offset = WING_TEXTURE.get_size() * (Vector2(0.5, 0.5) - TIME_WING_ROOT_UV)
-	time_wings.scale = Vector2.ONE * TIME_WINGS_TARGET_SCALE * 0.70
+	time_wings.scale = Vector2.ONE * _time_wings_target_scale * 0.70
 	time_wings.z_index = -1
 	time_wings.modulate.a = 0.0
 	time_wings.visible = false
@@ -488,6 +500,11 @@ void fragment() {
 	outfit_back_sprite.z_index = 1
 	outfit_back_sprite.visible = false
 	add_child(outfit_back_sprite)
+	# At z=1, back-facing wings follow the outfit and precede cosmetic effects.
+	for trail in fire_trails:
+		move_child(trail, get_child_count() - 1)
+	move_child(fire_wings, get_child_count() - 1)
+	move_child(time_wings, get_child_count() - 1)
 	for slot in ["PET"]:
 		var layer := Sprite2D.new()
 		layer.name = "%sCosmetic" % slot.capitalize()
