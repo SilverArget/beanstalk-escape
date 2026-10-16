@@ -1,6 +1,6 @@
 {
-  "stage_gold_count_min": 8,
-  "stage_gold_count_max": 12,
+  "stage_gold_count_min": 20,
+  "stage_gold_count_max": 30,
   "gold_per_collectible": 1,
   "stage_completion_gold_base": 20,
   "stage_completion_gold_per_stage": 2,

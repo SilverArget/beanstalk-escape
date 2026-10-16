@@ -17,14 +17,34 @@ static func placements_for_stage(stage_number: int, count: int, stages: StageMan
 	if encounters.is_empty():
 		return result
 	var first: Dictionary = encounters[0]
-	var first_x := _witness_x(stage_number, first.witness)
-	var route := _route_at_x(stage_number, first_x, stages)
-	var line_size := mini(LINE_COUNT, count)
-	var line_span := float(line_size - 1) * COIN_SPACING_PX
-	var line_start := maxf(HAZARD_CLEARANCE_PX, float(first.anchor) - line_span * 0.5)
-	for index in line_size:
-		_append_coin(result, stage_number, Vector2(first_x, line_start + float(index) * COIN_SPACING_PX), route, encounters, stages)
-	var remaining := count - line_size
+	# Whole rows have priority; count remains a hard cap. Fill encounter gaps
+	# before spending spare row budget on the entry corridor.
+	var line_start := HAZARD_CLEARANCE_PX
+	var row_gaps: Array = range(1, encounters.size())
+	row_gaps.append(0)
+	for index: int in row_gaps:
+		if result.size() + LINE_COUNT > count:
+			break
+		var current: Dictionary = encounters[index]
+		# One pixel also survives Vector2 world-coordinate rounding late in a run.
+		var gap_start := HAZARD_CLEARANCE_PX if index == 0 else float(encounters[index - 1].occupancy[1]) + HAZARD_CLEARANCE_PX + 1.0
+		var gap_end := float(current.anchor) - HAZARD_CLEARANCE_PX - 1.0
+		if gap_end <= gap_start:
+			continue
+		var spacing := minf(COIN_SPACING_PX, (gap_end - gap_start) / float(LINE_COUNT - 1))
+		var start := (gap_start + gap_end - spacing * float(LINE_COUNT - 1)) * 0.5
+		var x := _witness_x(stage_number, current.witness)
+		var route := _route_at_x(stage_number, x, stages)
+		var row: Array = []
+		for coin_index in LINE_COUNT:
+			_append_coin(row, stage_number, Vector2(x, start + float(coin_index) * spacing), route, encounters, stages)
+		if row.size() == LINE_COUNT:
+			for coin: Dictionary in row:
+				coin.id = "S%03d-G%02d" % [stage_number, result.size() + 1]
+				result.append(coin)
+			if index == 0:
+				line_start = start
+	var remaining := count - result.size()
 	if remaining <= 0:
 		return result
 	# Spend the remaining budget on an authored route change. Never draw a
@@ -46,7 +66,7 @@ static func placements_for_stage(stage_number: int, count: int, stages: StageMan
 		var base_height := float(previous.occupancy[1]) + HAZARD_CLEARANCE_PX - rise
 		if index == 1:
 			base_height = maxf(HAZARD_CLEARANCE_PX, base_height)
-			if stage_number == 13:
+			if StageDatabase.template_for(stage_number) == 13:
 				base_height = maxf(base_height, float(first.anchor) - 280.0)
 		if stage_number > 2 and not stages.transfer_window_open(stage_number, base_height / stages.stage_length(stage_number)):
 			continue
@@ -58,10 +78,6 @@ static func placements_for_stage(stage_number: int, count: int, stages: StageMan
 			var coin_route := from_route if t < 0.5 else to_route
 			_append_coin(result, stage_number, position, coin_route, encounters, stages)
 		return result
-	# A stage without a route change gets another compact vertical group.
-	var second_start := maxf(line_start + line_span + COIN_SPACING_PX, stages.stage_length(stage_number) - HAZARD_CLEARANCE_PX - float(remaining - 1) * COIN_SPACING_PX)
-	for index in remaining:
-		_append_coin(result, stage_number, Vector2(first_x, second_start + float(index) * COIN_SPACING_PX), route, encounters, stages)
 	return result
 
 static func _witness_x(stage_number: int, witness: Variant) -> float:
@@ -90,7 +106,7 @@ static func _append_coin(result: Array, stage_number: int, local_position: Vecto
 			if absf(local_position.x - lane_x) <= COIN_DIAMETER_PX * 0.5 + HAZARD_CLEARANCE_PX and not _route_survives(encounter, lane):
 				return
 	result.append({
-		"id": "S%02d-G%02d" % [stage_number, result.size() + 1],
+		"id": "S%03d-G%02d" % [stage_number, result.size() + 1],
 		"stage": stage_number,
 		"route": route,
 		"position": Vector2(local_position.x, stages.stage_bottom_y(stage_number) - local_position.y),
