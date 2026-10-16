@@ -1378,7 +1378,7 @@ func _update_onboarding(delta: float) -> void:
 		spider.global_position = player.global_position + Vector2(0.0, Balance.CATCH_DISTANCE * 0.5)
 		_die(DeathCause.CAUGHT)
 		$HUD/TutorialPanel.text = "3 / 3  CAUGHT\nThe death screen offers retry, restart, and menu. This practice catch does not affect your run."
-		$HUD/TutorialSkip.text = "CONTINUE TO STAGE 1"
+		$HUD/TutorialSkip.text = "START CLIMB"
 
 func _spawn_tutorial_bean() -> void:
 	if not tutorial_active or tutorial_step != 2:
@@ -1654,7 +1654,15 @@ void fragment() {
 	_add_label("FireWings", Vector2(690, 44), "", 16)
 	_add_label("GoldStatus", Vector2(690, 62), "GOLD 0", 18)
 	_add_label("Score", Vector2(708, 8), "0", 30)
-	_add_label("RunCoins", Vector2(708, 48), "● 0", 20)
+	var run_coins_label := _add_label("RunCoins", Vector2(708, 48), "0", 20)
+	var run_coin_icon := TextureRect.new()
+	run_coin_icon.name = "Icon"
+	run_coin_icon.texture = preload("res://assets/art/items/gold_coin.png")
+	run_coin_icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	run_coin_icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	run_coin_icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	run_coin_icon.size = Vector2(22.0, 22.0)
+	run_coins_label.add_child(run_coin_icon)
 	var combo_label := _add_label("GoldCombo", Vector2(690, 119), "", 16)
 	combo_label.modulate.a = 0.0
 	var flight_layer := Node2D.new()
@@ -1705,7 +1713,7 @@ void fragment() {
 			columns.add_child(label)
 		$HUD.add_child(row)
 		leaderboard_rows.append(row)
-	_add_action_button("ContinueAd", "CONTINUE ▶ AD", _continue_with_ad)
+	_add_action_button("ContinueAd", "CONTINUE · AD", _continue_with_ad)
 	_add_action_button("NoThanks", "NO THANKS", _show_run_result)
 	_add_action_button("DeathShop", "SHOP", _shop_from_death)
 	_add_action_button("RetryStage", "RESTART", _restart_from_death)
@@ -1908,6 +1916,8 @@ func layout_hud_for_viewport(viewport_size: Vector2) -> void:
 	$HUD/RunCoins.size.y = 28.0
 	$HUD/GoldCombo.position.y = 92.0
 	$HUD/GoldCombo.size.y = 26.0
+	$HUD/GoldCombo.pivot_offset = $HUD/GoldCombo.size * Vector2(1.0, 0.5)
+	_layout_run_coin_icon()
 	$HUD/XPStatus.position = Vector2(meta_x, 85.0)
 	$HUD/XPStatus.size = Vector2(meta_width, 18.0)
 	$HUD/XPBar.position = Vector2(meta_x, 106.0)
@@ -2106,7 +2116,7 @@ func fly_gold_to_counter(screen_transform: Transform2D, arrived: Callable) -> vo
 	coin.position = start
 	var flight := create_tween()
 	flight.tween_method(func(progress: float):
-		var target: Vector2 = layer.get_global_transform_with_canvas().affine_inverse() * ($HUD/RunCoins.get_global_transform_with_canvas() * Vector2($HUD/RunCoins.size.x - 18.0, 14.0))
+		var target: Vector2 = layer.get_global_transform_with_canvas().affine_inverse() * ($HUD/RunCoins/Icon.get_global_transform_with_canvas() * ($HUD/RunCoins/Icon.size * 0.5))
 		var eased := progress * progress
 		coin.position = start.lerp(target, eased) + Vector2(0.0, -80.0 * sin(PI * progress))
 		coin.scale = start_scale * lerpf(1.0, 0.6, progress)
@@ -2120,7 +2130,8 @@ func fly_gold_to_counter(screen_transform: Transform2D, arrived: Callable) -> vo
 
 func bump_gold_counter() -> void:
 	var label := $HUD/RunCoins as Label
-	label.text = "● %s" % _format_run_number(run_coins)
+	label.text = _format_run_number(run_coins)
+	_layout_run_coin_icon()
 	label.pivot_offset = label.size * Vector2(1.0, 0.5)
 	if gold_counter_tween != null:
 		gold_counter_tween.kill()
@@ -2128,6 +2139,10 @@ func bump_gold_counter() -> void:
 	gold_counter_tween = create_tween()
 	gold_counter_tween.tween_property(label, "scale", Vector2.ONE * 1.3, 0.06)
 	gold_counter_tween.tween_property(label, "scale", Vector2.ONE, 0.12)
+
+func _layout_run_coin_icon() -> void:
+	var label := $HUD/RunCoins as Label
+	$HUD/RunCoins/Icon.position = Vector2(label.size.x - label.get_minimum_size().x - 28.0, 3.0)
 
 func show_gold_combo(multiplier: int) -> void:
 	var label := $HUD/GoldCombo as Label
@@ -2139,7 +2154,7 @@ func show_gold_combo(multiplier: int) -> void:
 		return
 	label.text = "X%d" % multiplier
 	label.modulate.a = 1.0
-	label.pivot_offset = label.size * 0.5
+	label.pivot_offset = label.size * Vector2(1.0, 0.5)
 	label.scale = Vector2.ONE
 	gold_combo_tween.tween_property(label, "scale", Vector2.ONE * 1.3, 0.06)
 	gold_combo_tween.tween_property(label, "scale", Vector2.ONE, 0.12)
@@ -2317,7 +2332,8 @@ func _update_hud() -> void:
 	$HUD/RunCoins.visible = normal_playing
 	$HUD/GoldCombo.visible = normal_playing
 	$HUD/Score.text = _format_run_number(int(score))
-	$HUD/RunCoins.text = "● %s" % _format_run_number(run_coins)
+	$HUD/RunCoins.text = _format_run_number(run_coins)
+	_layout_run_coin_icon()
 	$HUD/Tutorial.visible = normal_playing
 	$HUD/TimeWings.visible = normal_playing
 	$HUD/TimeWingsOrb.visible = normal_playing
@@ -2425,11 +2441,11 @@ func _death_text() -> String:
 func _time_wings_status() -> String:
 	var stage_number := stages.stage_for_y(player.global_position.y)
 	if stage_number < Balance.TIME_WINGS_STAGE:
-		return "F · STAGE %d" % Balance.TIME_WINGS_STAGE
+		return "F · LOCKED"
 	if time_wings_remaining > 0.0:
 		return "F · ACTIVE %.1fs" % time_wings_remaining
 	if time_wings_used_stage.has(stage_number):
-		return "F · USED THIS STAGE"
+		return "F · RECHARGING"
 	return "F · READY"
 
 func _fire_wings_status() -> String:
