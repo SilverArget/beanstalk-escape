@@ -8,6 +8,54 @@ var passed := 0
 var failed := 0
 var response: Dictionary = {}
 
+class FakeBoard extends RefCounted:
+	var type := "not_available"
+	var entries: Variant = []
+	var set_ok := true
+	var entries_ok := true
+	var hold_set := false
+	var hold_entries := false
+	var hold_popup := false
+	var set_calls := 0
+	var popup_calls := 0
+	var ids: Array = []
+	var _set_score_callback: Variant = null
+	var _get_entries_callback: Variant = null
+	var _show_native_popup_callback: Variant = null
+
+	func set_score(id: String, _score: int, callback: Callable) -> void:
+		if _set_score_callback != null:
+			return
+		set_calls += 1
+		ids.append(id)
+		_set_score_callback = callback
+		if not hold_set:
+			callback.call(set_ok)
+			_set_score_callback = null
+
+	func get_entries(id: String, callback: Callable) -> void:
+		if _get_entries_callback != null:
+			return
+		ids.append(id)
+		_get_entries_callback = callback
+		if not hold_entries:
+			callback.call(entries_ok, entries)
+			_get_entries_callback = null
+
+	func show_native_popup(id: String, callback: Callable) -> void:
+		if _show_native_popup_callback != null:
+			return
+		popup_calls += 1
+		ids.append(id)
+		_show_native_popup_callback = callback
+		if not hold_popup:
+			callback.call(true)
+			_show_native_popup_callback = null
+
+class FakeBridge extends Node:
+	var leaderboards := FakeBoard.new()
+	var player: Variant = {"id": "me"}
+
 func _init() -> void:
 	call_deferred("_run")
 
@@ -51,6 +99,7 @@ func _run() -> void:
 	_check(response.player_rank == 1 and response.entries[0].name == "TIE" and response.entries[0].is_player, "equal scores identify the latest run")
 	service.submit_score("OUTSIDE", 0, _receive)
 	_check(response.player_rank == 11 and not response.entries.any(func(entry: Dictionary): return bool(entry.is_player)), "outside top ten has rank without highlighting another run")
+	await _test_platform_branches()
 
 	var game := MainScene.instantiate() as GameManager
 	game.save_manager = save
@@ -116,6 +165,110 @@ func _run() -> void:
 
 func _receive(value: Dictionary) -> void:
 	response = value
+
+func _test_platform_branches() -> void:
+	var path := "user://qa/platform_leaderboard_%d.json" % Time.get_ticks_usec()
+	var save := Save.new(path)
+	save.load_profile()
+	var service := Service.new()
+	var bridge := FakeBridge.new()
+	root.add_child(service)
+	root.add_child(bridge)
+	service.configure(save)
+	service.bridge_node = bridge
+	var board := bridge.leaderboards
+	var received: Array = []
+	var receive := func(value: Dictionary): received.append(value)
+	service.submit_score("LOCAL", 650, receive)
+	_check(received.size() == 1 and received[0].source == "local" and board.set_calls == 0, "not_available bridge uses local without SDK calls")
+	board.type = "in_game"
+	board.entries = [{"id": "low", "name": "SMALL", "score": 100},
+		{"id": "me", "name": "REMOTE NAME", "score": 650},
+		{"id": "other", "name": "TOP", "score": 900}]
+	for index in range(10):
+		board.entries.append({"id": "filler%d" % index, "name": "FILLER", "score": 200 + index})
+	received.clear()
+	service.submit_score("LOCAL", 650, receive)
+	await process_frame
+	_check(received.size() == 1 and received[0].source == "platform" and received[0].entries.size() == 10, "in_game returns platform top ten")
+	if not received.is_empty():
+		var result: Dictionary = received[0]
+		var sorted := true
+		for index in range(1, result.entries.size()):
+			sorted = sorted and result.entries[index - 1].score >= result.entries[index].score
+		_check(sorted and result.entries[0].score == 900 and result.player_rank == 2 and result.entries[1].is_player, "platform sorts scores and highlights by player id")
+	_check(save.profile.best_score == 650 and save.profile.leaderboard_local.size() == 2, "platform success also persists every local run")
+	received.clear()
+	service.fetch_top(2, receive)
+	_check(received.size() == 1 and received[0].source == "platform" and received[0].entries.size() == 2, "in_game fetch uses platform and requested limit")
+	bridge.player = {}
+	board.entries = [{"name": "LOCAL", "score": 650}]
+	received.clear()
+	service.fetch_top(10, receive)
+	_check(received.size() == 1 and received[0].player_rank == 1 and received[0].entries[0].is_player, "missing identity falls back to name and score")
+	for invalid: Variant in [[], [{"name": "BAD", "score": "oops"}], [null]]:
+		board.entries = invalid
+		received.clear()
+		service.fetch_top(10, receive)
+		_check(received.size() == 1 and received[0].source == "local", "empty or malformed platform entries use local fallback")
+	board.set_ok = false
+	received.clear()
+	service.submit_score("SET FAILURE", 600, receive)
+	_check(received.size() == 1 and received[0].source == "local", "failed set_score falls back once")
+	board.set_ok = true
+	board.entries_ok = false
+	received.clear()
+	service.fetch_top(10, receive)
+	_check(received.size() == 1 and received[0].source == "local", "failed get_entries falls back once")
+	board.entries_ok = true
+	board.hold_entries = true
+	received.clear()
+	service.submit_score("TIMEOUT", 700, receive)
+	await process_frame
+	var late: Callable = board._get_entries_callback
+	await create_timer(2.85).timeout
+	_check(received.is_empty(), "in_game remains pending before the three-second deadline")
+	await create_timer(0.3).timeout
+	_check(received.size() == 1 and received[0].source == "local", "in_game silent SDK falls back after three seconds")
+	_check(board._get_entries_callback == null, "timeout releases the owned SDK callback slot")
+	late.call(true, [{"name": "LATE", "score": 9999}])
+	_check(received.size() == 1 and received[0].source == "local", "late response cannot call completion twice")
+	board.hold_entries = false
+	board.entries = [{"name": "RECOVERED", "score": 800}]
+	received.clear()
+	service.fetch_top(10, receive)
+	_check(received.size() == 1 and received[0].source == "platform", "next platform fetch works after timeout")
+	board.type = "native"
+	received.clear()
+	service.submit_score("NATIVE", 750, receive)
+	_check(received.size() == 1 and received[0].source == "native" and received[0].entries[0].score == 750, "native immediately supplies persisted device scores")
+	await process_frame
+	_check(board.popup_calls == 1, "native shows platform popup exactly once")
+	board.type = "native_popup"
+	board.set_ok = false
+	board.hold_popup = true
+	received.clear()
+	service.submit_score("POPUP", 760, receive)
+	await process_frame
+	_check(received.size() == 1 and received[0].source == "native" and board.popup_calls == 2, "native_popup attempts popup even when set_score fails")
+	var late_popup: Callable = board._show_native_popup_callback
+	service.submit_score("WHILE OPEN", 770, receive)
+	await process_frame
+	_check(board.popup_calls == 2, "pending native popup is not opened twice")
+	await create_timer(3.15).timeout
+	_check(board._show_native_popup_callback == null, "native popup timeout releases SDK slot")
+	board.hold_popup = false
+	service.submit_score("NEXT DEATH", 780, receive)
+	await process_frame
+	late_popup.call(true)
+	_check(board.popup_calls == 3 and received.size() == 3, "next death can open popup after timeout without repeating game callback")
+	_check(board.ids.all(func(id: String): return id == "best_score"), "all SDK calls use the configured best_score id")
+	var stored: Dictionary = Save.new(path).load_profile()
+	_check(stored.best_score == 780 and stored.leaderboard_local.size() == 8, "all platform outcomes persist personal best and device history")
+	service.queue_free()
+	bridge.queue_free()
+	await process_frame
+	DirAccess.remove_absolute(path)
 
 func _press_key(keycode: Key) -> void:
 	var pressed := InputEventKey.new()

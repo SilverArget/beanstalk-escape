@@ -2360,7 +2360,7 @@ func _update_hud() -> void:
 	$HUD/RunCoinsResult.text = "+%s COINS" % _format_run_number(run_coins)
 	$HUD/LeaderboardTitle.visible = board_visible
 	$HUD/LeaderboardSource.visible = board_visible
-	$HUD/LeaderboardSource.text = "THIS DEVICE" if leaderboard_source == "local" else ("CONNECTING…" if leaderboard_source.is_empty() else "ONLINE")
+	$HUD/LeaderboardSource.text = {"local": "THIS DEVICE", "": "CONNECTING…", "platform": "ALL PLAYERS", "native": "THIS DEVICE · PLATFORM BOARD", "online": "ONLINE"}.get(leaderboard_source, "ONLINE")
 	for index in leaderboard_rows.size():
 		leaderboard_rows[index].visible = board_visible and index < leaderboard_entries.size()
 	$HUD/MenuBest.visible = app_state == AppState.MENU
