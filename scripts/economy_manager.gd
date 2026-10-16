@@ -46,12 +46,13 @@ func stage_gold_count(stage_number: int) -> int:
 	var maximum := value("stage_gold_count_max")
 	return minimum + posmod(stage_number * 2, maximum - minimum + 1)
 
-func collect_gold() -> Dictionary:
-	var reward := value("gold_per_collectible")
+func collect_gold(multiplier: int = 1) -> Dictionary:
+	multiplier = clampi(multiplier, 1, 5)
+	var reward := value("gold_per_collectible") * multiplier
 	gold += reward
-	var levels := _add_xp(value("xp_per_gold"))
+	var levels := _add_xp(value("xp_per_gold") * multiplier)
 	_persist_and_emit()
-	return {"gold": reward, "xp": value("xp_per_gold"), "level_ups": levels}
+	return {"gold": reward, "xp": value("xp_per_gold") * multiplier, "level_ups": levels}
 
 func complete_stage(stage_number: int) -> Dictionary:
 	var reward := value("stage_completion_gold_base") + value("stage_completion_gold_per_stage") * stage_number

@@ -126,6 +126,8 @@ var last_time_command_source := ""
 var save_manager := SaveManager.new()
 var economy := EconomyManager.new()
 var golds := GoldManager.new()
+var gold_counter_tween: Tween
+var gold_combo_tween: Tween
 var reward_toast_remaining := 0.0
 var level_up_remaining := 0.0
 var double_reward_remaining := 0.0
@@ -615,6 +617,7 @@ func _is_intro_skip_event(event: InputEvent) -> bool:
 	return event is InputEventScreenTouch and event.pressed
 
 func restart_stage() -> void:
+	golds.reset_combo()
 	audio.play_sfx("ui_click")
 	_clear_direction_inputs()
 	var stage_number := stages.current_stage
@@ -759,6 +762,7 @@ func _complete_menu() -> void:
 		_show_menu()
 
 func _on_stage_completed(stage_number: int) -> void:
+	golds.reset_combo()
 	if not tutorial_active and stage_number == ghost_stage:
 		save_manager.record_stage_ghost(mode, stage_number, ghost_stage_elapsed, ghost_trace)
 	completed_stages[stage_number] = true
@@ -849,6 +853,7 @@ func _lose_life(cause: DeathCause, respawn_from_checkpoint: bool) -> bool:
 	if tutorial_active or app_state != AppState.PLAYING or hit_invulnerability_remaining > 0.0 or current_lives <= 0:
 		return false
 	current_lives -= 1
+	golds.reset_combo()
 	_end_danger()
 	damage_events += 1
 	challenge_eligible = false
@@ -864,6 +869,7 @@ func _lose_life(cause: DeathCause, respawn_from_checkpoint: bool) -> bool:
 	return true
 
 func _enter_player_dead(cause: DeathCause) -> void:
+	golds.reset_combo()
 	resume_available = false
 	state = State.PLAYER_DEAD
 	app_state = AppState.PLAYER_DEAD
@@ -889,6 +895,7 @@ func _enter_player_dead(cause: DeathCause) -> void:
 	_publish_readonly_web_state()
 
 func _respawn_at_continue_checkpoint() -> void:
+	golds.reset_combo()
 	var safe_position: Vector2 = continue_checkpoint.get("position", player.global_position)
 	safe_position = _validated_continue_position(safe_position)
 	continue_checkpoint = {"position": safe_position, "stage": stages.stage_for_y(safe_position.y)}
@@ -1516,6 +1523,11 @@ void fragment() {
 	wings_notice.add_theme_stylebox_override("normal", wings_notice_style)
 	_add_label("FireWings", Vector2(690, 44), "", 16)
 	_add_label("GoldStatus", Vector2(690, 62), "GOLD 0", 18)
+	var combo_label := _add_label("GoldCombo", Vector2(690, 119), "", 16)
+	combo_label.modulate.a = 0.0
+	var flight_layer := Node2D.new()
+	flight_layer.name = "GoldFlights"
+	$HUD.add_child(flight_layer)
 	_add_label("XPStatus", Vector2(690, 87), "LV 1 · XP 0/100", 14)
 	var xp_bar := ProgressBar.new()
 	xp_bar.name = "XPBar"
@@ -1713,6 +1725,7 @@ func layout_hud_for_viewport(viewport_size: Vector2) -> void:
 	var meta_x := width - 290.0
 	$HUD/GoldStatus.position = Vector2(meta_x, 62.0)
 	$HUD/GoldStatus.size = Vector2(meta_width, 20.0)
+	$HUD/GoldCombo.position = Vector2(meta_x, 119.0)
 	$HUD/XPStatus.position = Vector2(meta_x, 85.0)
 	$HUD/XPStatus.size = Vector2(meta_width, 18.0)
 	$HUD/XPBar.position = Vector2(meta_x, 106.0)
@@ -1874,6 +1887,52 @@ func _layout_intro_guardian(viewport_size: Vector2) -> void:
 	body.position = Vector2.ZERO
 	var center := Vector2(viewport_size.x * 0.5, top + available.y * 0.5)
 	spider.global_position = canvas.affine_inverse() * center - local_bounds.get_center() * fit
+
+func fly_gold_to_counter(screen_position: Vector2, arrived: Callable) -> void:
+	var layer := $HUD/GoldFlights as Node2D
+	var coin := Sprite2D.new()
+	coin.texture = GoldCollectible.COIN_TEXTURE
+	coin.scale = Vector2.ONE * 0.82
+	layer.add_child(coin)
+	var start := layer.get_global_transform_with_canvas().affine_inverse() * screen_position
+	coin.position = start
+	var flight := create_tween()
+	flight.tween_method(func(progress: float):
+		var target: Vector2 = layer.get_global_transform_with_canvas().affine_inverse() * ($HUD/GoldStatus.get_global_transform_with_canvas() * Vector2(-12.0, 10.0))
+		var eased := progress * progress
+		coin.position = start.lerp(target, eased) + Vector2(0.0, -80.0 * sin(PI * progress))
+		coin.scale = Vector2.ONE * lerpf(0.82, 0.45, progress)
+	, 0.0, 1.0, 0.45)
+	flight.tween_callback(func():
+		coin.queue_free()
+		arrived.call()
+	)
+
+func bump_gold_counter() -> void:
+	var label := $HUD/GoldStatus as Label
+	label.text = "GOLD %d" % economy.gold
+	label.pivot_offset = label.size * 0.5
+	if gold_counter_tween != null:
+		gold_counter_tween.kill()
+	label.scale = Vector2.ONE
+	gold_counter_tween = create_tween()
+	gold_counter_tween.tween_property(label, "scale", Vector2.ONE * 1.3, 0.06)
+	gold_counter_tween.tween_property(label, "scale", Vector2.ONE, 0.12)
+
+func show_gold_combo(multiplier: int) -> void:
+	var label := $HUD/GoldCombo as Label
+	if gold_combo_tween != null:
+		gold_combo_tween.kill()
+	gold_combo_tween = create_tween()
+	if multiplier < 2:
+		gold_combo_tween.tween_property(label, "modulate:a", 0.0, 0.3)
+		return
+	label.text = "X%d" % multiplier
+	label.modulate.a = 1.0
+	label.pivot_offset = label.size * 0.5
+	label.scale = Vector2.ONE
+	gold_combo_tween.tween_property(label, "scale", Vector2.ONE * 1.3, 0.06)
+	gold_combo_tween.tween_property(label, "scale", Vector2.ONE, 0.12)
 
 func _add_label(name: String, pos: Vector2, text: String, font_size: int) -> Label:
 	var label := Label.new()
@@ -2260,7 +2319,7 @@ func _readonly_state_snapshot() -> Dictionary:
 		"fire_wings": {"unlocked": stages.stage_for_y(player.global_position.y) >= Balance.FIRE_WINGS_STAGE or debug_sandbox == "rocks", "active": fire_wings_remaining > 0.0, "remaining": fire_wings_remaining, "started_remaining": fire_wings_started_remaining, "used": fire_wings_used_stage.has(stages.stage_for_y(player.global_position.y))},
 		"rocks": rocks.snapshot(),
 		"audio_events": audio.audio_event_snapshot(),
-		"gold_fx": golds.active_feedback_snapshot(),
+		"gold_fx": golds.feedback_state(),
 		"gold": state_gold,
 		"tempo": {"stage_seconds": Balance.STAGE_DURATION_SECONDS, "events_in_stage": stages.pattern_for_stage(stage_number).encounters.size()},
 		"fx": {"shake": shake_remaining, "close_text": close_text_remaining},

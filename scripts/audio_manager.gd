@@ -157,13 +157,14 @@ func play_music(name: String) -> void:
 	music.stream = STREAMS[name]
 	music.play()
 
-func play_sfx(name: String) -> void:
+func play_sfx(name: String, pitch_scale: float = 1.0) -> void:
 	played_roles[name] = true
 	_record_event(name)
 	if not sound_enabled:
 		return
 	var one_shot := AudioStreamPlayer.new()
 	one_shot.stream = STREAMS[name]
+	one_shot.pitch_scale = pitch_scale
 	one_shot.volume_db = VOLUME_DB.sfx
 	add_child(one_shot)
 	one_shot.finished.connect(one_shot.queue_free)

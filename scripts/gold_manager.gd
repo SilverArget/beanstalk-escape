@@ -9,6 +9,9 @@ var collected_ids: Dictionary = {}
 var placements_by_stage: Dictionary = {}
 var loaded_stages: Dictionary = {}
 var active_center_stage := -1
+var combo := 0
+var combo_remaining := 0.0
+var in_flight := 0
 
 func setup(target: PlayerController, stage_manager: StageManager, economy_manager: EconomyManager, audio_manager: BeanstalkAudio) -> void:
 	player = target
@@ -17,6 +20,7 @@ func setup(target: PlayerController, stage_manager: StageManager, economy_manage
 	audio = audio_manager
 
 func reset_run() -> void:
+	reset_combo()
 	for child in get_children():
 		child.free()
 	collected_ids.clear()
@@ -28,12 +32,22 @@ func reset_run() -> void:
 		placements_by_stage[stage_number] = GoldPlacementData.placements_for_stage(stage_number, count, stages)
 	refresh_active_window(true)
 
-func _physics_process(_delta: float) -> void:
+func _physics_process(delta: float) -> void:
 	if player == null or stages == null:
 		return
 	var game := get_parent() as GameManager
 	if game != null and game.app_state == GameManager.AppState.PLAYING:
+		combo_remaining -= delta
+		if combo > 0 and combo_remaining < 0.0:
+			reset_combo()
 		refresh_active_window()
+
+func reset_combo() -> void:
+	combo = 0
+	combo_remaining = 0.0
+	var game := get_parent() as GameManager
+	if game != null and game.has_node("HUD/GoldCombo"):
+		game.show_gold_combo(0)
 
 func refresh_active_window(force := false) -> void:
 	if player == null or stages == null:
@@ -68,6 +82,7 @@ func _spawn(placement: Dictionary, stage_number: int) -> void:
 	coin.position = placement.position
 	coin.set_meta("campaign_stage", stage_number)
 	coin.setup(String(placement.id), player)
+	coin.visual_lane = int(placement.route)
 	coin.collected.connect(_on_collected)
 	add_child(coin)
 
@@ -75,8 +90,22 @@ func _on_collected(placement_id: String) -> void:
 	if collected_ids.has(placement_id):
 		return
 	collected_ids[placement_id] = true
-	economy.collect_gold()
-	audio.play_sfx("gold_pickup")
+	combo = combo + 1 if combo > 0 and combo_remaining >= 0.0 else 1
+	combo_remaining = 1.0
+	var multiplier := mini(combo, 5)
+	audio.play_sfx("gold_pickup", minf(pow(2.0, float(combo - 1) / 12.0), 1.5))
+	var game := get_parent() as GameManager
+	var coin := get_node(NodePath(placement_id)) as GoldCollectible
+	in_flight += 1
+	game.show_gold_combo(multiplier)
+	game.fly_gold_to_counter(coin.sprite.get_global_transform_with_canvas().origin, func():
+		in_flight -= 1
+		economy.collect_gold(multiplier)
+		game.bump_gold_counter()
+	)
+
+func feedback_state() -> Dictionary:
+	return {"combo": combo, "in_flight": in_flight, "pickups": active_feedback_snapshot()}
 
 func active_feedback_snapshot() -> Array:
 	var result := []
