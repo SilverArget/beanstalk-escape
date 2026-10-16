@@ -64,11 +64,17 @@ func _run() -> void:
 		expected_coins += game.economy.value("gold_per_collectible") * (index + 1)
 	await create_timer(0.6).timeout
 	_check(game.run_coins == expected_coins, "overlapping coin flights retain X1 and X2 gold rewards")
-	_check(game.get_node("HUD/RunCoins").text == "● " + game._format_run_number(expected_coins), "arrival updates run coin counter")
-	for viewport in [Vector2(960, 540), Vector2(540, 960), Vector2(320, 640)]:
+	_check(game.get_node("HUD/RunCoins").text == game._format_run_number(expected_coins), "arrival updates run coin counter")
+	_check(not game.get_node("HUD/RunCoins").text.contains("●"), "coin counter has no unsupported bullet glyph")
+	for viewport in [Vector2(960, 540), Vector2(1280, 720), Vector2(540, 960), Vector2(320, 640)]:
 		game.layout_hud_for_viewport(viewport)
 		var score_rect: Rect2 = game.get_node("HUD/Score").get_rect()
 		var coins_rect: Rect2 = game.get_node("HUD/RunCoins").get_rect()
+		game.show_gold_combo(5)
+		game.gold_combo_tween.custom_step(0.06)
+		var combo := game.get_node("HUD/GoldCombo") as Label
+		var combo_right := combo.get_global_transform() * Vector2(combo.size.x, combo.size.y * 0.5)
+		_check(combo_right.x <= viewport.x - 12.0 and combo.position.y >= coins_rect.end.y and combo.horizontal_alignment == HORIZONTAL_ALIGNMENT_RIGHT, "animated combo stays below coins and 12 pixels inside right edge at " + str(viewport))
 		_check(score_rect.end.x <= viewport.x and score_rect.position.x >= 0 and not score_rect.intersects(game.get_node("HUD/Mute").get_rect()) and not score_rect.intersects(game.get_node("HUD/Lives").get_rect()) and score_rect.end.y <= coins_rect.position.y, "score bounds and controls do not overlap at " + str(viewport))
 	game.current_lives = 3
 	game.hit_invulnerability_remaining = 0.0
