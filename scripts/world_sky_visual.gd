@@ -1,15 +1,21 @@
 class_name WorldSkyVisual
 extends Node2D
 
-const ATMOSPHERE_TEXTURE := preload("res://assets/art/world/sunny_atmosphere.png")
-const SKY_TOP := Color("366bb4")
-const SKY_BOTTOM := Color("80d5f4")
+const SKY_DAY := preload("res://assets/art/world/v2/sky_day.png")
+const SKY_SUNSET := preload("res://assets/art/world/v2/sky_sunset.png")
+const FAR_STALKS := [
+	preload("res://assets/art/world/v2/far_stalks_a.png"),
+	preload("res://assets/art/world/v2/far_stalks_b.png"),
+]
+const PARALLAX_SPEEDS := [0.06, 0.14]
+const FAR_TILE_HEIGHT := 1024.0
 
 var player: PlayerController
 var stages: StageManager
 var redraw_count := 0
 var redraw_elapsed := 0.0
 var camera_top := -270.0
+var far_silhouettes: Array[Texture2D] = []
 
 func setup(target: PlayerController, stage_manager: StageManager) -> void:
 	player = target
@@ -17,8 +23,28 @@ func setup(target: PlayerController, stage_manager: StageManager) -> void:
 
 func _ready() -> void:
 	texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+	# Clean and flatten each source once, never during a redraw. Multiplying
+	# coloured RGB by a tint retained dark outlines and muddied the sunset.
+	for source: Texture2D in FAR_STALKS:
+		far_silhouettes.append(_make_far_silhouette(source))
 	set_process(true)
 	queue_redraw()
+
+func _make_far_silhouette(source: Texture2D) -> Texture2D:
+	var image := source.get_image()
+	if image.is_compressed():
+		image.decompress()
+	image.convert(Image.FORMAT_RGBA8)
+	for y in image.get_height():
+		for x in image.get_width():
+			var pixel := image.get_pixel(x, y)
+			# Blue/violet ghost vines and magenta key fringe are distinct from
+			# the source's yellow-green stalks (whose red is above blue).
+			var ghost := smoothstep(0.015, 0.055, pixel.b - pixel.r)
+			var magenta := smoothstep(0.0, 0.04, minf(pixel.r, pixel.b) - pixel.g)
+			image.set_pixel(x, y, Color(1.0, 1.0, 1.0, pixel.a * (1.0 - maxf(ghost, magenta))))
+	image.generate_mipmaps()
+	return ImageTexture.create_from_image(image)
 
 func _process(delta: float) -> void:
 	if player == null:
@@ -34,6 +60,10 @@ func _process(delta: float) -> void:
 		redraw_elapsed = fmod(redraw_elapsed, 0.05)
 		queue_redraw()
 
+func sunset_mix_at(stage_number: int, stage_progress: float) -> float:
+	# Day through Stage 11; continuous transition from the start of 12 to 20.
+	return smoothstep(12.0, 20.0, float(stage_number) + stage_progress)
+
 func _draw() -> void:
 	redraw_count += 1
 	if player == null:
@@ -46,47 +76,27 @@ func _draw() -> void:
 	if bool(world.get("qa_storm_background")):
 		draw_rect(view_rect, Color("313c68"))
 		return
-	for band in 24:
-		var t := float(band) / 23.0
-		var band_y := view_rect.position.y + view_rect.size.y * t
-		draw_rect(Rect2(view_rect.position.x, band_y, view_rect.size.x, view_rect.size.y / 23.0 + 1.0), SKY_TOP.lerp(SKY_BOTTOM, t))
-	draw_texture_rect(ATMOSPHERE_TEXTURE, view_rect, false, Color(1.0, 1.0, 1.0, 0.72))
 	var stage_number := stages.stage_for_y(player.global_position.y) if stages != null else 1
-	var stage_progress := stages.progress_in_stage(player.global_position.y) if stages != null else 0.0
-	var rock_mix := clampf((float(stage_number) - 5.0 + stage_progress) / 2.0, 0.0, 1.0)
-	var violet_mix := clampf((float(stage_number) - 10.0 + stage_progress) / 2.0, 0.0, 1.0)
-	var storm_mix := clampf((float(stage_number) - 15.0 + stage_progress) / 2.0, 0.0, 1.0)
-	var lightning_mix := clampf((float(stage_number) - 20.0 + stage_progress) / 2.0, 0.0, 1.0)
-	var upper_cloud_mix := clampf((float(stage_number) - 25.0 + stage_progress) / 2.0, 0.0, 1.0)
-	var summit_mix := clampf((float(stage_number) - 29.0 + stage_progress), 0.0, 1.0)
-	if rock_mix > 0.0:
-		draw_rect(view_rect, Color(0.34, 0.38, 0.47, 0.18 * rock_mix))
-	if violet_mix > 0.0:
-		draw_rect(view_rect, Color(0.29, 0.16, 0.46, 0.30 * violet_mix))
-		for fog_index in 4:
-			var fog_y := view_rect.position.y + fposmod(float(fog_index) * 151.0 - camera_top * 0.08, view_rect.size.y)
-			draw_circle(Vector2(sin(float(fog_index) * 2.1) * 260.0, fog_y), 150.0, Color(0.70, 0.56, 0.82, 0.035 * violet_mix))
-	if storm_mix > 0.0:
-		draw_rect(view_rect, Color(0.10, 0.16, 0.25, 0.32 * storm_mix * (1.0 - summit_mix)))
-	if lightning_mix > 0.0:
-		var distant_flash := pow(maxf(sin(Time.get_ticks_msec() * 0.0017 + float(stage_number)), 0.0), 18.0)
-		draw_rect(view_rect, Color(0.72, 0.77, 0.92, distant_flash * 0.16 * lightning_mix * (1.0 - summit_mix)))
-	if upper_cloud_mix > 0.0:
-		for fog_index in 5:
-			var fog_y := view_rect.position.y + fposmod(float(fog_index) * 127.0 - camera_top * 0.06, view_rect.size.y)
-			draw_circle(Vector2(sin(float(fog_index) * 1.8) * 300.0, fog_y), 190.0, Color(0.74, 0.79, 0.84, 0.075 * upper_cloud_mix * (1.0 - summit_mix)))
-	if summit_mix > 0.0:
-		draw_rect(view_rect, Color(1.0, 0.78, 0.34, 0.24 * summit_mix))
-	_draw_far_vines(camera_top)
+	var progress := stages.progress_in_stage(player.global_position.y) if stages != null else 0.0
+	var sunset := sunset_mix_at(stage_number, progress)
+	draw_texture_rect(SKY_DAY, view_rect, false)
+	if sunset > 0.0:
+		draw_texture_rect(SKY_SUNSET, view_rect, false, Color(1.0, 1.0, 1.0, sunset))
+	_draw_far_vines(camera_top, sunset)
+	# Keep storm and distant lightning restrained; no rock/violet/summit wash
+	# or primitive circular fog clouds compete with the foreground.
+	var storm := smoothstep(15.0, 17.0, float(stage_number) + progress)
+	if storm > 0.0:
+		draw_rect(view_rect, Color(0.48, 0.30, 0.62, 0.075 * storm))
+	if stage_number >= 20:
+		var flash := pow(maxf(sin(Time.get_ticks_msec() * 0.0017 + float(stage_number)), 0.0), 18.0)
+		draw_rect(view_rect, Color(0.86, 0.83, 0.95, flash * 0.055))
 
-func _draw_far_vines(camera_top: float) -> void:
-	var drift := fposmod(-camera_top * 0.12, 420.0)
-	for index in 4:
-		var side := -1.0 if index % 2 == 0 else 1.0
-		var x := side * (300.0 + float(index / 2) * 92.0)
-		var start_y := -450.0 + drift + float(index) * 105.0
-		var points := PackedVector2Array()
-		for step in 10:
-			var y := start_y + float(step) * 82.0
-			points.append(Vector2(x + sin((y + float(index) * 57.0) * 0.008) * 24.0, y))
-		draw_polyline(points, Color(0.12, 0.38, 0.37, 0.12), 30.0, true)
+func _draw_far_vines(top_y: float, sunset := 0.0) -> void:
+	for layer in 2:
+		var tint := Color("99d9df").lerp(Color("c8a5df") if layer == 0 else Color("ffc5a5"), sunset)
+		tint.a = 0.14 if layer == 0 else 0.19
+		var first_y := -278.0 + fposmod(-top_y * PARALLAX_SPEEDS[layer], FAR_TILE_HEIGHT) - FAR_TILE_HEIGHT
+		for tile in 2:
+			var destination := Rect2(-488.0, first_y + float(tile) * FAR_TILE_HEIGHT, 976.0, FAR_TILE_HEIGHT)
+			draw_texture_rect(far_silhouettes[layer], destination, false, tint)
