@@ -13,7 +13,7 @@ const VISUAL_OUTLINE_WIDTH := 1.0
 # Two complete cylinders exchange depth; neither is a full-width backing plate.
 const SHOOT_PITCH := 610.0
 const SHOOT_PROFILE := [0.0, 0.035, 0.09, 0.18, 0.30, 0.43, 0.56, 0.69, 0.81, 0.91, 0.965, 1.0]
-const SHOOT_COLORS := [Color("21482b"), Color("2e6130"), Color("4b8732"), Color("78ad35"), Color("afd447"), Color("a3cc40"), Color("85b637"), Color("639b30"), Color("407b30"), Color("2e602e"), Color("244e2b"), Color("21482b")]
+const SHOOT_COLORS := [Color("164b24"), Color("237329"), Color("37a925"), Color("61d62b"), Color("9aef45"), Color("85e939"), Color("63d52c"), Color("43b526"), Color("2a9227"), Color("207127"), Color("185526"), Color("164b24")]
 const SHOOT_EDGE_FEATHER := 1.5
 const SHOOT_FIBER_TILE := Vector2(64.0, 256.0)
 const FOLIAGE_CELL := Vector2(512.0, 512.0)
@@ -154,11 +154,7 @@ func _draw_far_vines(camera_top: float) -> void:
 		draw_polyline(points, Color(0.12, 0.38, 0.37, 0.12), 30.0, true)
 
 func _draw_foreground_foliage(camera_top: float) -> void:
-	var drift := fposmod(-camera_top * 0.52, 720.0)
-	for index in 4:
-		var side := -1.0 if index % 2 == 0 else 1.0
-		var center := Vector2(side * 468.0, camera_top - 100.0 + fposmod(drift + float(index) * 211.0, 760.0))
-		_draw_foliage_sprite(4, center, Vector2(MAX_LEAF_SIZE, MAX_LEAF_SIZE), side < 0.0, Color(1.0, 1.0, 1.0, 0.32))
+	pass
 
 func _draw_trunk(camera_top: float) -> void:
 	# World-Y phase continues through the narrowing middle vine into Stage 3.
@@ -196,14 +192,6 @@ func _draw_stem_growth(top_y: float, bottom_y: float) -> void:
 	while float(node) * 157.0 < bottom_y:
 		var y := float(node) * 157.0 + sin(float(node) * 2.3) * 23.0
 		var side := -1.0 if posmod(node, 2) == 0 else 1.0
-		var width := _main_stem_width(y)
-		var leaf_size := 88.0 + 18.0 * _detail_noise(1, 0, node, 1)
-		var angle := side * (0.48 + 0.22 * _detail_noise(1, 0, node, 2))
-		# Atlas leaf roots sit near local (0, +0.4 * size). Anchor that root
-		# inside the stem instead of placing a floating leaf beside its edge.
-		var root := Vector2(_main_stem_center_x(y) + side * width * 0.36, y)
-		var center := root - Vector2(0.0, leaf_size * 0.39).rotated(angle)
-		_draw_branch_detail_sprite(posmod(node, 4), center, Vector2.ONE * leaf_size, angle, side < 0.0)
 		if posmod(node, 3) == 0:
 			var curl_size := 76.0 + 12.0 * _detail_noise(1, 0, node, 3)
 			var curl_angle := -side * 0.55
@@ -350,12 +338,13 @@ func _taper_branch_endpoint(points: PackedVector2Array, widths: PackedFloat32Arr
 	widths[endpoint_index] = 2.0
 
 func _draw_branch_tip_detail(base: Vector2, direction: Vector2, route: int, is_restart: bool) -> void:
-	# Atlas quads remain in the shared detail mesh. The curled shoot/leaf hides
-	# the mathematical endpoint without restoring a round pipe cap.
+	# Keep curled tips; restart tips previously used leaf atlas cells.
+	if is_restart:
+		return
 	var normal := Vector2(-direction.y, direction.x)
 	var side := -1.0 if (route + int(is_restart)) % 2 == 0 else 1.0
-	var cell := route % 4 if is_restart else 6 + route % 2
-	var size := Vector2(62.0, 62.0) if is_restart else Vector2(54.0, 54.0)
+	var cell := 6 + route % 2
+	var size := Vector2(54.0, 54.0)
 	_draw_branch_detail_sprite(cell, base - direction * 12.0 + normal * side * 9.0, size, direction.angle() + PI * 0.5, side < 0.0)
 
 func _draw_branch_details(stage_number: int, route: int, start_y: float, end_y: float) -> void:
@@ -376,18 +365,11 @@ func _draw_branch_details(stage_number: int, route: int, start_y: float, end_y: 
 			outside = 1.0
 		var stem_x := _branch_visual_x(route, node_y)
 		var scale := lerpf(0.84, 1.18, _detail_noise(stage_number, route, node_index, 1))
-		var leaf_size := Vector2(78.0, 78.0) * scale
 		var angle := lerpf(-0.28, 0.28, _detail_noise(stage_number, route, node_index, 2)) * outside
-		var cell := int(floor(_detail_noise(stage_number, route, node_index, 3) * 4.0)) % 4
-		# The stem root sits over the knot and the leaf overlaps the ribbon edge.
-		var leaf_center := Vector2(stem_x + outside * (27.0 + leaf_size.x * 0.06), node_y - 4.0)
-		_draw_branch_detail_sprite(cell, leaf_center, leaf_size, angle, outside < 0.0)
 		var ornament := _detail_noise(stage_number, route, node_index, 4)
 		if ornament > 0.67:
 			var tendril_center := Vector2(stem_x + outside * 29.0, node_y - lerpf(48.0, 61.0, ornament))
 			_draw_branch_detail_sprite(6 + (node_index & 1), tendril_center, Vector2(lerpf(58.0, 74.0, scale), lerpf(58.0, 74.0, scale)), angle * 0.7, outside < 0.0)
-		elif ornament < 0.24:
-			_draw_branch_detail_sprite(4 + (node_index & 1), Vector2(stem_x, node_y), Vector2(52.0, 52.0) * scale, angle * 0.35, node_index % 2 == 0)
 		node_y -= spacing
 		node_index += 1
 
@@ -618,19 +600,7 @@ func _ribbon_geometry(points: PackedVector2Array, widths: PackedFloat32Array, ex
 	return {"left": left, "right": right}
 
 func _draw_trunk_features(camera_top: float) -> void:
-	var camera_bottom := camera_top + 556.0
-	for stage_number in [1, 2]:
-		var stage_bottom := stages.stage_bottom_y(stage_number)
-		for feature: Dictionary in stages.pattern_for_stage(stage_number).trunk_features:
-			var center_x := lerpf(-ScaleLock.TRUNK_WIDTH * 0.5, ScaleLock.TRUNK_WIDTH * 0.5, float(feature.x))
-			var top_y := stage_bottom - float(feature.occupancy[1])
-			var bottom_y := stage_bottom - float(feature.warning_height)
-			if bottom_y < camera_top - 100.0 or top_y > camera_bottom + 100.0:
-				continue
-			var side := -1.0 if feature.x >= 0.5 else 1.0
-			var cell := 0 if feature.kind == "GUIDE" else 4
-			var size := Vector2(54.0, 54.0) if feature.kind == "GUIDE" else Vector2(86.0, 86.0)
-			_draw_foliage_sprite(cell, Vector2(center_x + side * 36.0, (top_y + bottom_y) * 0.5), size, side < 0.0)
+	pass
 
 func _draw_foliage_sprite(cell: int, center: Vector2, size: Vector2, flip_x := false, modulate := Color.WHITE) -> void:
 	if qa_support_mask:
