@@ -98,6 +98,10 @@ var death_cause := DeathCause.NONE
 @onready var storm: StormMechanics = $StormMechanics
 @onready var platform_services: Node = get_node("/root/PlatformServices")
 var total_time := 0.0
+var score := 0.0
+var run_coins := 0
+var score_previous_y := 0.0
+var run_generation := 0
 var close_calls := 0
 var danger_was_active := false
 var shake_remaining := 0.0
@@ -228,6 +232,9 @@ func _ready() -> void:
 	_start_selected_run()
 
 func _physics_process(delta: float) -> void:
+	if app_state == AppState.PLAYING and not tutorial_active:
+		score += maxf(score_previous_y - player.global_position.y, 0.0) * 0.1 * clampi(golds.combo, 1, 5)
+	score_previous_y = player.global_position.y
 	player.speed_scale = 1.0 if tutorial_active else Balance.speed_scale_for_time(total_time)
 	_update_hit_invulnerability(delta)
 	_update_danger(delta)
@@ -447,6 +454,10 @@ func restart() -> void:
 	dead_restart_delay = 0.0
 	confirm_pending = false
 	total_time = 0.0
+	score = 0.0
+	run_coins = 0
+	score_previous_y = player.global_position.y
+	run_generation += 1
 	player.speed_scale = 1.0
 	close_calls = 0
 	danger_was_active = false
@@ -602,6 +613,7 @@ func _finish_intro() -> void:
 		spider_body.position = Vector2.ZERO
 		spider_body.scale = Vector2.ONE
 	$HUD/IntroSummit.visible = false
+	score_previous_y = player.global_position.y
 	app_state = AppState.PLAYING
 	gauge.update_from_positions(player.global_position.y, spider.global_position.y)
 	audio.play_music("music_game")
@@ -897,6 +909,7 @@ func _respawn_at_continue_checkpoint() -> void:
 	safe_position = _validated_continue_position(safe_position)
 	continue_checkpoint = {"position": safe_position, "stage": stages.stage_for_y(safe_position.y)}
 	player.reset_run(safe_position)
+	score_previous_y = player.global_position.y
 	var safe_stage := stages.stage_for_y(safe_position.y)
 	spider.reset_run(safe_position + Vector2(0, _spider_start_gap(safe_stage)))
 	rocks.sync_after_player_teleport()
@@ -1521,6 +1534,8 @@ void fragment() {
 	wings_notice.add_theme_stylebox_override("normal", wings_notice_style)
 	_add_label("FireWings", Vector2(690, 44), "", 16)
 	_add_label("GoldStatus", Vector2(690, 62), "GOLD 0", 18)
+	_add_label("Score", Vector2(708, 8), "0", 30)
+	_add_label("RunCoins", Vector2(708, 48), "● 0", 20)
 	var combo_label := _add_label("GoldCombo", Vector2(690, 119), "", 16)
 	combo_label.modulate.a = 0.0
 	var flight_layer := Node2D.new()
@@ -1713,7 +1728,7 @@ func layout_hud_for_viewport(viewport_size: Vector2) -> void:
 	skill_notice.position = Vector2(width - skill_notice_width - 10.0, maxf(skill_y - 46.0, 10.0))
 	skill_notice.size = Vector2(skill_notice_width, 38.0)
 	var fire_skill := $HUD/FireWings as Label
-	fire_skill.position = Vector2(maxf(width - 270.0, 70.0), 18.0)
+	fire_skill.position = Vector2(maxf(width - 270.0, 70.0), 188.0)
 	fire_skill.size = Vector2(minf(250.0, width - fire_skill.position.x - 10.0), 28.0)
 	fire_skill.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
 	# Keep the meta readout in the gap between the centered banners and the
@@ -1724,6 +1739,17 @@ func layout_hud_for_viewport(viewport_size: Vector2) -> void:
 	$HUD/GoldStatus.position = Vector2(meta_x, 62.0)
 	$HUD/GoldStatus.size = Vector2(meta_width, 20.0)
 	$HUD/GoldCombo.position = Vector2(meta_x, 119.0)
+	var run_counter_width := minf(240.0, width - 120.0)
+	for counter: Label in [$HUD/Score, $HUD/RunCoins, $HUD/GoldCombo]:
+		counter.position.x = width - run_counter_width - 12.0
+		counter.size.x = run_counter_width
+		counter.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	$HUD/Score.position.y = 8.0
+	$HUD/Score.size.y = 40.0
+	$HUD/RunCoins.position.y = 54.0
+	$HUD/RunCoins.size.y = 28.0
+	$HUD/GoldCombo.position.y = 92.0
+	$HUD/GoldCombo.size.y = 26.0
 	$HUD/XPStatus.position = Vector2(meta_x, 85.0)
 	$HUD/XPStatus.size = Vector2(meta_width, 18.0)
 	$HUD/XPBar.position = Vector2(meta_x, 106.0)
@@ -1887,6 +1913,8 @@ func _layout_intro_guardian(viewport_size: Vector2) -> void:
 	spider.global_position = canvas.affine_inverse() * center - local_bounds.get_center() * fit
 
 func fly_gold_to_counter(screen_transform: Transform2D, arrived: Callable) -> void:
+	var collected_value := economy.value("gold_per_collectible") * mini(golds.combo, 5)
+	var collected_generation := run_generation
 	var layer := $HUD/GoldFlights as Node2D
 	var coin := Sprite2D.new()
 	coin.texture = GoldCollectible.COIN_TEXTURE
@@ -1898,20 +1926,22 @@ func fly_gold_to_counter(screen_transform: Transform2D, arrived: Callable) -> vo
 	coin.position = start
 	var flight := create_tween()
 	flight.tween_method(func(progress: float):
-		var target: Vector2 = layer.get_global_transform_with_canvas().affine_inverse() * ($HUD/GoldStatus.get_global_transform_with_canvas() * Vector2(-12.0, 10.0))
+		var target: Vector2 = layer.get_global_transform_with_canvas().affine_inverse() * ($HUD/RunCoins.get_global_transform_with_canvas() * Vector2($HUD/RunCoins.size.x - 18.0, 14.0))
 		var eased := progress * progress
 		coin.position = start.lerp(target, eased) + Vector2(0.0, -80.0 * sin(PI * progress))
 		coin.scale = start_scale * lerpf(1.0, 0.6, progress)
 	, 0.0, 1.0, 0.45)
 	flight.tween_callback(func():
 		coin.queue_free()
+		if collected_generation == run_generation:
+			run_coins += collected_value
 		arrived.call()
 	)
 
 func bump_gold_counter() -> void:
-	var label := $HUD/GoldStatus as Label
-	label.text = "GOLD %d" % economy.gold
-	label.pivot_offset = label.size * 0.5
+	var label := $HUD/RunCoins as Label
+	label.text = "● %s" % _format_run_number(run_coins)
+	label.pivot_offset = label.size * Vector2(1.0, 0.5)
 	if gold_counter_tween != null:
 		gold_counter_tween.kill()
 	label.scale = Vector2.ONE
@@ -2092,16 +2122,21 @@ func _update_hud() -> void:
 	$HUD/InfoBody.text = "BEANSTALK ESCAPE\nMade with Godot\n\nArt: Kenney (CC0), Codex image_gen project assets, manager-provided logo (origin review pending)\nMusic: MintoDog and TAD (CC0)\nAudio: Kenney (CC0), Sonniss GDC 2026 (commercial use; raw redistribution prohibited)\nFont: Lilita One (SIL OFL 1.1)\nFull attributions: CREDITS.md"
 	if menu_help_open:
 		$HUD/InfoTitle.text = "HOW TO PLAY"
-		$HUD/InfoBody.text = "A / D or LEFT / RIGHT: switch branches\nTouch the left / right side to move\n\nClimb to the summit and stay ahead of the spider.\nAvoid falling beans, rocks and broken branches.\nCollect gold along the way.\n\nF / TIME: Time Wings (from stage 5)\nH / FIRE: Fire Wings (from stage 10)\n\nESC: pause / resume"
+		$HUD/InfoBody.text = "A / D or LEFT / RIGHT: switch branches\nTouch the left / right side to move\n\nClimb as high as you can. The vine gets faster.\nAvoid falling beans, rocks and broken branches.\nCollect gold along the way.\n\nF / TIME: Time Wings (unlocks during the climb)\nH / FIRE: Fire Wings (unlocks during the climb)\n\nESC: pause / resume"
 	$HUD/InfoBack.visible = credits_visible
 	$HUD/TutorialPanel.visible = tutorial_active
 	$HUD/TutorialSkip.visible = tutorial_active
 	$HUD/Mute.visible = playing
 	$HUD/IntroText.visible = app_state in [AppState.INTRO, AppState.FINAL_CINEMATIC]
 	$HUD/Gauge.visible = normal_playing
-	$HUD/MiniMap.visible = normal_playing
-	$HUD/StageBanner.visible = normal_playing
-	$HUD/StageCounter.visible = normal_playing
+	$HUD/MiniMap.visible = false
+	$HUD/StageBanner.visible = false
+	$HUD/StageCounter.visible = false
+	$HUD/Score.visible = normal_playing
+	$HUD/RunCoins.visible = normal_playing
+	$HUD/GoldCombo.visible = normal_playing
+	$HUD/Score.text = _format_run_number(int(score))
+	$HUD/RunCoins.text = "● %s" % _format_run_number(run_coins)
 	$HUD/Tutorial.visible = normal_playing
 	$HUD/TimeWings.visible = normal_playing
 	$HUD/TimeWingsOrb.visible = normal_playing
@@ -2109,20 +2144,20 @@ func _update_hud() -> void:
 	$HUD/TimeWingsNotice.visible = playing and time_wings_notice_remaining > 0.0
 	$HUD/FireWings.visible = normal_playing
 	$HUD/Lives.visible = normal_playing
-	$HUD/GoldStatus.visible = meta_visible
-	$HUD/XPStatus.visible = meta_visible
-	$HUD/XPBar.visible = meta_visible
-	$HUD/RewardToast.visible = meta_visible and reward_toast_remaining > 0.0
+	var balance_visible := result_visible or app_state in [AppState.MENU, AppState.SHOP]
+	$HUD/GoldStatus.visible = balance_visible
+	$HUD/XPStatus.visible = balance_visible
+	$HUD/XPBar.visible = balance_visible
+	$HUD/RewardToast.visible = false
 	$HUD/LevelUpCard.visible = meta_visible and level_up_remaining > 0.0
 	var death_visible := app_state == AppState.PLAYER_DEAD and not tutorial_active
 	$HUD/ContinueAd.visible = death_visible and _can_offer_ad_revive() and platform_services.is_rewarded_supported()
-	$HUD/RetryStage.visible = death_visible
+	$HUD/RetryStage.visible = false
 	$HUD/RestartRun.visible = false
 	$HUD/DeathMenu.visible = death_visible
 	$HUD/PauseMenu.visible = app_state == AppState.PAUSED
-	var dead_stage := stages.stage_for_y(player.global_position.y)
-	$HUD/SkipStageAd.visible = death_visible and dead_stage < Balance.STAGE_COUNT and int(death_count_by_stage.get(dead_stage, 0)) >= economy.value("skip_stage_death_count") and platform_services.is_rewarded_supported()
-	$HUD/DoubleStageReward.visible = meta_visible and double_reward_remaining > 0.0 and platform_services.is_rewarded_supported()
+	$HUD/SkipStageAd.visible = false
+	$HUD/DoubleStageReward.visible = false
 	$HUD/DoubleStageReward.text = "DOUBLE +%d (AD)" % last_stage_gold_reward
 	$HUD/GetMoreGold.visible = app_state == AppState.MENU and platform_services.is_rewarded_supported()
 	$HUD/GetMoreGold.text = "GET %d GOLD (AD)" % economy.value("get_more_gold_reward")
@@ -2166,6 +2201,15 @@ func _update_hud() -> void:
 		$HUD/MiniMap.queue_redraw()
 	if ghost_sprite != null and not playing:
 		ghost_sprite.visible = false
+
+func _format_run_number(value: int) -> String:
+	var digits := str(value)
+	var result := ""
+	for index in digits.length():
+		if index > 0 and (digits.length() - index) % 3 == 0:
+			result += ","
+		result += digits[index]
+	return result
 
 func _on_level_up(new_level: int, gold_reward: int) -> void:
 	level_up_remaining = 2.4
@@ -2297,6 +2341,11 @@ func _readonly_state_snapshot() -> Dictionary:
 	return {
 		"app_state": AppState.keys()[app_state],
 		"run_time": total_time,
+		"score": int(score),
+		"run_coins": run_coins,
+		"best_score": 0,
+		"hud_stage_counter_visible": $HUD/StageCounter.visible,
+		"hud_score_text": $HUD/Score.text,
 		"speed_scale": player.speed_scale,
 		"climb_speed": player.climb_speed(),
 		"difficulty_tier": Balance.difficulty_tier_for_time(total_time),
