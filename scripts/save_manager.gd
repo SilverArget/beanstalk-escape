@@ -3,7 +3,7 @@ extends RefCounted
 
 signal profile_loaded(profile: Dictionary)
 
-const SAVE_VERSION := 4
+const SAVE_VERSION := 5
 const DEFAULT_PATH := "user://profile_v1.json"
 const LEGACY_PET_IDS := {
 	"pet_squirrel": "fairy_leaf",
@@ -52,6 +52,8 @@ var bridge_write_dirty := false
 var hair_refund_migrated := false
 var emblem_refund_migrated := false
 var trail_refund_migrated := false
+# Consumed by the leaderboard adapter so the result screen records each run once.
+var pending_run_score: Dictionary = {}
 
 func _init(path := DEFAULT_PATH) -> void:
 	save_path = _qa_path() if path == DEFAULT_PATH and _is_qa_process() else path
@@ -78,6 +80,29 @@ func load_profile() -> Dictionary:
 	if hair_refund_migrated or emblem_refund_migrated or trail_refund_migrated:
 		_write_local_profile()
 	return profile.duplicate(true)
+
+func record_run_score(player: String, score: int, character: String) -> Dictionary:
+	if profile.is_empty():
+		load_profile()
+	score = maxi(score, 0)
+	var previous_best := int(profile.get("best_score", 0))
+	var entries: Array = profile.get("leaderboard_local", []).duplicate(true)
+	var rank := 1
+	for entry: Dictionary in entries:
+		if int(entry.score) > score:
+			rank += 1
+	entries.insert(rank - 1, {
+		"name": player.strip_edges().left(48), "score": score,
+		"character": character, "date": Time.get_datetime_string_from_system(true),
+	})
+	if entries.size() > 10:
+		entries.resize(10)
+	profile["best_score"] = maxi(previous_best, score)
+	profile["leaderboard_local"] = entries
+	var result := {"new_best": score > previous_best, "best": int(profile.best_score), "rank": rank}
+	pending_run_score = {"name": player.strip_edges().left(48), "score": score, "rank": rank}
+	_write_profile()
+	return result
 
 func replay_snapshot() -> Dictionary:
 	if profile.is_empty():
@@ -297,6 +322,9 @@ func _write_local_profile() -> bool:
 func _default_profile() -> Dictionary:
 	return {
 		"version": SAVE_VERSION,
+		"best_score": 0,
+		"leaderboard_local": [],
+		"player_name": "",
 		"meta": {"gold": 0, "xp": 0, "level": 1, "hair_refund_done": true, "emblem_refund_done": true, "trail_refund_done": true, "save_seq": 0},
 		"progression": {"completed_stages": [], "skipped_stages": [], "treasures_claimed": []},
 		"daily": {"day_index": 0, "last_claim_date": ""},
@@ -404,6 +432,23 @@ func _on_bridge_profile_loaded(success: bool, value: Variant) -> void:
 
 func _sanitize_profile(value: Dictionary) -> Dictionary:
 	var result := _default_profile()
+	result.best_score = maxi(int(value.get("best_score", 0)), 0)
+	result.player_name = str(value.get("player_name", "")).strip_edges().left(48)
+	var local_scores: Variant = value.get("leaderboard_local", [])
+	if local_scores is Array:
+		for entry in local_scores:
+			if entry is Dictionary:
+				result.leaderboard_local.append({
+					"name": str(entry.get("name", "")).strip_edges().left(48),
+					"score": maxi(int(entry.get("score", 0)), 0),
+					"character": str(entry.get("character", "M1")),
+					"date": str(entry.get("date", "")),
+				})
+		result.leaderboard_local.sort_custom(func(a: Dictionary, b: Dictionary): return int(a.score) > int(b.score))
+		if result.leaderboard_local.size() > 10:
+			result.leaderboard_local.resize(10)
+		if not result.leaderboard_local.is_empty():
+			result.best_score = maxi(result.best_score, int(result.leaderboard_local[0].score))
 	var meta: Dictionary = value.get("meta", {}) if value.get("meta", {}) is Dictionary else {}
 	var refund_done := bool(meta.get("hair_refund_done", false))
 	var refund_gold := 0
@@ -439,10 +484,10 @@ func _sanitize_profile(value: Dictionary) -> Dictionary:
 	result.meta.trail_refund_done = true
 	result.meta.save_seq = maxi(int(meta.get("save_seq", 0)), 0)
 	if value.get("progression", {}) is Dictionary:
-		result.progression = _sanitize_progression(value.progression)
+		result.progression = _sanitize_progression(value.get("progression", {}))
 	result.daily = _sanitize_daily(value.get("daily", {}))
 	if value.get("purchases", {}) is Dictionary:
-		result.purchases = value.purchases.duplicate(true)
+		result.purchases = value.get("purchases", {}).duplicate(true)
 	result.shop = _sanitize_shop(value.get("shop", {}))
 	result.replay = _sanitize_replay(value.get("replay", {}))
 	result.meta_systems = _sanitize_meta_systems(value.get("meta_systems", {}))

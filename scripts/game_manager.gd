@@ -128,6 +128,18 @@ var stage_restart_count := 0
 var stage_restart_start_distance := 0.0
 var last_time_command_source := ""
 var save_manager := SaveManager.new()
+var leaderboard_service: Node
+var death_phase := ""
+var result_new_best := false
+var result_best := 0
+var result_recorded := false
+var result_elapsed := 0.0
+var leaderboard_visible := false
+var leaderboard_entries: Array = []
+var leaderboard_source := ""
+var leaderboard_rows: Array[PanelContainer] = []
+var ended_runs_since_interstitial := 0
+var last_interstitial_msec := 0
 var economy := EconomyManager.new()
 var golds := GoldManager.new()
 var gold_counter_tween: Tween
@@ -203,6 +215,10 @@ func _ready() -> void:
 	save_manager.configure_platform(platform_services)
 	if not economy.initialize(save_manager):
 		push_error("Economy config could not be loaded")
+	leaderboard_service = preload("res://scripts/leaderboard_service.gd").new()
+	leaderboard_service.name = "LeaderboardService"
+	add_child(leaderboard_service)
+	leaderboard_service.configure(save_manager)
 	max_lives = maxi(int(economy.config.get("lives_per_run", 3)), 1)
 	current_lives = max_lives
 	_apply_loaded_profile({"meta_systems": save_manager.meta_systems_snapshot()})
@@ -232,6 +248,10 @@ func _ready() -> void:
 	_start_selected_run()
 
 func _physics_process(delta: float) -> void:
+	if app_state == AppState.PLAYER_DEAD and death_phase == "result" and not leaderboard_visible:
+		result_elapsed += delta
+		if result_elapsed >= 1.0:
+			_show_leaderboard()
 	if app_state == AppState.PLAYING and not tutorial_active:
 		score += maxf(score_previous_y - player.global_position.y, 0.0) * 0.1 * clampi(golds.combo, 1, 5)
 	score_previous_y = player.global_position.y
@@ -305,6 +325,11 @@ func _physics_process(delta: float) -> void:
 	_publish_readonly_web_state()
 
 func _input(event: InputEvent) -> void:
+	if app_state == AppState.PLAYER_DEAD and death_phase == "result" and not leaderboard_visible:
+		if (event is InputEventKey and event.pressed and not event.echo) or (event is InputEventScreenTouch and event.pressed) or (event is InputEventMouseButton and event.pressed):
+			_show_leaderboard()
+			get_viewport().set_input_as_handled()
+			return
 	if app_state == AppState.PLAYER_DEAD and _handle_death_panel_keyboard(event):
 		get_viewport().set_input_as_handled()
 		return
@@ -340,7 +365,7 @@ func _handle_death_panel_keyboard(event: InputEvent) -> bool:
 
 func _visible_death_actions() -> Array[Button]:
 	var visible_actions: Array[Button] = []
-	for button: Button in [$HUD/ContinueAd, $HUD/RetryStage, $HUD/RestartRun, $HUD/DeathMenu, $HUD/SkipStageAd]:
+	for button: Button in [$HUD/ContinueAd, $HUD/NoThanks, $HUD/RestartRun, $HUD/DeathShop, $HUD/DeathMenu]:
 		if button.visible and not button.disabled:
 			visible_actions.append(button)
 	return visible_actions
@@ -456,6 +481,13 @@ func restart() -> void:
 	total_time = 0.0
 	score = 0.0
 	run_coins = 0
+	death_phase = ""
+	result_new_best = false
+	result_recorded = false
+	result_elapsed = 0.0
+	leaderboard_visible = false
+	leaderboard_entries = []
+	leaderboard_source = ""
 	score_previous_y = player.global_position.y
 	run_generation += 1
 	player.speed_scale = 1.0
@@ -899,9 +931,68 @@ func _enter_player_dead(cause: DeathCause) -> void:
 	rocks.set_physics_process(false)
 	for bean in get_tree().get_nodes_in_group("beans"):
 		bean.set_physics_process(false)
+	if not tutorial_active:
+		death_phase = "continue"
+		if not _can_offer_ad_revive() or not platform_services.is_rewarded_supported():
+			_show_run_result()
 	_update_hud()
 	call_deferred("_focus_default_death_action")
 	_publish_readonly_web_state()
+
+func _show_run_result() -> void:
+	if app_state != AppState.PLAYER_DEAD or tutorial_active or result_recorded:
+		return
+	death_phase = "result"
+	result_recorded = true
+	result_elapsed = 0.0
+	leaderboard_visible = false
+	ended_runs_since_interstitial += 1
+	var character := str(economy.shop.selected_character)
+	var player_name := str(save_manager.profile.get("player_name", "")).strip_edges()
+	if player_name.is_empty():
+		player_name = str(economy.config.get("characters", {}).get(character, {}).get("name", character))
+	var recorded := save_manager.record_run_score(player_name, int(score), character)
+	result_new_best = bool(recorded.new_best)
+	result_best = int(recorded.best)
+	var generation := run_generation
+	leaderboard_service.submit_score(player_name, int(score), func(response: Dictionary):
+		if generation != run_generation or not result_recorded:
+			return
+		leaderboard_entries = response.get("entries", []).duplicate(true)
+		leaderboard_source = str(response.get("source", "local"))
+		_refresh_leaderboard_rows()
+		_update_hud()
+	)
+	layout_hud_for_viewport(get_viewport_rect().size)
+	_update_hud()
+
+func _show_leaderboard() -> void:
+	if app_state != AppState.PLAYER_DEAD or death_phase != "result":
+		return
+	leaderboard_visible = true
+	_update_hud()
+	call_deferred("_focus_default_death_action")
+
+func _refresh_leaderboard_rows() -> void:
+	for index in leaderboard_rows.size():
+		var row := leaderboard_rows[index]
+		if index >= leaderboard_entries.size():
+			continue
+		var entry: Dictionary = leaderboard_entries[index]
+		(row.get_node("Columns/Rank") as Label).text = str(entry.get("rank", index + 1))
+		(row.get_node("Columns/Name") as Label).text = str(entry.get("name", ""))
+		(row.get_node("Columns/Score") as Label).text = _format_run_number(int(entry.get("score", 0)))
+		var style := StyleBoxFlat.new()
+		style.bg_color = Color("47633a") if bool(entry.get("is_player", false)) else Color(0.08, 0.12, 0.09, 0.92)
+		style.content_margin_left = 8.0
+		style.content_margin_right = 8.0
+		row.add_theme_stylebox_override("panel", style)
+
+func _shop_from_death() -> void:
+	if app_state == AppState.PLAYER_DEAD and death_phase == "result" and leaderboard_visible:
+		death_phase = ""
+		leaderboard_visible = false
+		_show_shop()
 
 func _respawn_at_continue_checkpoint() -> void:
 	golds.reset_combo()
@@ -994,6 +1085,8 @@ func _resume_game() -> void:
 func _show_menu() -> void:
 	menu_help_open = false
 	app_state = AppState.MENU
+	death_phase = ""
+	leaderboard_visible = false
 	if meta_ui != null:
 		meta_ui.visible = false
 	player.set_physics_process(false)
@@ -1080,12 +1173,12 @@ func _start_selected_run() -> void:
 	start_game()
 
 func _continue_with_ad() -> void:
-	if app_state != AppState.PLAYER_DEAD or not _can_offer_ad_revive():
+	if app_state != AppState.PLAYER_DEAD or death_phase != "continue" or not _can_offer_ad_revive():
 		return
 	platform_services.show_rewarded("continue_in_stage", _continue_after_reward)
 
 func _continue_after_reward() -> void:
-	if app_state != AppState.PLAYER_DEAD:
+	if app_state != AppState.PLAYER_DEAD or death_phase != "continue":
 		return
 	var stage_number := stages.stage_for_y(player.global_position.y)
 	ad_revives_by_stage[stage_number] = int(ad_revives_by_stage.get(stage_number, 0)) + 1
@@ -1111,6 +1204,8 @@ func _remember_continue_checkpoint() -> void:
 func _resume_after_death() -> void:
 	state = State.PLAYING
 	app_state = AppState.PLAYING
+	death_phase = ""
+	leaderboard_visible = false
 	death_cause = DeathCause.NONE
 	dead_restart_delay = 0.0
 	confirm_pending = false
@@ -1124,7 +1219,13 @@ func _resume_after_death() -> void:
 	_update_hud()
 
 func _restart_run_from_death() -> void:
-	if app_state == AppState.PLAYER_DEAD:
+	if app_state == AppState.PLAYER_DEAD and death_phase == "result" and leaderboard_visible:
+		var now := Time.get_ticks_msec()
+		var minimum_delay := maxi(economy.value("interstitial_min_delay_seconds"), 0) * 1000
+		if ended_runs_since_interstitial >= 2 and now - last_interstitial_msec >= minimum_delay:
+			if platform_services.show_interstitial("play_again"):
+				ended_runs_since_interstitial = 0
+				last_interstitial_msec = now
 		restart()
 		_begin_intro()
 
@@ -1144,8 +1245,9 @@ func _menu_from_death() -> void:
 func _focus_default_death_action() -> void:
 	if app_state != AppState.PLAYER_DEAD:
 		return
-	var target := $HUD/ContinueAd as Button if $HUD/ContinueAd.visible else $HUD/RetryStage as Button
-	target.grab_focus()
+	var actions := _visible_death_actions()
+	if not actions.is_empty():
+		actions[0].grab_focus()
 
 func _skip_stage_with_ad() -> void:
 	if app_state != AppState.PLAYER_DEAD:
@@ -1549,9 +1651,48 @@ void fragment() {
 	$HUD.add_child(xp_bar)
 	_add_label("RewardToast", Vector2(300, 152), "", 20)
 	_add_label("LevelUpCard", Vector2(300, 202), "", 28)
-	_add_action_button("ContinueAd", "WATCH AD — CONTINUE", _continue_with_ad)
+	var death_backdrop := ColorRect.new()
+	death_backdrop.name = "DeathBackdrop"
+	death_backdrop.color = Color(0.025, 0.05, 0.03, 0.96)
+	death_backdrop.mouse_filter = Control.MOUSE_FILTER_STOP
+	$HUD.add_child(death_backdrop)
+	$HUD.move_child(death_backdrop, $HUD/Dead.get_index())
+	_add_label("MenuBest", Vector2.ZERO, "", 16)
+	_add_label("RunBest", Vector2.ZERO, "", 20)
+	_add_label("RunCoinsResult", Vector2.ZERO, "", 22)
+	_add_label("LeaderboardTitle", Vector2.ZERO, "LEADERBOARD", 26)
+	_add_label("LeaderboardSource", Vector2.ZERO, "", 13)
+	for index in 10:
+		var row := PanelContainer.new()
+		row.name = "LeaderboardRow%d" % index
+		row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		var columns := HBoxContainer.new()
+		columns.name = "Columns"
+		columns.add_theme_constant_override("separation", 8)
+		columns.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		row.add_child(columns)
+		for field in ["Rank", "Name", "Score"]:
+			var label := Label.new()
+			label.name = field
+			label.theme = ui_theme
+			label.add_theme_font_size_override("font_size", 16)
+			label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			if field == "Name":
+				label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+				label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+			elif field == "Score":
+				label.custom_minimum_size.x = 85.0
+				label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+			else:
+				label.custom_minimum_size.x = 26.0
+			columns.add_child(label)
+		$HUD.add_child(row)
+		leaderboard_rows.append(row)
+	_add_action_button("ContinueAd", "CONTINUE ▶ AD", _continue_with_ad)
+	_add_action_button("NoThanks", "NO THANKS", _show_run_result)
+	_add_action_button("DeathShop", "SHOP", _shop_from_death)
 	_add_action_button("RetryStage", "RESTART", _restart_from_death)
-	_add_action_button("RestartRun", "RESTART RUN", _restart_run_from_death)
+	_add_action_button("RestartRun", "PLAY AGAIN", _restart_run_from_death)
 	_add_action_button("DeathMenu", "MENU", _menu_from_death)
 	_add_action_button("PauseMenu", "MENU", _menu_from_death)
 	_add_action_button("SkipStageAd", "SKIP STAGE (AD)", _skip_stage_with_ad)
@@ -1754,16 +1895,7 @@ func layout_hud_for_viewport(viewport_size: Vector2) -> void:
 	$HUD/XPStatus.size = Vector2(meta_width, 18.0)
 	$HUD/XPBar.position = Vector2(meta_x, 106.0)
 	$HUD/XPBar.size = Vector2(meta_width, 9.0)
-	var death_width := minf(230.0, (width - 30.0) * 0.5)
-	var death_gap := 10.0
-	var death_total := death_width * 2.0 + death_gap
-	var death_x := maxf((width - death_total) * 0.5, 8.0)
-	for index in 4:
-		var death_button: Button = [$HUD/ContinueAd, $HUD/RetryStage, $HUD/RestartRun, $HUD/DeathMenu][index]
-		death_button.position = Vector2(death_x + (index % 2) * (death_width + death_gap), height * 0.40 + (index / 2) * 58.0)
-		death_button.size = Vector2(death_width, 52.0)
-	$HUD/SkipStageAd.position = Vector2((width - death_width) * 0.5, height * 0.40 + 116.0)
-	$HUD/SkipStageAd.size = Vector2(death_width, 52.0)
+	_layout_death_panel(Vector2(width, height))
 	$HUD/DoubleStageReward.position = Vector2((width - 230.0) * 0.5, 188.0)
 	$HUD/DoubleStageReward.size = Vector2(230.0, 52.0)
 	var commerce_buttons: Array[Button] = []
@@ -1831,7 +1963,6 @@ func layout_hud_for_viewport(viewport_size: Vector2) -> void:
 	var pause_width := minf(230.0, width - 32.0)
 	$HUD/PauseMenu.size = Vector2(pause_width, 52.0)
 	$HUD/PauseMenu.position = Vector2((width - pause_width) * 0.5, $HUD/Pause.position.y + $HUD/Pause.size.y + 16.0)
-	_layout_centered_label($HUD/Dead, width, height * 0.36, 80.0, 36.0)
 	var result_margin := 18.0 if compact else 32.0
 	var result_top := 12.0 if compact else 20.0
 	var result_bottom := height - (70.0 if compact else 88.0)
@@ -1870,6 +2001,38 @@ func layout_hud_for_viewport(viewport_size: Vector2) -> void:
 	$HUD/TouchFire.position = Vector2(width - 150.0, touch_y)
 	$HUD/TouchFire.size = Vector2(132.0, 128.0)
 	$HUD/MetaShop.set_offsets_preset(Control.PRESET_FULL_RECT)
+
+func _layout_death_panel(viewport_size: Vector2) -> void:
+	var width := viewport_size.x
+	var height := viewport_size.y
+	$HUD/DeathBackdrop.position = Vector2.ZERO
+	$HUD/DeathBackdrop.size = viewport_size
+	var is_result := death_phase == "result"
+	_layout_centered_label($HUD/Dead, width, 22.0 if is_result else height * 0.27, 42.0 if is_result else 80.0, 14.0)
+	$HUD/Dead.add_theme_font_size_override("font_size", 26 if width < 400.0 else 32)
+	$HUD/Dead.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_layout_centered_label($HUD/RunBest, width, 68.0, 26.0, 12.0)
+	_layout_centered_label($HUD/RunCoinsResult, width, 100.0, 28.0, 12.0)
+	_layout_centered_label($HUD/LeaderboardTitle, width, 136.0, 32.0, 12.0)
+	_layout_centered_label($HUD/LeaderboardSource, width, 168.0, 20.0, 12.0)
+	var row_width := minf(560.0, width - 28.0)
+	var row_height := minf(25.0, (height - 270.0) / 10.0)
+	for index in leaderboard_rows.size():
+		leaderboard_rows[index].position = Vector2((width - row_width) * 0.5, 192.0 + index * row_height)
+		leaderboard_rows[index].size = Vector2(row_width, row_height - 1.0)
+	var continue_width := minf(230.0, (width - 38.0) * 0.5)
+	for index in 2:
+		var button: Button = [$HUD/ContinueAd, $HUD/NoThanks][index]
+		button.position = Vector2((width - continue_width * 2.0 - 10.0) * 0.5 + index * (continue_width + 10.0), height * 0.52)
+		button.size = Vector2(continue_width, 52.0)
+		button.add_theme_font_size_override("font_size", 16 if width < 400.0 else 20)
+	var action_width := minf(220.0, (width - 44.0) / 3.0)
+	for index in 3:
+		var button: Button = [$HUD/RestartRun, $HUD/DeathShop, $HUD/DeathMenu][index]
+		button.position = Vector2((width - action_width * 3.0 - 16.0) * 0.5 + index * (action_width + 8.0), height - 66.0)
+		button.size = Vector2(action_width, 48.0)
+		button.add_theme_font_size_override("font_size", 14 if width < 400.0 else 20)
+	_layout_centered_label($HUD/MenuBest, width, $HUD/Menu.position.y - 24.0, 20.0, 12.0)
 
 func _layout_centered_label(label: Label, width: float, y: float, height: float, side_margin: float) -> void:
 	label.position = Vector2(side_margin, y)
@@ -2094,7 +2257,8 @@ func _update_hud() -> void:
 	$HUD/Menu.visible = app_state == AppState.MENU
 	$HUD/Pause.visible = app_state == AppState.PAUSED
 	$HUD/Dead.visible = app_state == AppState.PLAYER_DEAD
-	$HUD/Dead.text = _death_text()
+	$HUD/Dead.text = ("NEW HIGH SCORE!" if result_new_best else "SCORE %s" % _format_run_number(int(score))) if death_phase == "result" else _death_text()
+	$HUD/Dead.modulate = Color("ffd45c") if death_phase == "result" and result_new_best else Color.WHITE
 	$HUD/ResultPanel.visible = result_visible
 	$HUD/Complete.visible = result_visible
 	$HUD/Stats.visible = result_visible
@@ -2151,10 +2315,27 @@ func _update_hud() -> void:
 	$HUD/RewardToast.visible = false
 	$HUD/LevelUpCard.visible = meta_visible and level_up_remaining > 0.0
 	var death_visible := app_state == AppState.PLAYER_DEAD and not tutorial_active
-	$HUD/ContinueAd.visible = death_visible and _can_offer_ad_revive() and platform_services.is_rewarded_supported()
+	var continue_visible := death_visible and death_phase == "continue"
+	var run_result_visible := death_visible and death_phase == "result"
+	var board_visible := run_result_visible and leaderboard_visible
+	$HUD/DeathBackdrop.visible = death_visible
+	$HUD/ContinueAd.visible = continue_visible
+	$HUD/NoThanks.visible = continue_visible
+	$HUD/RunBest.visible = run_result_visible
+	$HUD/RunBest.text = "BEST %s" % _format_run_number(result_best)
+	$HUD/RunCoinsResult.visible = run_result_visible
+	$HUD/RunCoinsResult.text = "+%s COINS" % _format_run_number(run_coins)
+	$HUD/LeaderboardTitle.visible = board_visible
+	$HUD/LeaderboardSource.visible = board_visible
+	$HUD/LeaderboardSource.text = "THIS DEVICE" if leaderboard_source == "local" else ("CONNECTING…" if leaderboard_source.is_empty() else "ONLINE")
+	for index in leaderboard_rows.size():
+		leaderboard_rows[index].visible = board_visible and index < leaderboard_entries.size()
+	$HUD/MenuBest.visible = app_state == AppState.MENU
+	$HUD/MenuBest.text = "BEST %s" % _format_run_number(int(save_manager.profile.get("best_score", 0)))
 	$HUD/RetryStage.visible = false
-	$HUD/RestartRun.visible = false
-	$HUD/DeathMenu.visible = death_visible
+	$HUD/RestartRun.visible = board_visible
+	$HUD/DeathShop.visible = board_visible
+	$HUD/DeathMenu.visible = board_visible
 	$HUD/PauseMenu.visible = app_state == AppState.PAUSED
 	$HUD/SkipStageAd.visible = false
 	$HUD/DoubleStageReward.visible = false
@@ -2343,7 +2524,12 @@ func _readonly_state_snapshot() -> Dictionary:
 		"run_time": total_time,
 		"score": int(score),
 		"run_coins": run_coins,
-		"best_score": 0,
+		"best_score": int(save_manager.profile.get("best_score", 0)),
+		"death_phase": death_phase,
+		"result_new_best": result_new_best,
+		"leaderboard_visible": leaderboard_visible,
+		"leaderboard_entries": leaderboard_entries.duplicate(true),
+		"leaderboard_source": leaderboard_source,
 		"hud_stage_counter_visible": $HUD/StageCounter.visible,
 		"hud_score_text": $HUD/Score.text,
 		"speed_scale": player.speed_scale,
