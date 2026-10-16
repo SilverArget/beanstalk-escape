@@ -11,6 +11,7 @@ var loaded_stages: Dictionary = {}
 var active_center_stage := -1
 var combo := 0
 var combo_remaining := 0.0
+var combo_ahead_ids: Dictionary = {}
 var in_flight := 0
 
 func setup(target: PlayerController, stage_manager: StageManager, economy_manager: EconomyManager, audio_manager: BeanstalkAudio) -> void:
@@ -38,13 +39,30 @@ func _physics_process(delta: float) -> void:
 	var game := get_parent() as GameManager
 	if game != null and game.app_state == GameManager.AppState.PLAYING:
 		combo_remaining -= delta
-		if combo > 0 and combo_remaining < 0.0:
+		if combo > 0 and combo_remaining <= 0.0:
 			reset_combo()
+		elif combo > 0:
+			_check_missed_coins()
 		refresh_active_window()
+
+func _check_missed_coins() -> void:
+	for child in get_children():
+		var coin := child as GoldCollectible
+		if coin == null or coin.taken or coin.is_queued_for_deletion():
+			continue
+		var eligible := coin.visual_lane == player.active_branch or (player.movement_mode == PlayerController.MovementMode.TRANSITION and coin.visual_lane == player.transition_to)
+		if not eligible:
+			combo_ahead_ids.erase(coin.placement_id)
+		elif coin.global_position.y <= player.global_position.y:
+			combo_ahead_ids[coin.placement_id] = true
+		elif combo_ahead_ids.has(coin.placement_id) and not coin.magnet_active:
+			reset_combo()
+			return
 
 func reset_combo() -> void:
 	combo = 0
 	combo_remaining = 0.0
+	combo_ahead_ids.clear()
 	var game := get_parent() as GameManager
 	if game != null and game.has_node("HUD/GoldCombo"):
 		game.show_gold_combo(0)
@@ -89,16 +107,19 @@ func _spawn(placement: Dictionary, stage_number: int) -> void:
 func _on_collected(placement_id: String) -> void:
 	if collected_ids.has(placement_id):
 		return
+	if combo > 0:
+		_check_missed_coins()
 	collected_ids[placement_id] = true
-	combo = combo + 1 if combo > 0 and combo_remaining >= 0.0 else 1
-	combo_remaining = 1.0
+	combo += 1
+	combo_remaining = 2.5
+	_check_missed_coins()
 	var multiplier := mini(combo, 5)
 	audio.play_sfx("gold_pickup", minf(pow(2.0, float(combo - 1) / 12.0), 1.5))
 	var game := get_parent() as GameManager
 	var coin := get_node(NodePath(placement_id)) as GoldCollectible
 	in_flight += 1
 	game.show_gold_combo(multiplier)
-	game.fly_gold_to_counter(coin.sprite.get_global_transform_with_canvas().origin, func():
+	game.fly_gold_to_counter(coin.sprite.get_global_transform_with_canvas(), func():
 		in_flight -= 1
 		economy.collect_gold(multiplier)
 		game.bump_gold_counter()

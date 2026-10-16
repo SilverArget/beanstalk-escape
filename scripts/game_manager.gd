@@ -1888,20 +1888,22 @@ func _layout_intro_guardian(viewport_size: Vector2) -> void:
 	var center := Vector2(viewport_size.x * 0.5, top + available.y * 0.5)
 	spider.global_position = canvas.affine_inverse() * center - local_bounds.get_center() * fit
 
-func fly_gold_to_counter(screen_position: Vector2, arrived: Callable) -> void:
+func fly_gold_to_counter(screen_transform: Transform2D, arrived: Callable) -> void:
 	var layer := $HUD/GoldFlights as Node2D
 	var coin := Sprite2D.new()
 	coin.texture = GoldCollectible.COIN_TEXTURE
-	coin.scale = Vector2.ONE * 0.82
+	var local_transform := layer.get_global_transform_with_canvas().affine_inverse() * screen_transform
+	var start_scale := local_transform.get_scale()
+	coin.scale = start_scale
 	layer.add_child(coin)
-	var start := layer.get_global_transform_with_canvas().affine_inverse() * screen_position
+	var start := local_transform.origin
 	coin.position = start
 	var flight := create_tween()
 	flight.tween_method(func(progress: float):
 		var target: Vector2 = layer.get_global_transform_with_canvas().affine_inverse() * ($HUD/GoldStatus.get_global_transform_with_canvas() * Vector2(-12.0, 10.0))
 		var eased := progress * progress
 		coin.position = start.lerp(target, eased) + Vector2(0.0, -80.0 * sin(PI * progress))
-		coin.scale = Vector2.ONE * lerpf(0.82, 0.45, progress)
+		coin.scale = start_scale * lerpf(1.0, 0.6, progress)
 	, 0.0, 1.0, 0.45)
 	flight.tween_callback(func():
 		coin.queue_free()
